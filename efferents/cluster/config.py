@@ -124,8 +124,8 @@ class ProxyLimits:
 @dataclass(frozen=True)
 class NetworkPolicy:
     """How local labs join the hub (the terminal path)."""
-    repo_url: str = "https://github.com/Entangled-Research/efferents"
-    install_ref: str = "event-cluster"
+    repo_url: str = "https://github.com/Entangled-Research/efferents-events"
+    install_ref: str = "main"
     heartbeat_s: float = 30.0
     pull_s: float = 120.0
     stale_after_s: float = 180.0
@@ -306,8 +306,8 @@ proxy:
   cap_per_owner_usd: 3.0            # model spend per participant through the proxy
   cap_total_usd: 15.0
 network:
-  repo_url: https://github.com/Entangled-Research/efferents
-  install_ref: event-cluster        # branch/tag participants install
+  repo_url: https://github.com/Entangled-Research/efferents-events
+  install_ref: main                 # branch participants install (e.g. glasgow, london)
   heartbeat_s: 30
   pull_s: 120
   stale_after_s: 180                # heartbeat age after which a lab shows as stale

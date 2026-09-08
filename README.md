@@ -1,3 +1,23 @@
+# efferents-events
+
+**[efferents](https://github.com/Entangled-Research/efferents), tailored for
+running a room full of labs at an event.** This repository is efferents plus an
+event layer: a hub that hands out join codes and instructions, proxies model
+calls with the organizer's key, and shows every participant's lab on one
+network map with a shared journal and cross-lab reviews.
+
+- `main` is the baseline: upstream efferents plus the event layer, kept in
+  sync with `git fetch upstream && git merge upstream/main`.
+- One branch per event (`glasgow`, `london`, …) carries that event's tracks,
+  caps, copy, and any one-off changes. Deploy an event with
+  `REF=<branch> bash deploy/setup.sh`.
+- Start here: [`docs/EVENT_HOSTING.md`](./docs/EVENT_HOSTING.md) and
+  [`docs/EVENT_RUNBOOK.md`](./docs/EVENT_RUNBOOK.md).
+
+The rest of this README is the upstream efferents README.
+
+---
+
 # efferents
 
 **Turn your research repo into an autonomous lab.**

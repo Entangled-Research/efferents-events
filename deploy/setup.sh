@@ -2,15 +2,16 @@
 # One-time host setup for an efferents event cluster. Run as root on a fresh
 # Ubuntu 24.04 machine:
 #
-#   EFFERENTS_REPO=https://github.com/Entangled-Research/efferents \
-#   POPPER_REPO=https://github.com/mashathepotato/popper-probe \
 #   DOMAIN=event.example.org bash deploy/setup.sh
+#
+# Optional: REF=<branch> (default main; use the event's branch, e.g. glasgow),
+# EFFERENTS_REPO=<git url> (default this repository), POPPER_REPO=<git url>.
 #
 # Idempotent: re-running updates the release and units without touching
 # /etc/efferents/event.env or the cluster directory.
 set -euo pipefail
 
-EFFERENTS_REPO="${EFFERENTS_REPO:?set EFFERENTS_REPO to the git URL of this repository}"
+EFFERENTS_REPO="${EFFERENTS_REPO:-https://github.com/Entangled-Research/efferents-events}"
 POPPER_REPO="${POPPER_REPO:-https://github.com/mashathepotato/popper-probe}"
 DOMAIN="${DOMAIN:?set DOMAIN to the hostname participants will open}"
 REF="${REF:-main}"

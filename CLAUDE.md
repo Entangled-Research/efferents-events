@@ -1,3 +1,14 @@
+# Session guidance for Claude Code — efferents-events
+
+This repository is **efferents plus an event layer** (`efferents/cluster/`,
+`efferents/network_client.py`, `deploy/`, `docs/EVENT_*.md`). Upstream is
+`https://github.com/Entangled-Research/efferents` (remote `upstream`);
+`main` here stays mergeable from upstream. Framework fixes that are not
+event-specific belong upstream first, then merged down. Per-event work lives
+on a branch named after the event (`glasgow`, `london`).
+
+The upstream guidance follows and still applies.
+
 # Session guidance for Claude Code — efferents framework
 
 ## What this repo is

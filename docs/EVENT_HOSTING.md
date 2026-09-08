@@ -92,7 +92,8 @@ snapshot of the droplet the evening before the event.
 2. Copy this repository's `deploy/` directory to the host and run:
 
    ```bash
-   sudo EFFERENTS_REPO=<git url> DOMAIN=event.yourdomain.org bash deploy/setup.sh
+   sudo DOMAIN=event.yourdomain.org bash deploy/setup.sh          # main
+   sudo REF=glasgow DOMAIN=event.yourdomain.org bash deploy/setup.sh   # an event branch
    ```
 
    It installs packages and Caddy, creates the `efferents` user, opens the
@@ -179,7 +180,7 @@ tests there, flip the `current` symlink, and restart only the services:
 ```bash
 sudo -u efferents bash -c '
   set -e; cd /srv/efferents
-  git clone --depth 1 <git url> releases/new && (cd releases/new && uv sync && uv run pytest -m "not integration and not slow" -q)
+  git clone --depth 1 --branch <event branch> https://github.com/Entangled-Research/efferents-events releases/new && (cd releases/new && uv sync && uv run pytest -m "not integration and not slow" -q)
   sha=$(git -C releases/new rev-parse --short HEAD); mv releases/new releases/$sha
   ln -sfn releases/$sha current.new && mv -T current.new current'
 sudo systemctl restart efferents-cluster efferents-keeper efferents-sync
