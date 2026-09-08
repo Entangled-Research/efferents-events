@@ -44,15 +44,22 @@ the lab daemons running.
 ## Sizing
 
 Fifty daemons idle most of the time waiting on model replies; the experiment
-tracks should be light (seconds per run, CPU only). Start with **Ubuntu
-24.04, 8 vCPU / 16 GB RAM / 320 GB NVMe**. Measure daemon memory during the
+tracks run on the host's CPUs. For seconds-scale runs start with **Ubuntu
+24.04, 8 vCPU / 16 GB RAM**; for minutes-scale runs use **16 vCPU / 32 GB**
+on event day. Between now and the event a **1 vCPU / 2 GB ($12/month)**
+droplet is enough for testing with a handful of people; resize it in place
+the evening before (a few minutes of downtime, disk and DNS unchanged) and
+back down afterwards. Hourly billing is capped at the monthly price. Measure daemon memory during the
 rehearsal (`efferents cluster status` prints `daemon_rss_gb`); if fifty
 daemons exceed about 60 % of RAM, resize to 32 GB the day before. Take a
 snapshot of the droplet the evening before the event.
 
 ## Setup, step by step
 
-1. Create the droplet, add your SSH key, point the DNS A record at it.
+1. Create the droplet, add your SSH key, point the DNS A record at it. No
+   domain yet? Use `DOMAIN=<droplet-ip>.sslip.io` (a free wildcard DNS
+   service that resolves any `a.b.c.d.sslip.io` to that IP); Let's Encrypt
+   issues certificates for it and you can switch to a real domain later.
 2. Copy this repository's `deploy/` directory to the host and run:
 
    ```bash
@@ -96,7 +103,11 @@ tracks/<id>/
 `lab.yaml` must validate on its own (source dir, run command with
 `{config_path}`, config template, headline metric), must not predefine
 `falsifiers`, and should set `executor.env_passthrough: [OMP_NUM_THREADS]`
-and small timeouts (60–120 s). `columns[]` lists every ledger column the
+with `run_timeout_s` a little above the slowest expected run (runs of a few
+minutes on CPU are fine; set 600–900 s). Fifty labs run their experiments
+concurrently on the host, so a run that takes 2 minutes alone takes longer
+when 50 share 8 cores: for minutes-scale tracks use a 16 vCPU droplet on
+event day and expect roughly 15–25 runs per lab in three hours. `columns[]` lists every ledger column the
 runner emits, in participant-readable words; the falsifier mapper may only
 use those. `efferents cluster check` validates every track and fails fast.
 
