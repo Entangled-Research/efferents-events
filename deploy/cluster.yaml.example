@@ -1,0 +1,56 @@
+# efferents cluster — policy only. Secrets live in .env (mode 0600).
+name: "Research lab night"
+join_code: "change-me"
+tracks_dir: tracks
+model: "claude-sonnet-4-6"          # intake dialogue, falsifier binding, cross-lab reviews
+
+intake:
+  cap_per_owner_usd: 1.0
+  cap_total_usd: 5.0
+  max_turns: 40
+  max_sessions_per_owner: 3
+  max_tokens: 2048
+  message_max_chars: 4000
+
+labs:
+  total_cap_usd: 3.0                # per lab; also its daily cap so the lifetime halt wins
+  max_per_owner: 2
+  auto_start: true
+
+caps:
+  cluster_total_usd: 20.0           # intake + every lab ledger + reviews; freeze at this.
+                                    # Rehearsal value. A 50-lab event needs ~650.
+  reviews_total_usd: 3.0
+  warn_at_fraction: 0.8
+
+cadence:                            # written into every lab.yaml at creation
+  runs_per_digest: 3
+  hours_per_digest: 0.1667
+  min_runs_for_digest: 1
+  runs_per_paper: 5
+  hours_per_paper: 0.5
+  empty_queue_sleep_s: 20
+  step_pause_s: 20
+  researcher_min_interval_s: 360
+  stall_hours: 0.25
+  backoff_cap_s: 300
+
+supervision:
+  tick_s: 30
+  max_restarts_per_lab: 3
+  restart_window_min: 30
+  start_stagger_s: 3
+  max_starts_per_tick: 5
+  log_rotate_mb: 20
+  min_free_disk_gb: 3
+
+sync:
+  interval_s: 120
+  reviewers_per_entry: 2
+  same_domain_first: true
+  max_reviews_per_tick: 10
+
+session:
+  max_age_hours: 12
+  secure_cookies: true              # set false only for plain-http rehearsals
+  trust_proxy: true                 # X-Forwarded-For from the reverse proxy

@@ -1,0 +1,12 @@
+id: coefficient-sweep
+title: "Coefficient sweep on a synthetic loss"
+summary: "A one-knob toy executor: vary `coefficient`, observe `synthetic_loss` per run. Finishes in under a second on CPU."
+domain: synthetic
+knobs:
+  - {name: coefficient, description: "Scalar the stub optimises around", range: "0-1", default: 0.5}
+columns:
+  - {name: synthetic_loss, description: "Distance of the coefficient from the hidden optimum plus seeded noise", direction: min}
+example_falsifiers:
+  - id: F1
+    description: "Median loss never drops below 0.1"
+    when: {column: synthetic_loss, agg: median, op: ">=", value: 0.1, min_n: 4}

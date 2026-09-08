@@ -1,0 +1,20 @@
+[Unit]
+Description=efferents event cluster — web server (join, intake, lab control)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=efferents
+Group=efferents
+WorkingDirectory=/srv/efferents/current
+EnvironmentFile=/etc/efferents/event.env
+ExecStart=/srv/efferents/current/.venv/bin/efferents serve --cluster /srv/efferents/cluster --host 127.0.0.1 --port 8800 --no-open
+Restart=always
+RestartSec=3
+# Lab daemons are spawned by this process; a server restart must not kill them.
+KillMode=process
+LimitNOFILE=65536
+TasksMax=infinity
+
+[Install]
+WantedBy=multi-user.target

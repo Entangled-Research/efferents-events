@@ -1,0 +1,8 @@
+[Unit]
+Description=efferents event cluster — tarball backup of the cluster directory
+
+[Service]
+Type=oneshot
+User=efferents
+Group=efferents
+ExecStart=/bin/bash -c 'cd /srv/efferents && tar czf backups/cluster-$(date -u +%%Y%%m%%dT%%H%%M).tgz --exclude="*.log" --exclude="*.log.1" --exclude="daemon.pid" --exclude="home/locks" cluster && ls -t backups/cluster-*.tgz | tail -n +13 | xargs -r rm -f'

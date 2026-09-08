@@ -1,0 +1,21 @@
+# nginx alternative to the Caddyfile. Install nginx + certbot, place this at
+# /etc/nginx/sites-available/efferents, symlink into sites-enabled, then run
+# `certbot --nginx -d event.example.org` (it adds the 443 block and renewal).
+server {
+    listen 80;
+    server_name event.example.org;
+
+    client_max_body_size 1m;
+
+    location / {
+        proxy_pass http://127.0.0.1:8800;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        # Intake turns wait on a model reply; allow up to three minutes.
+        proxy_read_timeout 180s;
+        proxy_send_timeout 180s;
+        proxy_connect_timeout 10s;
+    }
+}

@@ -80,3 +80,32 @@ def test_cmd_serve_starts_entry_page_without_existing_lab(tmp_path, monkeypatch)
 
     assert rc == 0
     assert called["lab_root"] is None
+
+
+def test_serve_cluster_flags_dispatch_to_cluster_server(tmp_path, monkeypatch):
+    called = {}
+
+    def fake_serve_cluster(root, *, host, port, open_browser):
+        called.update(root=root, host=host, port=port, open_browser=open_browser)
+        return 0
+
+    monkeypatch.setattr("efferents.cluster.server.serve_cluster", fake_serve_cluster)
+    rc = cli.main(["serve", "--cluster", str(tmp_path), "--host", "0.0.0.0",
+                   "--port", "8801", "--no-open"])
+    assert rc == 0
+    assert called == {"root": tmp_path.resolve(), "host": "0.0.0.0", "port": 8801,
+                      "open_browser": False}
+
+
+def test_cluster_init_and_check_commands(tmp_path, monkeypatch, capsys):
+    root = tmp_path / "c"
+    assert cli.main(["cluster", "init", str(root)]) == 0
+    assert (root / "cluster.yaml").exists()
+    out = capsys.readouterr().out
+    assert "wrote" in out and "efferents cluster check" in out
+    # check: no tracks, no credentials → problems reported, non-zero exit
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.setenv("POPPER_PROBE_REPO", str(tmp_path / "nope"))
+    assert cli.main(["cluster", "check", str(root)]) == 1
+    err = capsys.readouterr().err
+    assert "tracks: none loaded" in err and "popper-probe" in err

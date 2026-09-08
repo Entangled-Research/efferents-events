@@ -52,6 +52,7 @@ def _orchestrator_loop(
     context_dir: Path,
     dry_run: bool = False,
     max_iterations: int | None = None,
+    submission_dir: Path | None = None,
 ) -> None:
     # Indirection so tests can monkey-patch the loop body without forking.
     # In production, builds an Orchestrator from the active LabConfig and
@@ -59,13 +60,20 @@ def _orchestrator_loop(
     # transitive deps at CLI startup.
     from efferents.agents import orchestrator  # noqa: PLC0415
     cfg = lab_mod.get_config()
+    # lab.yaml cadence, then EFFERENTS_CADENCE_* overrides from the daemon env.
+    cadence = lab_mod.cadence_with_env(cfg.cadence)
     o = orchestrator.Orchestrator(
         lab_dir=lab_root,
         context_dir=context_dir,
         daily_cap_usd=cfg.budget.daily_cap_usd,
         total_cap_usd=cfg.budget.total_cap_usd,
         dry_run=dry_run,
-        startup_message=f"efferents daemon for lab_id={cfg.lab_id}",
+        startup_message=(
+            f"efferents daemon for lab_id={cfg.lab_id}\n\n"
+            f"cadence: {cadence.as_kwargs()}"
+        ),
+        submission_dir=submission_dir if submission_dir is not None else context_dir.parent,
+        **cadence.as_kwargs(),
     )
     o.run(max_iterations=max_iterations)
     # Always leave a current static artifact, including bounded/offline runs
@@ -74,8 +82,15 @@ def _orchestrator_loop(
     write_progress(o.paths, context_dir=context_dir)
 
 
-def _init_lab_root(submission_dir: Path, lab_root: Path) -> None:
-    """Create lab/ dir + run migrations + copy provenance files."""
+def _init_lab_root(
+    submission_dir: Path, lab_root: Path, cfg: LabConfig | None = None
+) -> None:
+    """Create lab/ dir + run migrations + copy provenance files.
+
+    ``cfg`` defaults to the process-global active config; callers that manage
+    several labs in one process (the dashboard, a cluster) pass it explicitly.
+    """
+    cfg = cfg or lab_mod.get_config()
     lab_root.mkdir(parents=True, exist_ok=True)
     (lab_root / "progress").mkdir(exist_ok=True)
     (lab_root / "papers").mkdir(exist_ok=True)
@@ -92,7 +107,7 @@ def _init_lab_root(submission_dir: Path, lab_root: Path) -> None:
         ensure_runs_table,
     )
     apply_campaigns_migration(lab_root / "runs.sqlite")
-    ensure_runs_table(lab_root / "runs.sqlite", lab_mod.get_config())
+    ensure_runs_table(lab_root / "runs.sqlite", cfg)
 
     # The submitted, already-falsifiable hypothesis is the lab's initial
     # campaign. This gives the very first run a provenance anchor before the
@@ -102,6 +117,9 @@ def _init_lab_root(submission_dir: Path, lab_root: Path) -> None:
 
     db = lab_root / "runs.sqlite"
     with sqlite3.connect(db) as conn:
+        # WAL lets dashboard readers coexist with the daemon's writes; the
+        # mode is persistent on the file, so setting it here is enough.
+        conn.execute("PRAGMA journal_mode=WAL")
         n_campaigns = int(
             conn.execute("SELECT COUNT(*) FROM campaigns").fetchone()[0]
         )
@@ -112,8 +130,7 @@ def _init_lab_root(submission_dir: Path, lab_root: Path) -> None:
         if not question:
             question = _markdown_section(hypothesis_text, "Operational restatement")
         if not question:
-            question = f"Initial submitted hypothesis for {lab_mod.get_config().lab_id}"
-        cfg = lab_mod.get_config()
+            question = f"Initial submitted hypothesis for {cfg.lab_id}"
         campaign_insert(
             db,
             id=f"submission-{digest[:12]}",
@@ -130,7 +147,6 @@ def _init_lab_root(submission_dir: Path, lab_root: Path) -> None:
     context_dir.mkdir(exist_ok=True)
     research_log = context_dir / "research_log.md"
     if not research_log.exists():
-        cfg = lab_mod.get_config()
         research_log.write_text(
             f"# {cfg.lab_id} research log\n\n"
             "*(empty — populate to guide the Researcher; "
@@ -170,7 +186,7 @@ def _cmd_start(args: argparse.Namespace) -> int:
     load_dotenv(sub / ".env")
 
     lab_mod.set_config(cfg)
-    _init_lab_root(sub, lab_root)
+    _init_lab_root(sub, lab_root, cfg=cfg)
     os.chdir(sub)
 
     force = getattr(args, "force", False)
@@ -221,6 +237,7 @@ def _cmd_start(args: argparse.Namespace) -> int:
             context_dir=sub / "context",
             dry_run=args.dry_run,
             max_iterations=args.max_iterations,
+            submission_dir=sub,
         )
 
     if args.detach:
@@ -243,6 +260,47 @@ def _halt_reason(lab_root: Path, limit: int = 60) -> str:
         return ""
     text = " ".join(halt.read_text().split())
     return text if len(text) <= limit else text[: limit - 1] + "…"
+
+
+def _cmd_migrate_paper_dir(args: argparse.Namespace) -> int:
+    """Move Writer output from the legacy ``lab/paper/`` to ``<submission>/paper/``.
+
+    Refuses to overwrite: a file that exists at both locations is left in
+    place and reported, so provenance is never clobbered.
+    """
+    sub = Path(args.submission).resolve()
+    lab_root = Path(args.lab_root).resolve() if args.lab_root else (sub / "lab").resolve()
+    old_dir = lab_root / "paper"
+    new_dir = sub / "paper"
+    if not old_dir.is_dir():
+        print(f"nothing to migrate: {old_dir} does not exist")
+        return 0
+    new_dir.mkdir(parents=True, exist_ok=True)
+    moved, collisions = 0, []
+    for path in sorted(old_dir.rglob("*")):
+        if not path.is_file():
+            continue
+        rel = path.relative_to(old_dir)
+        target = new_dir / rel
+        if target.exists():
+            collisions.append(str(rel))
+            continue
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(path), str(target))
+        moved += 1
+    print(f"moved {moved} file(s) from {old_dir} to {new_dir}")
+    if collisions:
+        print("left in place (already present at destination):", file=sys.stderr)
+        for rel in collisions:
+            print(f"  {rel}", file=sys.stderr)
+        return 1
+    # Remove now-empty directories so the legacy location disappears cleanly.
+    for d in sorted((d for d in old_dir.rglob("*") if d.is_dir()), reverse=True):
+        if not any(d.iterdir()):
+            d.rmdir()
+    if not any(old_dir.iterdir()):
+        old_dir.rmdir()
+    return 0
 
 
 def _cmd_list(args: argparse.Namespace) -> int:
@@ -662,6 +720,15 @@ def _cmd_run(args: argparse.Namespace) -> int:
 
 
 def _cmd_serve(args: argparse.Namespace) -> int:
+    if getattr(args, "cluster", None):
+        from efferents.cluster.server import serve_cluster  # noqa: PLC0415
+        return serve_cluster(
+            Path(args.cluster).resolve(),
+            host=args.host,
+            port=args.port,
+            open_browser=not args.no_open,
+        )
+
     from efferents.dashboard import server as dash_server
 
     lab_root = Path(args.lab_root).resolve()
@@ -683,16 +750,201 @@ def _cmd_serve(args: argparse.Namespace) -> int:
             "port": args.port,
             "url": f"http://localhost:{args.port}",
         }))
+    extra = {}
+    host = getattr(args, "host", "127.0.0.1")
+    if host and host != "127.0.0.1":
+        extra["host"] = host
     try:
         dash_server.serve(
             connected_root,
             port=args.port,
             open_browser=not args.no_open,
             paused_demo=getattr(args, "paused_demo", False),
+            **extra,
         )
     finally:
         daemon.clear_pidfile(serve_json)
     return 0
+
+
+def _cmd_cluster(args: argparse.Namespace) -> int:
+    from efferents.cluster.config import (  # noqa: PLC0415
+        ClusterConfigError,
+        activate_environment,
+        init_cluster,
+        load_cluster_config,
+    )
+
+    root = Path(args.cluster_dir).resolve()
+    if args.cluster_cmd == "init":
+        written = init_cluster(root)
+        for path in written:
+            print(f"wrote {path}")
+        if not written:
+            print(f"cluster at {root} already initialised; nothing written")
+        print(
+            "next: edit cluster.yaml (name, join_code), put provider keys in .env, "
+            "add tracks/<id>/{track.yaml,submission/}, then `efferents cluster check`."
+        )
+        return 0
+    if args.cluster_cmd == "check":
+        from efferents.agents.model_client import (  # noqa: PLC0415
+            credentials_available,
+            required_key_env,
+        )
+        from efferents.cluster.tracks import TrackError, load_tracks  # noqa: PLC0415
+
+        try:
+            cfg = load_cluster_config(root)
+        except ClusterConfigError as e:
+            print(f"cluster.yaml: {e}", file=sys.stderr)
+            return 1
+        activate_environment(cfg)
+        problems = 0
+        print(f"cluster: {cfg.name}  join_code: {'set' if cfg.join_code else 'MISSING'}")
+        try:
+            tracks = load_tracks(cfg.tracks_path)
+        except TrackError as e:
+            print(f"tracks: {e}", file=sys.stderr)
+            problems += 1
+            tracks = {}
+        for track in tracks.values():
+            print(f"track {track.id}: ok ({len(track.columns)} column(s), "
+                  f"domain={track.domain or 'from lab.yaml'})")
+        if not tracks:
+            print("tracks: none loaded (participants cannot create labs)", file=sys.stderr)
+            problems += 1
+        key_env = required_key_env(cfg.model)
+        if credentials_available(cfg.model):
+            print(f"credentials: present for {cfg.model}")
+        else:
+            print(f"credentials: {key_env or 'provider key'} missing for {cfg.model}",
+                  file=sys.stderr)
+            problems += 1
+        popper = os.environ.get("POPPER_PROBE_REPO", str(Path.home() / "Documents/popper-probe"))
+        skill = Path(popper) / "skills" / "intake" / "SKILL.md"
+        if skill.is_file():
+            print(f"popper-probe: {popper}")
+        else:
+            print(f"popper-probe: {skill} not found (set POPPER_PROBE_REPO)", file=sys.stderr)
+            problems += 1
+        env_mode = cfg.paths.env.stat().st_mode & 0o777 if cfg.paths.env.exists() else None
+        if env_mode is not None and env_mode & 0o077:
+            print(f".env: mode {oct(env_mode)} is group/world readable; chmod 600",
+                  file=sys.stderr)
+            problems += 1
+        print("ok" if not problems else f"{problems} problem(s)")
+        return 0 if not problems else 1
+    # Everything below needs a loaded cluster with its environment active.
+    try:
+        cfg = load_cluster_config(root)
+    except ClusterConfigError as e:
+        print(f"cluster.yaml: {e}", file=sys.stderr)
+        return 1
+    activate_environment(cfg)
+    from efferents.cluster.keeper import Keeper  # noqa: PLC0415
+
+    cmd = args.cluster_cmd
+    if cmd == "keeper":
+        Keeper(cfg).run(once=args.once)
+        return 0
+    if cmd == "sync":
+        from efferents.cluster import sync as cluster_sync  # noqa: PLC0415
+        cluster_sync.run(cfg, loop=args.loop, reviews=not args.no_reviews)
+        return 0
+    if cmd == "status":
+        status = Keeper(cfg).tick() if args.refresh or not cfg.paths.status.exists() \
+            else json.loads(cfg.paths.status.read_text())
+        if args.json:
+            print(json.dumps(status, indent=2))
+            return 0
+        totals = status["totals"]
+        print(f"{status['cluster']}  tick={status['tick']}  {status['ts']}"
+              f"{'  FROZEN' if status.get('frozen') else ''}"
+              f"{'  PAUSE_ALL' if status.get('pause_all') else ''}")
+        print(f"labs={totals['labs']} running={totals.get('running', 0)} "
+              f"paused={totals.get('paused', 0)} halted={totals.get('halted', 0)} "
+              f"crashed={totals.get('crashed', 0)} stopped={totals.get('stopped', 0)}")
+        print(f"spend ${totals['spend_usd']:.2f} / ${totals['cap_usd']:.2f}  "
+              f"runs={totals['runs']} papers={totals['papers']} edges={totals['edges']}")
+        host = status.get("host", {})
+        print(f"host load1={host.get('load1')} mem={host.get('mem_used_gb')}/"
+              f"{host.get('mem_total_gb')} GB disk_free={host.get('disk_free_gb')} GB "
+              f"daemon_rss={host.get('daemon_rss_gb')} GB")
+        print(f"{'LAB_ID':<28} {'STATUS':<8} {'RUNS':>5} {'SPEND':>8} {'CAP':>6}  OWNER / HALT")
+        for lab in status["labs"]:
+            cap = f"{lab['cap_usd']:.0f}" if lab.get("cap_usd") is not None else "-"
+            tail = lab.get("owner_name") or ""
+            if lab.get("halt_reason"):
+                tail += f"  [{lab['halt_reason'][:50]}]"
+            print(f"{lab['lab_id']:<28} {lab['status']:<8} {lab['runs']:>5} "
+                  f"{lab['spend_usd']:>8.2f} {cap:>6}  {tail}")
+        return 0
+
+    keeper = Keeper(cfg)
+    by = getattr(args, "by", None) or "operator"
+    if cmd == "pause-all":
+        n = keeper.pause_all(by=by, reason=args.reason or "paused by operator")
+        print(f"pause queued for {n} lab(s); controls/pause_all set")
+        return 0
+    if cmd == "resume-all":
+        n = keeper.resume_all(by=by, reason=args.reason or "resumed by operator")
+        print(f"resume queued for {n} lab(s); controls/pause_all and frozen cleared")
+        return 0
+    if cmd in ("pause", "resume"):
+        rec = Registry().get(args.lab_id)
+        if rec is None:
+            print(f"unknown lab_id {args.lab_id!r}", file=sys.stderr)
+            return 1
+        from efferents import steer as steer_mod  # noqa: PLC0415
+        steer_mod.steer(rec.submission_dir, text=args.reason or f"{cmd} by operator",
+                        by=by, action=cmd, lab_root=rec.lab_root)
+        print(f"{cmd} queued for {args.lab_id}")
+        return 0
+    if cmd in ("start-all", "stop-all", "restart-all"):
+        from efferents.cluster.config import clear_control_flag, set_control_flag  # noqa: PLC0415
+        records = Registry().list()
+        if cmd in ("stop-all", "restart-all"):
+            set_control_flag(cfg.paths, "stop_starts", f"{cmd} in progress")
+            for rec in records:
+                _cmd_stop(argparse.Namespace(lab_id=rec.lab_id, submission=None, lab_root=None))
+        if cmd == "stop-all":
+            print(f"stopped {len(records)} lab(s); controls/stop_starts set "
+                  "(remove it or run start-all to allow restarts)")
+            return 0
+        clear_control_flag(cfg.paths, "stop_starts")
+        started = 0
+        for i, rec in enumerate(records):
+            if i:
+                time.sleep(args.stagger)
+            if keeper._start(rec, reason=cmd):
+                started += 1
+        print(f"started {started}/{len(records)} lab(s)")
+        return 0
+    if cmd == "raise-cap":
+        import yaml  # noqa: PLC0415
+        rec = Registry().get(args.lab_id)
+        if rec is None:
+            print(f"unknown lab_id {args.lab_id!r}", file=sys.stderr)
+            return 1
+        lab_yaml = Path(rec.submission_dir) / "lab.yaml"
+        raw = yaml.safe_load(lab_yaml.read_text()) or {}
+        budget_block = dict(raw.get("budget") or {})
+        budget_block["total_cap_usd"] = float(args.total)
+        budget_block["daily_cap_usd"] = float(args.total)
+        raw["budget"] = budget_block
+        lab_yaml.write_text(yaml.safe_dump(raw, sort_keys=False))
+        from efferents.cluster.config import write_event  # noqa: PLC0415
+        write_event(cfg.paths, "raise_cap", lab_id=args.lab_id, total=float(args.total), by=by)
+        # Caps are read at daemon construction: restart to apply.
+        _cmd_stop(argparse.Namespace(lab_id=rec.lab_id, submission=None, lab_root=None))
+        daemon.clear_pidfile(Path(rec.lab_root) / "halt_reason.txt")
+        ok = keeper._start(rec, reason="raise-cap")
+        print(f"cap for {args.lab_id} set to ${float(args.total):.2f}; "
+              f"{'restarted' if ok else 'restart FAILED'}")
+        return 0 if ok else 1
+    print(f"unknown cluster command {cmd!r}", file=sys.stderr)
+    return 2
 
 
 def _cmd_public_check(args: argparse.Namespace) -> int:
@@ -768,6 +1020,14 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_list = sub.add_parser("list", help="List all registered labs")
     p_list.set_defaults(func=_cmd_list)
+
+    p_migrate = sub.add_parser(
+        "migrate-paper-dir",
+        help="Move Writer output from the legacy lab/paper/ to <submission>/paper/",
+    )
+    p_migrate.add_argument("--submission", required=True)
+    p_migrate.add_argument("--lab-root", default=None)
+    p_migrate.set_defaults(func=_cmd_migrate_paper_dir)
 
     p_steer = sub.add_parser(
         "steer",
@@ -861,6 +1121,12 @@ def build_parser() -> argparse.ArgumentParser:
     p_serve.add_argument("--lab-root", default="lab",
                          help="Initialized lab directory (relative to cwd)")
     p_serve.add_argument("--port", type=int, default=8800)
+    p_serve.add_argument("--host", default="127.0.0.1",
+                         help="Bind address (default loopback; a reverse proxy "
+                              "should terminate TLS in front of anything else)")
+    p_serve.add_argument("--cluster", default=None, metavar="DIR",
+                         help="Serve a hosted multi-participant cluster directory "
+                              "(see `efferents cluster init`)")
     p_serve.add_argument("--no-open", action="store_true",
                          help="Do not auto-open the browser")
     p_serve.add_argument(
@@ -872,6 +1138,48 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     p_serve.set_defaults(func=_cmd_serve)
+
+    p_cluster = sub.add_parser(
+        "cluster",
+        help="Hosted multi-participant cluster: init, check (keeper/sync added separately)",
+    )
+    cluster_sub = p_cluster.add_subparsers(dest="cluster_cmd", required=True)
+
+    def _cluster_parser(name: str, help_text: str):
+        sp = cluster_sub.add_parser(name, help=help_text)
+        sp.add_argument("cluster_dir")
+        sp.set_defaults(func=_cmd_cluster)
+        return sp
+
+    _cluster_parser("init", "Create a cluster directory skeleton (cluster.yaml, .env, tracks/)")
+    _cluster_parser("check", "Validate cluster.yaml, every track, credentials and popper-probe")
+    sp = _cluster_parser("keeper", "Supervise daemons, enforce caps, write status.json")
+    sp.add_argument("--once", action="store_true", help="One tick, then exit")
+    sp = _cluster_parser("sync", "Shared journal hub, fan-out, cross-lab reviews")
+    sp.add_argument("--loop", action="store_true", help="Run forever at sync.interval_s")
+    sp.add_argument("--no-reviews", action="store_true", help="Skip the review pass")
+    sp = _cluster_parser("status", "Print cluster status (from status.json)")
+    sp.add_argument("--refresh", action="store_true", help="Run one keeper tick first")
+    sp.add_argument("--json", action="store_true")
+    for name, help_text in (("pause-all", "Queue an owner pause on every lab"),
+                            ("resume-all", "Lift pauses and the frozen flag")):
+        sp = _cluster_parser(name, help_text)
+        sp.add_argument("--by", default="operator")
+        sp.add_argument("--reason", default=None)
+    for name in ("pause", "resume"):
+        sp = _cluster_parser(name, f"Queue an owner {name} on one lab")
+        sp.add_argument("--lab-id", required=True)
+        sp.add_argument("--by", default="operator")
+        sp.add_argument("--reason", default=None)
+    for name, help_text in (("start-all", "Start every registered lab, staggered"),
+                            ("stop-all", "Stop every lab and block keeper restarts"),
+                            ("restart-all", "Stop then start every lab, staggered")):
+        sp = _cluster_parser(name, help_text)
+        sp.add_argument("--stagger", type=float, default=3.0)
+    sp = _cluster_parser("raise-cap", "Raise one lab's lifetime cap and restart it")
+    sp.add_argument("--lab-id", required=True)
+    sp.add_argument("--total", type=float, required=True)
+    sp.add_argument("--by", default="operator")
 
     p_public = sub.add_parser(
         "public-check",

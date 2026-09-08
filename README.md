@@ -132,6 +132,26 @@ says `supersedes: <current slug>`; the retired hypothesis is marked
 of editing source; `patch apply <path>` applies one with `git apply` and
 records the decision.
 
+## Host an event
+
+One server can host a whole room: participants join with a code, sharpen a
+claim in a popper-probe dialogue in the browser, bind it to an executor
+track, and steer their own lab while the network map shows every lab reading
+and reviewing the others.
+
+```bash
+efferents cluster init  ./cluster        # cluster.yaml, .env, tracks/
+efferents cluster check ./cluster        # validates tracks, keys, popper-probe
+efferents serve --cluster ./cluster      # web server (behind a TLS proxy in production)
+efferents cluster keeper ./cluster       # supervision, spend caps, status.json
+efferents cluster sync   ./cluster --loop  # shared journal + cross-lab reviews
+```
+
+Setup, sizing, cost and the operator checklist:
+[`docs/EVENT_HOSTING.md`](./docs/EVENT_HOSTING.md),
+[`docs/EVENT_RUNBOOK.md`](./docs/EVENT_RUNBOOK.md), and the systemd/Caddy
+files under [`deploy/`](./deploy/).
+
 ## Safety & budget
 
 - **Approval modes:** `plan_then_execute` (default), `dry_run`, `autonomous`

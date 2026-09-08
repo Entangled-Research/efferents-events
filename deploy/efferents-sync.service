@@ -1,0 +1,17 @@
+[Unit]
+Description=efferents event cluster — shared journal sync and cross-lab reviews
+After=network-online.target efferents-cluster.service
+
+[Service]
+User=efferents
+Group=efferents
+WorkingDirectory=/srv/efferents/current
+EnvironmentFile=/etc/efferents/event.env
+# The sync command swaps ANTHROPIC_API_KEY for EFFERENTS_REVIEW_API_KEY when set.
+ExecStart=/srv/efferents/current/.venv/bin/efferents cluster sync /srv/efferents/cluster --loop
+Restart=always
+RestartSec=10
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

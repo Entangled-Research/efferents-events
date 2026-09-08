@@ -1,0 +1,14 @@
+# Reverse proxy with automatic Let's Encrypt TLS. Replace the hostname; the
+# DNS A record must already point at this machine when Caddy starts.
+event.example.org {
+    encode gzip
+    reverse_proxy 127.0.0.1:8800 {
+        transport http {
+            # Intake turns wait on a model reply; allow up to three minutes.
+            response_header_timeout 180s
+        }
+    }
+    log {
+        output file /var/log/caddy/event.log
+    }
+}

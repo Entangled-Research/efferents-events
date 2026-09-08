@@ -20,7 +20,8 @@
     </a>
 
     <nav class="workspace-nav" aria-label="Lab gateway">
-      <a href="#connect" data-route-link="connect">Connect</a>
+      <a href="#connect" data-route-link="connect" data-local-only>Connect</a>
+      <a href="#intake" data-route-link="intake" data-cluster-only hidden>New lab</a>
       <a href="#network" data-route-link="network">Network</a>
     </nav>
 
@@ -42,8 +43,11 @@
       <span id="connection-source">—</span>
     </div>
     <div class="connection-actions">
+      <span id="connection-owner" class="key-state" hidden></span>
       <span id="api-key-state" class="key-state">API key unknown</span>
       <button id="start-lab" class="compact-button" type="button">Start lab</button>
+      <button id="pause-lab" class="compact-button" type="button" hidden>Pause</button>
+      <button id="resume-lab" class="compact-button" type="button" hidden>Resume</button>
       <button id="stop-lab" class="compact-button danger" type="button" hidden>Stop lab</button>
     </div>
   </div>
@@ -58,12 +62,106 @@
       </header>
       <div id="lab-list" class="lab-list" role="list"></div>
       <nav class="lab-rail-actions" aria-label="Portfolio actions">
-        <a href="#connect">+ Connect lab</a>
+        <a href="#connect" data-local-only>+ Connect lab</a>
+        <a href="#intake" data-cluster-only hidden>+ New lab</a>
       </nav>
     </aside>
 
     <main id="app">
     <nav id="lab-tabs" class="lab-tabs" aria-label="Open labs" hidden></nav>
+
+    <section id="join-view" class="app-view" data-route-view="join" hidden>
+      <div class="route-intro">
+        <div class="route-kicker">Join</div>
+        <h1 id="join-title">Join the lab network</h1>
+        <p class="route-lede">
+          One join code for the room. Pick the name other labs will see next to
+          yours. Keep the owner link you get back: it is how you return as yourself.
+        </p>
+      </div>
+      <section class="panel join-panel" aria-labelledby="join-form-title">
+        <header class="panel-header"><h2 id="join-form-title">Who is steering?</h2></header>
+        <form id="join-form" class="join-form">
+          <label class="field-label" for="join-code">Join code</label>
+          <input id="join-code" name="code" type="text" autocomplete="off" required
+                 spellcheck="false">
+          <label class="field-label" for="join-name">Your name</label>
+          <input id="join-name" name="name" type="text" maxlength="40" required
+                 autocomplete="nickname">
+          <button id="join-submit" class="primary-button" type="submit">Join</button>
+        </form>
+        <div id="join-message" class="form-message" role="status" aria-live="polite"></div>
+        <div id="join-result" class="join-result" hidden>
+          <span class="field-label">Your owner link</span>
+          <code id="owner-link"></code>
+          <button id="copy-owner-link" class="compact-button" type="button">Copy</button>
+          <p class="hint">Keep this link. Anyone with it can steer your labs.</p>
+        </div>
+      </section>
+    </section>
+
+    <section id="intake-view" class="app-view" data-route-view="intake" hidden>
+      <div class="route-intro">
+        <div class="route-kicker">New lab</div>
+        <h1>Sharpen a claim until it can fail</h1>
+        <p class="route-lede">
+          A Popperian probe pushes back on your idea, one question at a time, until
+          it has a falsifier an experiment could trip. Then you pick an executor
+          track and the falsifier is mapped onto the numbers that track reports.
+        </p>
+      </div>
+      <div class="intake-grid">
+        <section class="panel intake-chat-panel" aria-labelledby="intake-chat-title">
+          <header class="panel-header">
+            <h2 id="intake-chat-title">Dialogue</h2>
+            <span id="intake-session-state" class="header-meta">no session</span>
+          </header>
+          <div id="intake-sessions" class="intake-sessions"></div>
+          <div id="intake-chat" class="intake-chat" aria-live="polite"></div>
+          <form id="intake-form" class="intake-form">
+            <textarea id="intake-input" maxlength="4000" rows="3"
+                      placeholder="Describe the claim you want to test…" required></textarea>
+            <div class="intake-form-row">
+              <span class="char-count"><span id="intake-count">0</span> / 4000</span>
+              <span id="intake-thinking" class="header-meta" hidden>probe is thinking…</span>
+              <button id="intake-send" class="primary-button" type="submit">Send</button>
+            </div>
+          </form>
+          <div id="intake-message" class="form-message" role="status" aria-live="polite"></div>
+        </section>
+        <aside class="intake-steps">
+          <section class="panel" id="intake-draft-panel" aria-labelledby="intake-draft-title">
+            <header class="panel-header">
+              <h2 id="intake-draft-title">1 · Gated hypothesis</h2>
+              <span id="intake-gate" class="header-meta">no draft yet</span>
+            </header>
+            <pre id="intake-draft" class="intake-draft"></pre>
+            <div id="intake-draft-errors" class="form-message error" hidden></div>
+            <button id="intake-approve" class="primary-button" type="button" disabled>
+              Approve hypothesis
+            </button>
+          </section>
+          <section class="panel" id="track-panel" aria-labelledby="track-title" hidden>
+            <header class="panel-header"><h2 id="track-title">2 · Choose a track</h2></header>
+            <div id="track-picker" class="track-picker"></div>
+            <button id="intake-bind" class="primary-button" type="button" disabled>
+              Map falsifier onto this track
+            </button>
+          </section>
+          <section class="panel" id="binding-panel" aria-labelledby="binding-title" hidden>
+            <header class="panel-header"><h2 id="binding-title">3 · Confirm and create</h2></header>
+            <p id="binding-rationale" class="hint"></p>
+            <div id="binding-rules" class="binding-rules"></div>
+            <div id="binding-note" class="form-message" hidden></div>
+            <label class="field-label" for="intake-lab-id">Lab id</label>
+            <input id="intake-lab-id" type="text" maxlength="128" spellcheck="false">
+            <button id="intake-create" class="primary-button" type="button">Create lab</button>
+            <div id="intake-create-message" class="form-message" role="status"></div>
+          </section>
+        </aside>
+      </div>
+    </section>
+
     <section id="connect-view" class="app-view" data-route-view="connect">
       <div class="entry-layout">
         <div class="entry-intro">
@@ -351,6 +449,8 @@
               <span><i class="legend-dot running"></i> running</span>
               <span><i class="legend-dot stopped"></i> stopped</span>
               <span><i class="legend-line"></i> shared research domain</span>
+              <span data-cluster-only hidden><i class="legend-line reviewed"></i> reviewed</span>
+              <span data-cluster-only hidden><i class="legend-line cited"></i> cited</span>
             </footer>
           </section>
         </div>
