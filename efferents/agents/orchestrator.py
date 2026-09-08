@@ -209,6 +209,15 @@ class Orchestrator:
         if not dry_run:
             self.client = make_client(budget=self.budget)
 
+        # Event hub (terminal path): register once, then heartbeat/push/pull
+        # from step(). Best-effort; never blocks or stops the research loop.
+        self.network = None
+        self._network_paused = False
+        from efferents import network_client as _net  # noqa: PLC0415
+        if _net.configured():
+            self.network = _net.NetworkClient()
+            self._network_register()
+
         signal.signal(signal.SIGTERM, self._handle_signal)
         signal.signal(signal.SIGINT, self._handle_signal)
 
@@ -221,6 +230,106 @@ class Orchestrator:
             last_coder = state.get("last_coder_ts")
             if not last_coder or _hours_since(last_coder) > 0.05:  # >3 minutes
                 notify_all(title=f"{_lab_label()} started", message=startup_message)
+
+    # --- event hub -------------------------------------------------------------------
+
+    def _network_register(self) -> None:
+        if self.network is None:
+            return
+        cfg = _lab.get_config()
+        hypothesis = self.submission_dir / "hypothesis.md"
+        try:
+            self.network.register(
+                lab_id=cfg.lab_id, domain=cfg.domain,
+                hypothesis=hypothesis.read_text() if hypothesis.is_file() else "",
+                track=os.environ.get("EFFERENTS_NETWORK_TRACK"),
+            )
+            notebook_append(self.paths.notebook,
+                            f"## {now_iso()} — registered with the event hub {self.network.url}\n")
+        except Exception as e:
+            notebook_append(self.paths.notebook,
+                            f"## {now_iso()} — hub registration failed: {type(e).__name__}: "
+                            f"{self.network.last_error or e}\n")
+
+    def _network_heartbeat_payload(self) -> dict[str, Any]:
+        from efferents.dashboard import reader  # noqa: PLC0415
+        from efferents.cluster.edges import citation_edges_for, reproduction_edges_for  # noqa: PLC0415
+        cfg = _lab.get_config()
+        state = load_state(self.paths.state)
+        try:
+            summary = reader.read_summary(self.paths.root, cfg)
+        except Exception:
+            summary = {}
+        halt = state.get("halt_reason")
+        status = "paused" if state.get("status") == "paused" else "running"
+        try:
+            n_runs = runs_count(self.paths.runs_db)
+        except Exception:  # no runs table before the first execution
+            n_runs = 0
+        return {
+            "status": status,
+            "runs": n_runs,
+            "spend_usd": round(self.budget.spend_total(), 4),
+            "cap_usd": self.budget.total_cap,
+            "headline": summary.get("headline"),
+            "hypothesis": summary.get("hypothesis"),
+            "verdict": summary.get("verdict"),
+            "papers": summary.get("papers", 0),
+            "last_activity": summary.get("last_activity"),
+            "halt_reason": halt,
+            "edges": {
+                "cited": citation_edges_for(cfg.lab_id, self.paths.root / "foundational_deps.jsonl"),
+                "reproduced": reproduction_edges_for(cfg.lab_id, self.submission_dir / "paper" / "reproductions.md"),
+            },
+        }
+
+    def _maybe_network(self) -> None:
+        if self.network is None:
+            return
+        cfg = _lab.get_config()
+        paper_dir = self.submission_dir / "paper"
+        if self.network.due_heartbeat():
+            self.network.mark_heartbeat()
+            try:
+                reply = self.network.heartbeat(cfg.lab_id, self._network_heartbeat_payload())
+                wants_pause = bool(reply.get("pause"))
+                if wants_pause and not self._network_paused:
+                    _steer.record_steering(self.paths.root, text=reply.get("message") or "hub pause",
+                                           by="event hub", action="pause")
+                    self._network_paused = True
+                elif not wants_pause and self._network_paused:
+                    _steer.record_steering(self.paths.root, text="hub lifted the pause",
+                                           by="event hub", action="resume")
+                    self._network_paused = False
+            except Exception as e:
+                notebook_append(self.paths.notebook,
+                                f"## {now_iso()} — hub heartbeat failed: {type(e).__name__}: "
+                                f"{self.network.last_error or e}\n")
+            try:
+                pushed = self.network.push_journal(cfg.lab_id, paper_dir)
+                if pushed and pushed.get("entries_added"):
+                    notebook_append(self.paths.notebook,
+                                    f"## {now_iso()} — pushed {pushed['entries_added']} journal "
+                                    f"entr{'y' if pushed['entries_added'] == 1 else 'ies'} to the hub\n")
+            except Exception as e:
+                notebook_append(self.paths.notebook,
+                                f"## {now_iso()} — hub push failed: {type(e).__name__}: "
+                                f"{self.network.last_error or e}\n")
+        if self.network.due_pull():
+            self.network.mark_pull()
+            try:
+                pulled = self.network.pull_feed(cfg.lab_id, paper_dir)
+                if pulled and pulled.get("n_added"):
+                    notebook_append(self.paths.notebook,
+                                    f"## {now_iso()} — pulled {pulled['n_added']} sibling "
+                                    f"entr{'y' if pulled['n_added'] == 1 else 'ies'} from the hub\n")
+                if self.network.pull_reviews(cfg.lab_id, paper_dir):
+                    notebook_append(self.paths.notebook,
+                                    f"## {now_iso()} — new cross-lab reviews of our work arrived\n")
+            except Exception as e:
+                notebook_append(self.paths.notebook,
+                                f"## {now_iso()} — hub pull failed: {type(e).__name__}: "
+                                f"{self.network.last_error or e}\n")
 
     def _handle_signal(self, signum: int, _frame: Any) -> None:
         self._stop = True
@@ -607,6 +716,7 @@ class Orchestrator:
         pivot) starve the loop: the executor has nothing to run, and the Coder
         never gets called to drain proposed_changes.md.
         """
+        self._maybe_network()
         if _steer.step_hook(self):  # owner steering; True while paused by owner
             return {"event": "owner_paused", "added": 0}
         n_added = self._refill_queue()

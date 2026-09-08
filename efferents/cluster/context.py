@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 import secrets
 import threading
 from functools import partial
@@ -19,7 +21,9 @@ from efferents.cluster.edges import derive_edges
 from efferents.cluster.intake import IntakeStore
 from efferents.cluster.labs import create_lab
 from efferents.cluster.limits import RateLimiter
+from efferents.cluster.network import NetworkHub
 from efferents.cluster.owners import Owner, OwnerStore
+from efferents.cluster.proxy import ModelProxy
 from efferents.cluster.tracks import Track, load_tracks
 from efferents.dashboard.control import ConnectedLab, ControlContext, ControlError
 
@@ -38,6 +42,10 @@ class ClusterContext:
         self.owners = OwnerStore(self.paths.owners, max_age_hours=cfg.session.max_age_hours)
         self.control = ControlContext()
         self.control.extra_edges = partial(derive_edges, cluster_dir=self.paths.root)
+        self.hub = NetworkHub(cfg, self.tracks)
+        self.control.extra_labs = self.hub.portfolio_rows
+        self.proxy = ModelProxy(cfg)
+        self.network_limiter = RateLimiter(120, 60.0)
         factory = client_factory or (lambda budget: make_client(budget=budget))
         self.intake = IntakeStore(cfg, self.tracks, client_factory=factory)
         self.join_limiter = RateLimiter(5, 60.0)
@@ -60,6 +68,12 @@ class ClusterContext:
 
     def owner_from_token(self, token: str | None) -> Owner | None:
         return self.owners.by_token(token)
+
+    def upstream_key(self) -> str:
+        key = os.environ.get("EFFERENTS_PROXY_UPSTREAM_KEY") or os.environ.get("ANTHROPIC_API_KEY") or ""
+        if not key:
+            raise ControlError("The hub has no upstream model key configured.", status=503)
+        return key
 
     def owns(self, owner: Owner | None, lab: ConnectedLab) -> bool:
         if owner is None:
@@ -96,6 +110,10 @@ class ClusterContext:
             payload.update({
                 "owner": owner.public(),
                 "owner_link": f"/?owner={owner.token}",
+                "network_token": owner.token,
+                "proxy_spend_usd": round(self.proxy.spend(owner.owner_id), 4),
+                "proxy_cap_usd": self.cfg.proxy.cap_per_owner_usd,
+                "install_ref": self.cfg.network.install_ref,
                 "my_labs": list(owner.labs),
                 "spend": self.spend(),
                 "limits": {

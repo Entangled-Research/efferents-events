@@ -380,6 +380,9 @@ class ControlContext:
         # A hosted cluster installs a callable that derives extra network
         # edges (reviews, citations, reproductions) from its shared files.
         self.extra_edges: Callable[[list[dict]], list[dict]] | None = None
+        # A hosted cluster also lists labs that run elsewhere and report in
+        # through its hub; rows in the portfolio shape, never selectable here.
+        self.extra_labs: Callable[[], list[dict]] | None = None
         self._portfolio_cache = TTLCache(ttl_s=2.0)
 
     @classmethod
@@ -485,6 +488,13 @@ class ControlContext:
             {**row, "selected": row["lab_id"] == selected_id}
             for row in rows
         ]
+        if self.extra_labs is not None:
+            try:
+                local_ids = {row["lab_id"] for row in labs}
+                labs.extend({**row, "selected": False} for row in self.extra_labs()
+                            if row.get("lab_id") not in local_ids)
+            except Exception:  # a broken hub file must not hide the local labs
+                pass
         if self.paused_demo:
             for row in labs:
                 if row["selected"]:

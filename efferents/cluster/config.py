@@ -115,6 +115,23 @@ class SyncPolicy:
 
 
 @dataclass(frozen=True)
+class ProxyLimits:
+    """Organizer-paid model calls made by participants' local daemons."""
+    cap_per_owner_usd: float = 3.0
+    cap_total_usd: float = 15.0
+
+
+@dataclass(frozen=True)
+class NetworkPolicy:
+    """How local labs join the hub (the terminal path)."""
+    repo_url: str = "https://github.com/Entangled-Research/efferents"
+    install_ref: str = "event-cluster"
+    heartbeat_s: float = 30.0
+    pull_s: float = 120.0
+    stale_after_s: float = 180.0
+
+
+@dataclass(frozen=True)
 class SessionPolicy:
     max_age_hours: float = 12.0
     secure_cookies: bool = True
@@ -136,6 +153,9 @@ class ClusterConfig:
     supervision: Supervision = field(default_factory=Supervision)
     sync: SyncPolicy = field(default_factory=SyncPolicy)
     session: SessionPolicy = field(default_factory=SessionPolicy)
+    proxy: ProxyLimits = field(default_factory=ProxyLimits)
+    network: NetworkPolicy = field(default_factory=NetworkPolicy)
+    public_url: str | None = None
 
     @property
     def tracks_path(self) -> Path:
@@ -209,6 +229,9 @@ def load_cluster_config(root: str | Path) -> ClusterConfig:
         supervision=_section(raw, "supervision", Supervision, where=where),
         sync=_section(raw, "sync", SyncPolicy, where=where),
         session=_section(raw, "session", SessionPolicy, where=where),
+        proxy=_section(raw, "proxy", ProxyLimits, where=where),
+        network=_section(raw, "network", NetworkPolicy, where=where),
+        public_url=(str(raw["public_url"]).rstrip("/") if raw.get("public_url") else None),
     )
     if cfg.labs.total_cap_usd <= 0:
         raise ClusterConfigError(f"{where}: labs.total_cap_usd must be positive")
@@ -274,6 +297,20 @@ session:
   max_age_hours: 12
   secure_cookies: true              # set false only for plain-http rehearsals
   trust_proxy: true                 # X-Forwarded-For from the reverse proxy
+
+# The terminal path: participants' own coding agents read <public_url>/intake.md,
+# run the popper dialogue locally, and start a local daemon whose model calls
+# come through this hub (proxy) with the organizer's key.
+public_url: ""                      # e.g. https://event.example.org — used in intake.md
+proxy:
+  cap_per_owner_usd: 3.0            # model spend per participant through the proxy
+  cap_total_usd: 15.0
+network:
+  repo_url: https://github.com/Entangled-Research/efferents
+  install_ref: event-cluster        # branch/tag participants install
+  heartbeat_s: 30
+  pull_s: 120
+  stale_after_s: 180                # heartbeat age after which a lab shows as stale
 """
 
 DEFAULT_ENV = """\

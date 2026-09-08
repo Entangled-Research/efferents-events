@@ -134,10 +134,11 @@ records the decision.
 
 ## Host an event
 
-One server can host a whole room: participants join with a code, sharpen a
-claim in a popper-probe dialogue in the browser, bind it to an executor
-track, and steer their own lab while the network map shows every lab reading
-and reviewing the others.
+One server can host a whole room: participants join with a code, paste one
+instruction into their own coding agent, and build a lab on their laptop the
+normal efferents way. The hub pays for the model calls through a proxy, shows
+every lab on one network map, and runs the shared journal and cross-lab
+reviews. A browser-only fallback runs the dialogue and the lab on the server.
 
 ```bash
 efferents cluster init  ./cluster        # cluster.yaml, .env, tracks/

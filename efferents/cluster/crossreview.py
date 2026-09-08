@@ -68,7 +68,7 @@ def select_reviewers(entry: dict, labs: list[dict], *, n: int, same_domain_first
     candidates = [
         lab for lab in labs
         if lab["lab_id"] != author
-        and (lab["lab_root"] / "runs.sqlite").exists()
+        and ((lab["lab_root"] / "runs.sqlite").exists() or int(lab.get("runs") or 0) > 0)
         and counts.get(lab["lab_id"], 0) < 3
     ]
     rng = random.Random(entry.get("sha256") or f"{author}/{entry['campaign_id']}")

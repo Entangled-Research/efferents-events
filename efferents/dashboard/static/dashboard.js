@@ -185,7 +185,11 @@ function renderRoute() {
   if (isCluster()) {
     if (controlState.hydrated && !isJoined()) {
       route = "join";
-    } else if (route === "join" || route === "connect") {
+    } else if (route === "join") {
+      renderTerminalPanel(controlState.session);
+      document.getElementById("join-form").hidden = true;
+      text("join-title", `You are in, ${(controlState.session.owner || {}).name || "friend"}`);
+    } else if (route === "connect") {
       route = "network";
     } else if (route === "observe" && controlState.hydrated && !controlState.connected) {
       route = "network";
@@ -316,7 +320,9 @@ function renderControl(info) {
 
   text("observe-lab-title", info.lab_id || "unnamed-lab");
   text("observe-lab-meta", `${info.domain || "unclassified"} / ${info.status || "stopped"}`);
-  text("connection-source", info.source || info.submission_dir || "local submission");
+  text("connection-source", info.remote
+    ? `runs on ${info.source || "the owner's machine"} · steer it there`
+    : (info.source || info.submission_dir || "local submission"));
   setRuntimeStatus(info.status);
   setContractState(info.contract);
   renderSteering(info.steering);
@@ -331,7 +337,7 @@ function renderControl(info) {
     : '<span aria-hidden="true"></span> live';
   const live = info.status === "running" || info.status === "paused";
   const ownerPaused = Boolean(info.owner_paused);
-  const mine = controlState.mode !== "cluster" || Boolean(info.mine);
+  const mine = (controlState.mode !== "cluster" || Boolean(info.mine)) && !info.remote;
   document.getElementById("start-lab").hidden = pausedDemo || live || !mine;
   document.getElementById("stop-lab").hidden = pausedDemo || !live || !mine;
   document.getElementById("pause-lab").hidden = pausedDemo || !live || ownerPaused || !mine;
@@ -452,7 +458,7 @@ function renderLabRail() {
       ? `${headline.observations || 0} observations`
       : `${esc(headline.column || "metric")} ${esc(formatMetric(headline.best))}`;
     const ownerLine = lab.owner_name ? ` · ${esc(lab.owner_name)}` : "";
-    return `<button class="lab-list-item${lab.selected ? " selected" : ""}${lab.mine ? " mine" : ""}" ` +
+    return `<button class="lab-list-item${lab.selected ? " selected" : ""}${lab.mine ? " mine" : ""}${lab.remote ? " remote" : ""}" ` +
       `type="button" data-lab-select="${esc(lab.lab_id)}" role="listitem" ` +
       `aria-current="${lab.selected ? "true" : "false"}">` +
       `<span class="lab-seq">${String(index + 1).padStart(2, "0")}</span>` +
@@ -516,11 +522,11 @@ function renderNetwork() {
     }));
     const button = document.createElement("button");
     button.type = "button";
-    button.className = `map-node ${lab.status || "stopped"}${lab.selected ? " selected" : ""}${lab.mine ? " mine" : ""}`;
+    button.className = `map-node ${lab.status || "stopped"}${lab.selected ? " selected" : ""}${lab.mine ? " mine" : ""}${lab.remote ? " remote" : ""}`;
     button.dataset.mapLab = lab.lab_id;
     button.style.left = `${position.x}%`;
     button.style.top = `${position.y}%`;
-    const owner = lab.owner_name ? `<small class="map-node-owner">${esc(lab.owner_name)}</small>` : "";
+    const owner = lab.owner_name ? `<small class="map-node-owner">${esc(lab.owner_name)}${lab.remote ? " · laptop" : ""}</small>` : "";
     button.innerHTML = `<span class="map-node-state"><i aria-hidden="true"></i>${esc(lab.status || "stopped")}</span>` +
       `<strong>${esc(lab.lab_id)}</strong><small>${esc(lab.domain || "unclassified")}</small>${owner}`;
     button.addEventListener("click", async () => {
@@ -1378,14 +1384,28 @@ function initJoinForm() {
       text("owner-link", link);
       document.getElementById("join-result").hidden = false;
       showMessage("join-message", `Welcome, ${result.owner.name}.`, "success");
-      await refresh();
-      window.location.hash = portfolioState.labs.length ? "network" : "intake";
+      renderTerminalPanel(result.cluster || {});
+      controlState.session = result.cluster || { joined: true };
+      controlState.mode = "cluster";
+      controlState.hydrated = true;
+      await refreshPortfolio().catch(() => {});
+      // Stay on this page: the instruction and token are what they need next.
     } catch (error) {
       showMessage("join-message", error.message, "error");
     } finally {
       button.disabled = false;
     }
   });
+  const copyFrom = (sourceId, okMessage) => async () => {
+    try {
+      await navigator.clipboard.writeText(document.getElementById(sourceId).textContent);
+      showMessage("join-message", okMessage, "success");
+    } catch (error) {
+      showMessage("join-message", "Copy failed; select the text and copy it by hand.", "error");
+    }
+  };
+  document.getElementById("copy-terminal-instruction").addEventListener("click", copyFrom("terminal-instruction", "Instruction copied."));
+  document.getElementById("copy-network-token").addEventListener("click", copyFrom("network-token", "Token copied."));
   document.getElementById("copy-owner-link").addEventListener("click", async () => {
     try {
       await navigator.clipboard.writeText(document.getElementById("owner-link").textContent);
@@ -1394,6 +1414,17 @@ function initJoinForm() {
       showMessage("join-message", "Copy failed; select the link and copy it by hand.", "error");
     }
   });
+}
+
+function renderTerminalPanel(session) {
+  const panel = document.getElementById("terminal-panel");
+  if (!session || !session.network_token) {
+    panel.hidden = true;
+    return;
+  }
+  text("terminal-instruction", `Read ${window.location.origin}/intake.md and follow it`);
+  text("network-token", session.network_token);
+  panel.hidden = false;
 }
 
 // --- hosted cluster: intake dialogue ------------------------------------------

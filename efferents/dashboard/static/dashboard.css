@@ -2397,3 +2397,27 @@ td.status-insufficient_data {
 .status-badge.joined .status-dot {
   background: var(--signal);
 }
+
+.instruction-line,
+#network-token {
+  display: block;
+  margin: 6px 0;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  font: 12px/1.5 var(--mono);
+  overflow-wrap: anywhere;
+}
+
+.map-node.remote strong::after,
+.lab-list-item.remote strong::after {
+  content: " ·";
+  color: var(--dim);
+}
+
+.map-node-host {
+  display: block;
+  color: var(--dim);
+  text-transform: none;
+  letter-spacing: 0;
+}

@@ -150,3 +150,25 @@ def test_select_reviewers_deterministic_and_spread():
     entry = {"lab_id": "l0", "campaign_id": "c", "sha256": "abc", "domain": "d"}
     # No runs.sqlite → nobody qualifies.
     assert crossreview.select_reviewers(entry, labs, n=2, same_domain_first=True, existing=[]) == []
+
+
+def test_remote_labs_join_the_shared_journal(tmp_path, monkeypatch):
+    """A laptop lab known only through the hub is collected, fanned out to, and reviewed."""
+    cfg = make_cluster(tmp_path, monkeypatch)
+    _lab(cfg, "hosted-b", "synthetic")
+    remote = cfg.paths.root / "network" / "labs" / "laptop-a"
+    (remote / "paper").mkdir(parents=True)
+    (remote / "registration.json").write_text(json.dumps({"lab_id": "laptop-a", "owner_id": "o1",
+                                                          "owner_name": "Ada", "domain": "synthetic"}))
+    (remote / "hypothesis.md").write_text("---\nslug: a\n---\n# claim\n")
+    (remote / "heartbeat.json").write_text(json.dumps({"ts": "2999-01-01T00:00:00+00:00",
+                                                       "status": "running", "runs": 4}))
+    (remote / "paper" / "journal.md").write_text(
+        "# J\n\n<!-- ENTRIES BELOW -->\n\n## 2026-09-20 14:00 UTC — c7\n**Lab**: laptop-a\n**Headline**: remote finding\n")
+    summary = sync.sync_once(cfg, reviews=True, client_factory=ReviewClient)
+    assert summary["labs"] == 2 and summary["new_entries"] == 1 and summary["reviews"] == 1
+    reviews = crossreview.list_reviews(cfg.paths)
+    assert reviews[0]["reviewer_lab"] == "hosted-b" and reviews[0]["reviewed_lab"] == "laptop-a"
+    assert (remote / "paper" / "incoming_reviews.md").exists()
+    hosted_ext = (cfg.paths.labs / "hosted-b" / "paper" / "external_journal.md").read_text()
+    assert "remote finding" in hosted_ext

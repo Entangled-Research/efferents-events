@@ -10,11 +10,19 @@ from urllib.parse import parse_qs, urlsplit
 
 from efferents.cluster.config import ClusterConfig, activate_environment, load_cluster_config
 from efferents.cluster.context import ClusterContext
+from efferents.cluster.binding import propose_falsifiers
+from efferents.cluster.budget import owner_intake_budget
+from efferents.cluster.intake_md import render_intake_md
 from efferents.cluster.owners import Owner, build_cookie, token_from_cookie_header
+from efferents.cluster.proxy import MAX_PROXY_BODY, PROXY_PREFIX, ProxyError
 from efferents.dashboard.control import ConnectedLab, ControlError
-from efferents.dashboard.server import DashboardHandler, make_server
+from efferents.dashboard.server import LAB_ID_PATTERN, DashboardHandler, make_server
 
 _SESSION_ROUTE = re.compile(r"^/api/intake/sessions/(?P<sid>s_[0-9a-f]{12})(?:/(?P<verb>[a-z]+))?$")
+_NET_LAB_ROUTE = re.compile(rf"^/api/network/labs/(?P<lab_id>{LAB_ID_PATTERN})/(?P<verb>[a-z]+)$")
+_NET_TRACK_ROUTE = re.compile(r"^/api/network/tracks/(?P<track_id>[A-Za-z0-9][A-Za-z0-9._-]{0,63})\.tar\.gz$")
+_LAB_VIEW_ROUTE = re.compile(rf"^/api/labs/(?P<lab_id>{LAB_ID_PATTERN})/(?P<kind>control|state|runs|papers|activity|evidence|verdict)$")
+_NETWORK_BODY = 1024 * 1024
 
 
 class ClusterHandler(DashboardHandler):
@@ -29,12 +37,32 @@ class ClusterHandler(DashboardHandler):
 
     # --- identity hooks -------------------------------------------------------------
 
+    def _bearer(self) -> str | None:
+        auth = self.headers.get("Authorization", "")
+        if auth.lower().startswith("bearer "):
+            return auth[7:].strip() or None
+        return None
+
     def _session(self) -> Owner | None:
         if not self._owner_loaded:
-            token = token_from_cookie_header(self.headers.get("Cookie"))
+            token = self._bearer() or token_from_cookie_header(self.headers.get("Cookie"))
             self._owner = self.cluster.owner_from_token(token)
             self._owner_loaded = True
         return self._owner
+
+    def _base_url(self) -> str:
+        proto = self.headers.get("X-Forwarded-Proto") or "http"
+        host = self.headers.get("X-Forwarded-Host") or self.headers.get("Host") or "localhost"
+        return f"{proto}://{host}"
+
+    def _remote_lab_id(self, path: str) -> tuple[str, str] | None:
+        m = _LAB_VIEW_ROUTE.match(path)
+        if not m:
+            return None
+        lab_id = m.group("lab_id")
+        if (self.cluster.hub.root / lab_id / "registration.json").is_file():
+            return lab_id, m.group("kind")
+        return None
 
     def _require_viewer(self) -> None:
         if self._session() is None:
@@ -101,6 +129,20 @@ class ClusterHandler(DashboardHandler):
         return super().do_GET()
 
     def _extra_get(self, path: str) -> bool:
+        if path == "/intake.md":
+            body = render_intake_md(self.cluster.cfg, self._base_url()).encode()
+            self._send_bytes(body, "text/markdown; charset=utf-8")
+            return True
+        if path.startswith("/api/network/"):
+            owner = self._require_joined()
+            self._network_get(owner, path)
+            return True
+        remote = self._remote_lab_id(path)
+        if remote is not None:
+            self._require_viewer()
+            lab_id, kind = remote
+            self._send_json(self.cluster.hub.lab_view(lab_id, kind))
+            return True
         if path == "/api/tracks":
             self._require_viewer()
             self._send_json([t.payload() for t in self.cluster.tracks.values()])
@@ -125,9 +167,35 @@ class ClusterHandler(DashboardHandler):
             raise ControlError("Join the event with the code first.", status=401)
         return owner
 
+    def _network_get(self, owner: Owner, path: str) -> None:
+        hub = self.cluster.hub
+        if path == "/api/network/config":
+            return self._send_json(hub.config_payload(owner, self._base_url()))
+        if path == "/api/network/feed":
+            return self._send_bytes(hub.feed().encode(), "text/markdown; charset=utf-8")
+        m = _NET_TRACK_ROUTE.match(path)
+        if m:
+            return self._send_bytes(hub.track_tarball(m.group("track_id")), "application/gzip")
+        m = _NET_LAB_ROUTE.match(path)
+        if m and m.group("verb") == "reviews":
+            return self._send_bytes(hub.reviews_for(owner, m.group("lab_id")).encode(),
+                                    "text/markdown; charset=utf-8")
+        self.send_error(404)
+
     # --- POST ------------------------------------------------------------------------
 
     def _extra_post_precsrf(self, path: str) -> bool:
+        # Machine clients (daemons, agents) authenticate with a bearer token,
+        # which browsers never attach on their own, so CSRF does not apply.
+        if path.startswith(PROXY_PREFIX + "/"):
+            self._proxy(path[len(PROXY_PREFIX):])
+            return True
+        if path.startswith("/api/network/") and self._bearer():
+            owner = self._require_joined()
+            if not self.cluster.network_limiter.allow(owner.owner_id):
+                raise ControlError("Too many hub requests; slow down.", status=429)
+            self._network_post(owner, path, self._read_json(_NETWORK_BODY))
+            return True
         if path != "/api/join":
             return False
         payload = self._read_json()
@@ -145,12 +213,61 @@ class ClusterHandler(DashboardHandler):
         })
         return True
 
+    def _network_post(self, owner: Owner, path: str, payload: dict) -> None:
+        hub = self.cluster.hub
+        if path == "/api/network/labs":
+            return self._send_json(hub.register(owner, payload))
+        if path == "/api/network/bind":
+            track = self.cluster.tracks.get(str(payload.get("track_id") or ""))
+            if track is None:
+                raise ControlError("Unknown track.", status=404)
+            hypothesis = str(payload.get("hypothesis") or "")
+            if not hypothesis.strip():
+                raise ControlError("Send the hypothesis text.")
+            budget = owner_intake_budget(self.cluster.cfg, owner.owner_id)
+            client = self.cluster.intake._client_factory(budget)
+            binding = propose_falsifiers(hypothesis, track, client=client,
+                                         model=self.cluster.cfg.model, budget=budget)
+            return self._send_json(binding.to_dict())
+        m = _NET_LAB_ROUTE.match(path)
+        if m:
+            lab_id, verb = m.group("lab_id"), m.group("verb")
+            if verb == "heartbeat":
+                return self._send_json(hub.heartbeat(owner, lab_id, payload))
+            if verb == "journal":
+                return self._send_json(hub.push_journal(owner, lab_id, payload))
+        self.send_error(404)
+
+    def _proxy(self, upstream_path: str) -> None:
+        token = self.headers.get("x-api-key") or self._bearer()
+        owner = self.cluster.owner_from_token(token)
+        if owner is None:
+            raise ControlError("Unknown network token.", status=401)
+        body = self._read_body(MAX_PROXY_BODY)
+        headers = {k: v for k, v in self.headers.items()}
+        try:
+            status, payload, resp_headers = self.cluster.proxy.forward(
+                owner_id=owner.owner_id, path=upstream_path, body=body, headers=headers,
+                api_key=self.cluster.upstream_key(),
+            )
+        except ProxyError as exc:
+            self._send_bytes(exc.body(), "application/json", status=exc.status)
+            return
+        extra = {k: v for k, v in resp_headers.items() if k != "content-type"}
+        self._send_bytes(payload, resp_headers.get("content-type", "application/json"),
+                         status=status, extra_headers=extra)
+
     def _extra_post(self, path: str, payload: dict) -> bool:
         if path in ("/api/connect", "/api/labs/select", "/api/steer",
                     "/api/lab/start", "/api/lab/stop"):
             # Cluster mode has no default lab and no repository connect.
             self.send_error(404)
             return True
+        if path.startswith("/api/labs/") and (self.cluster.hub.root / path.split("/")[3] / "registration.json").is_file():
+            raise ControlError(
+                "This lab runs on its owner's machine; steer it there "
+                "(efferents steer / the local workspace).", status=409,
+            )
         if not path.startswith("/api/intake/"):
             return False
         owner = self._require_joined()

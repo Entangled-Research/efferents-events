@@ -281,20 +281,35 @@ class DashboardHandler(BaseHTTPRequestHandler):
         if not secrets.compare_digest(supplied, self.csrf_token):
             raise ControlError("Missing or invalid local control token.", status=403)
 
-    def _read_json(self) -> dict:
-        content_type = self.headers.get("Content-Type", "").split(";", 1)[0].strip()
-        if content_type != "application/json":
-            raise ControlError("Content-Type must be application/json.", status=415)
+    def _read_body(self, limit: int = _MAX_BODY_BYTES) -> bytes:
         try:
             length = int(self.headers.get("Content-Length", "0"))
         except ValueError as exc:
             raise ControlError("Content-Length is invalid.") from exc
-        if length <= 0 or length > _MAX_BODY_BYTES:
+        if length <= 0 or length > limit:
             raise ControlError("Request body is empty or too large.", status=413)
-        payload = json.loads(self.rfile.read(length).decode("utf-8"))
+        return self.rfile.read(length)
+
+    def _read_json(self, limit: int = _MAX_BODY_BYTES) -> dict:
+        content_type = self.headers.get("Content-Type", "").split(";", 1)[0].strip()
+        if content_type != "application/json":
+            raise ControlError("Content-Type must be application/json.", status=415)
+        payload = json.loads(self._read_body(limit).decode("utf-8"))
         if not isinstance(payload, dict):
             raise ControlError("Request body must be a JSON object.")
         return payload
+
+    def _send_bytes(self, data: bytes, content_type: str, *, status: int = 200,
+                    extra_headers: dict[str, str] | None = None) -> None:
+        self.send_response(status)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(data)))
+        for k, v in (extra_headers or {}).items():
+            self.send_header(k, v)
+        self._security_headers()
+        self._extra_headers()
+        self.end_headers()
+        self.wfile.write(data)
 
     def _security_headers(self) -> None:
         self.send_header("Cache-Control", "no-store")

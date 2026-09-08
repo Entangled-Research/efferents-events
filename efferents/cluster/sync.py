@@ -46,7 +46,7 @@ def _now_str() -> str:
 
 
 def _labs(cfg: ClusterConfig) -> list[dict[str, Any]]:
-    out = []
+    out = _remote_labs(cfg)
     for record in Registry().list():
         sub = Path(record.submission_dir)
         if not sub.is_dir():
@@ -61,6 +61,15 @@ def _labs(cfg: ClusterConfig) -> list[dict[str, Any]]:
                     "lab_root": Path(record.lab_root), "domain": domain,
                     "running": record.status == "running"})
     return out
+
+
+def _remote_labs(cfg: ClusterConfig) -> list[dict[str, Any]]:
+    """Labs running on participants' machines, known through the hub."""
+    from efferents.cluster.network import NetworkHub  # noqa: PLC0415
+    try:
+        return NetworkHub(cfg, {}).sync_labs()
+    except OSError:
+        return []
 
 
 def _index_keys(paths) -> set[tuple[str, str]]:

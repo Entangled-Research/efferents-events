@@ -79,9 +79,11 @@ def cluster_spend(paths: ClusterPaths) -> dict[str, float]:
             labs += _ledger_sum(lab_dir / "lab" / "budget.jsonl")
     intake = _ledger_sum(paths.intake_ledger)
     reviews = _ledger_sum(paths.reviews_ledger)
+    proxy = _ledger_sum(paths.root / "proxy" / "budget.jsonl")
     return {
         "labs": round(labs, 4),
         "intake": round(intake, 4),
         "reviews": round(reviews, 4),
-        "total": round(labs + intake + reviews, 4),
+        "proxy": round(proxy, 4),
+        "total": round(labs + intake + reviews + proxy, 4),
     }

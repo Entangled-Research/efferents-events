@@ -98,6 +98,19 @@
           <p class="hint">Keep this link. Anyone with it can steer your labs.</p>
         </div>
       </section>
+      <section class="panel join-panel" id="terminal-panel" aria-labelledby="terminal-title" hidden>
+        <header class="panel-header"><h2 id="terminal-title">Run your lab on your own laptop</h2></header>
+        <p class="hint">Open your coding agent in an empty folder and paste this one instruction:</p>
+        <code id="terminal-instruction" class="instruction-line"></code>
+        <button id="copy-terminal-instruction" class="compact-button" type="button">Copy instruction</button>
+        <p class="hint">When the agent asks for your network token, give it this (never share it):</p>
+        <code id="network-token"></code>
+        <button id="copy-network-token" class="compact-button" type="button">Copy token</button>
+        <p class="hint">
+          Your laptop runs the experiments; the hub pays for the model calls and shows your lab on
+          the network. No laptop? Use <a href="#intake">New lab</a> to run it here instead.
+        </p>
+      </section>
     </section>
 
     <section id="intake-view" class="app-view" data-route-view="intake" hidden>

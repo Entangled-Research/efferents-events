@@ -331,11 +331,17 @@ class Keeper:
             set_control_flag(self.paths, "stop_starts", f"disk free {free} GB")
             self._notify("disk", "Low disk", f"{free} GB free; new starts blocked")
 
-        # 4. Status file for the wall display and the server.
+        # 4. Status file for the wall display and the server. Remote labs
+        # (participants' laptops) are known through their heartbeats.
+        from efferents.cluster.network import NetworkHub  # noqa: PLC0415
+        remote = NetworkHub(self.cfg, {}).portfolio_rows()
         counts: dict[str, int] = {}
         for st in statuses:
             counts[st.status] = counts.get(st.status, 0) + 1
-        edges = derive_edges([{"lab_id": st.lab_id} for st in statuses], self.paths.root)
+        for row in remote:
+            counts[row["status"]] = counts.get(row["status"], 0) + 1
+        all_ids = [{"lab_id": st.lab_id} for st in statuses] + [{"lab_id": r["lab_id"]} for r in remote]
+        edges = derive_edges(all_ids, self.paths.root)
         status = {
             "ts": _iso(_now()),
             "keeper_pid": os.getpid(),
@@ -344,18 +350,29 @@ class Keeper:
             "frozen": control_flag(self.paths, "frozen"),
             "pause_all": pause_all,
             "totals": {
-                "labs": len(statuses),
+                "labs": len(statuses) + len(remote),
+                "hosted": len(statuses),
+                "remote": len(remote),
                 **counts,
                 "spend_usd": spend["total"],
                 "cap_usd": cap,
                 "reviews_spend_usd": spend["reviews"],
                 "intake_spend_usd": spend["intake"],
-                "runs": sum(st.runs for st in statuses),
-                "papers": sum(st.papers for st in statuses),
+                "proxy_spend_usd": spend.get("proxy", 0.0),
+                "runs": sum(st.runs for st in statuses) + sum(int(r.get("headline", {}).get("observations") or 0) for r in remote),
+                "papers": sum(st.papers for st in statuses) + sum(int(r.get("papers") or 0) for r in remote),
                 "edges": edge_summary(edges),
             },
             "host": host,
-            "labs": [st.as_dict() for st in statuses],
+            "labs": [st.as_dict() for st in statuses] + [
+                {"lab_id": r["lab_id"], "status": r["status"], "pid": None, "submission_dir": None,
+                 "runs": int((r.get("headline") or {}).get("observations") or 0),
+                 "spend_usd": r["budget"]["spent"], "cap_usd": r["budget"]["cap"],
+                 "last_activity": r.get("last_activity"), "halt_reason": r.get("halt_reason"),
+                 "restarts": 0, "papers": r.get("papers", 0), "owner_name": r.get("owner_name"),
+                 "domain": r.get("domain"), "remote": True, "host": r.get("host")}
+                for r in remote
+            ],
         }
         tmp = self.paths.status.with_suffix(".json.tmp")
         tmp.write_text(json.dumps(status, indent=2))

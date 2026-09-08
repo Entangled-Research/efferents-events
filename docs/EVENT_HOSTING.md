@@ -28,6 +28,24 @@ network map. Everything runs on one Linux host that you rent for the day.
 - **Non-root user.** Everything efferents does runs as the `efferents` user;
   root only installs packages and edits `/etc`.
 
+## Two ways in
+
+- **Terminal path (the real efferents flow).** A participant joins in the
+  browser, copies one instruction into their own coding agent, and the agent
+  reads `https://<host>/intake.md`: installs efferents on their laptop, runs
+  the popper dialogue in the terminal, downloads a track from the hub, maps
+  the falsifier, and starts a local daemon. Experiments run on their laptop.
+  The daemon's model calls go through the hub's proxy with the organizer's
+  key (`ANTHROPIC_BASE_URL=https://<host>/proxy/anthropic`, the participant's
+  network token as the key), so no provider key ever leaves the server and
+  each participant has a proxy cap. The daemon registers with the hub, sends
+  a heartbeat every 30 s, pushes accepted papers, and pulls the shared feed
+  and the reviews other labs wrote about it. The hub can pause it.
+- **Hosted fallback.** "New lab" in the browser runs the dialogue and the lab
+  on the server for anyone whose laptop setup fails.
+
+Both kinds of lab appear on the same network map and shared journal.
+
 ## What runs on the host
 
 | Process | Unit | Job |
@@ -36,10 +54,21 @@ network map. Everything runs on one Linux host that you rent for the day.
 | Keeper | `efferents-keeper` | Restarts crashed daemons, enforces the cluster spend cap, writes `status.json`, rotates logs |
 | Sync | `efferents-sync` | Publishes every lab's journal into the shared hub, fans it out, runs cross-lab reviews |
 | Backup | `efferents-backup.timer` | Tarball of the cluster directory every 15 minutes |
-| Lab daemons | (spawned) | One `efferents start --detach` per participant lab |
+| Hosted lab daemons | (spawned) | One `efferents start --detach` per fallback lab; terminal-path labs run on laptops |
 
 All three services use `KillMode=process`, so restarting any of them leaves
 the lab daemons running.
+
+## Caps, in one place
+
+| Cap | Where | Covers |
+|---|---|---|
+| `proxy.cap_per_owner_usd` / `proxy.cap_total_usd` | `cluster.yaml` | Model calls from participants' laptops through the hub |
+| `labs.total_cap_usd` | `cluster.yaml`, written into each lab.yaml | A lab's own ledger (hosted labs enforce it locally; laptop labs too) |
+| `intake.*` | `cluster.yaml` | Browser dialogue and falsifier binding |
+| `caps.reviews_total_usd` | `cluster.yaml` | Cross-lab reviews |
+| `caps.cluster_total_usd` | `cluster.yaml` | Sum of all of the above; the keeper freezes the cluster here and asks every lab, laptop or hosted, to pause |
+| Workspace spend limit | Anthropic console | The backstop behind all of it |
 
 ## Sizing
 

@@ -44,7 +44,11 @@ C=/srv/efferents/cluster
 | Server bug fix | New release directory procedure in `docs/EVENT_HOSTING.md`; daemons keep running. |
 | Disk filling | `du -sh $C/labs/* | sort -h`; the keeper rotates daemon logs and blocks new starts below `min_free_disk_gb`; delete old `backups/*.tgz`. |
 | Host out of memory | `ef cluster pause-all $C`, `ef cluster stop-all $C`, resize the droplet, `ef cluster start-all $C --stagger 3`. Labs resume from `lab/` state. |
-| Participant lost their owner link | Their token is in `$C/owners.json` (server-only); read it and hand them `https://<host>/?owner=<token>` privately. |
+| Participant lost their owner link or network token | Both are the same token, in `$C/owners.json` (server-only); hand them `https://<host>/?owner=<token>` privately. |
+| A laptop lab misbehaves | `touch $C/controls/halt_<lab_id>`: its next heartbeat carries `pause: true` and the daemon pauses itself. Remove the file to let it resume. `pause-all` reaches laptops the same way. |
+| A laptop lab shows "stale" | No heartbeat for 3 minutes: the laptop slept, lost Wi-Fi, or the daemon died. The owner runs `efferents status --submission .` locally; the hub keeps the last state. |
+| Someone's laptop cannot install anything | Send them to "New lab" in the browser: the hosted fallback runs the dialogue and the lab on the server. |
+| Proxy spend for one person looks wrong | `$C/proxy/<owner_id>/budget.jsonl` is the ledger; the cluster total is `$C/proxy/budget.jsonl`. |
 
 ## After
 
