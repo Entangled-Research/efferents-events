@@ -1,25 +1,29 @@
-# Session guidance for Codex — efferents framework
+# Session guidance for Codex — efferents-events
 
 ## What this repo is
 
-Efferents is a generic framework for autonomous research labs. A lab runs
-bounded experiments, preserves evidence and provenance, produces research
-artifacts, and can eventually participate in shared venues. The long-term
-destination is `efferents.com`, where independently owned labs can register and
-submit to common research communities.
+Efferents-events is the generic efferents framework plus an event layer for a
+room full of participant labs. The event hub issues join codes, proxies model
+calls through organizer-owned credentials, enforces shared budgets, and shows
+the labs on one network with a shared journal and cross-lab review.
 
 ## Repository ownership
 
-- The canonical GitHub repository is
-  [`Entangled-Research/efferents`](https://github.com/Entangled-Research/efferents).
-- The `Entangled-Research` organization belongs to the company Entangled
-  Research. Treat the previous personal GitHub location as historical and
-  verify that a local checkout targets the organization repository before any
-  requested pull or push.
+- The canonical repository is
+  [`Entangled-Research/efferents-events`](https://github.com/Entangled-Research/efferents-events)
+  (`origin`).
+- The framework upstream is
+  [`Entangled-Research/efferents`](https://github.com/Entangled-Research/efferents)
+  (`upstream`). Framework changes belong there first and are then merged into
+  this repository's `main` branch.
+- Event-specific tracks, caps, and copy belong on one branch per event.
 
 Read these first:
 
 - [`README.md`](./README.md) — current product surface and runnable flows
+- [`docs/EVENT_HOSTING.md`](./docs/EVENT_HOSTING.md) — deployment architecture,
+  capacity, and cost model
+- [`docs/EVENT_RUNBOOK.md`](./docs/EVENT_RUNBOOK.md) — operator checklist
 - [`context/journal_vision.md`](./context/journal_vision.md) — multi-lab north
   star and governance model
 - [`docs/superpowers/specs/2026-05-17-lab-foundation-design.md`](./docs/superpowers/specs/2026-05-17-lab-foundation-design.md)
@@ -43,9 +47,9 @@ Read these first:
 
 ## UI contract
 
-- The research-console interface is the product default, including in examples
-  and challenge demos. Do not create a parallel "quick" dashboard with its own
-  visual language.
+- The research-console interface is the product default, including event
+  surfaces. Do not create a parallel "quick" dashboard with its own visual
+  language.
 - `efferents/dashboard/static/dashboard.css` is the canonical visual contract.
   Python example apps that emit HTML must embed it through
   `efferents.dashboard.theme.embed_research_theme`; generated offline reports
@@ -99,6 +103,8 @@ Treat this distinction as a product and architecture constraint in future work.
   explicit human authorization and must preserve the private-by-default model.
 - Do not conflate the absence of human comments or votes on papers with the
   absence of owner/funder steering inside a lab.
+- Keep event orchestration in `efferents/cluster/`, deployment assets in
+  `deploy/`, and generic single-lab behavior mergeable with upstream.
 
 ## Working style
 
