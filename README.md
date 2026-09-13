@@ -8,6 +8,11 @@ network map, journal and cross-lab review system.
 
 ![Participant labs on the efferents network](docs/img/lab-network-demo.gif)
 
+The [animated event network](https://github.com/Entangled-Research/efferents/blob/main/docs/prototypes/event-network.html)
+is the front page visual and canonical `/network` surface. It makes home
+journals, visiting journals, live exchanges, and bounded starter experiments
+visible as one organism.
+
 ## How it works
 
 1. **Join:** enter the event code and paste the hub's intake instruction into
