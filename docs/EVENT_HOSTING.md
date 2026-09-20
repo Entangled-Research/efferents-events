@@ -36,7 +36,7 @@ network map. Everything runs on one Linux host that you rent for the day.
   the popper dialogue in the terminal, downloads a track from the hub, maps
   the falsifier, and starts a local daemon. Experiments run on their laptop.
   The daemon's model calls go through the hub's proxy with the organizer's
-  key (`ANTHROPIC_BASE_URL=https://<host>/proxy/anthropic`, the participant's
+  key (`EFFERENTS_API_BASE=https://<host>/proxy/openai/v1`, the participant's
   network token as the key), so no provider key ever leaves the server and
   each participant has a proxy cap. The daemon registers with the hub, sends
   a heartbeat every 30 s, pushes accepted papers, and pulls the shared feed
@@ -68,7 +68,7 @@ the lab daemons running.
 | `intake.*` | `cluster.yaml` | Browser dialogue and falsifier binding |
 | `caps.reviews_total_usd` | `cluster.yaml` | Cross-lab reviews |
 | `caps.cluster_total_usd` | `cluster.yaml` | Sum of all of the above; the keeper freezes the cluster here and asks every lab, laptop or hosted, to pause |
-| Workspace spend limit | Anthropic console | The backstop behind all of it |
+| Azure spending alert/budget | Azure Cost Management | An alerting backstop; it is not an instant hard stop |
 
 ## Sizing
 
@@ -101,23 +101,33 @@ snapshot of the droplet the evening before the event.
    `/srv/efferents/releases/<sha>` with its own virtualenv, clones
    popper-probe, initialises `/srv/efferents/cluster`, and installs the
    systemd units and the Caddyfile.
-3. Put the provider keys in `/etc/efferents/event.env` (already mode 0600).
-   Use a **dedicated Anthropic workspace** for the event with a spend limit a
-   little above your cluster cap; that is the backstop if anything here
-   misbehaves. Two keys (daemons; reviews) give you separate spend lines and
-   independent revocation; extra keys do not raise rate limits.
+3. In Azure AI Foundry, create an Azure OpenAI resource and three Global
+   Standard deployments named exactly `gpt-4.1-nano`, `gpt-5.6-luna`, and
+   `gpt-5.6-sol`. Availability and quota depend on region and subscription.
+   Put the resource's `https://...openai.azure.com/openai/v1` endpoint in
+   both `EFFERENTS_AZURE_OPENAI_ENDPOINT` and `EFFERENTS_API_BASE`, and its
+   key in `OPENAI_API_KEY` in `/etc/efferents/event.env` (mode 0600). Never
+   paste the key into the browser, a track, or participant instructions.
+   Set an Azure Cost Management budget and alerts as an independent warning.
 4. Edit `/srv/efferents/cluster/cluster.yaml`: the event name, the join code
-   you will put on a slide, per-lab and cluster caps, cadence.
+   you will put on a slide, per-lab and cluster caps, cadence. Set
+   `network.install_ref` to the same tested commit or event branch used by
+   the host; otherwise terminal participants may install an older `main`.
 5. Add tracks under `/srv/efferents/cluster/tracks/<id>/` (contract below).
+   This event branch seeds the `evacuation` starter track on first setup.
+   Review its synthetic-simulation disclaimer and test it before attendees join.
 6. Validate and start:
 
    ```bash
-   sudo -u efferents bash -c 'set -a; . /etc/efferents/event.env; cd /srv/efferents/current && .venv/bin/efferents cluster check /srv/efferents/cluster'
+   sudo bash -c 'set -a; . /etc/efferents/event.env; exec runuser -u efferents -- /srv/efferents/current/.venv/bin/efferents cluster check /srv/efferents/cluster'
    sudo systemctl start efferents-cluster efferents-keeper efferents-sync efferents-backup.timer
    ```
 
 7. Open `https://event.yourdomain.org/`, join with the code, run one intake,
-   create a lab, watch it run.
+   create a lab, watch it run. Before opening the room, confirm all three
+   Azure deployments answer a small request, the proxy ledger increments,
+   a second join token cannot use the first owner's lab, and pause/stop
+   controls work. Do not start the public event on an untested model key.
 
 ## Track contract (what the owner authors)
 
@@ -143,23 +153,27 @@ use those. `efferents cluster check` validates every track and fails fast.
 
 ## Cost and rate limits
 
-At the default event cadence (a Researcher pass at most every 6 minutes, a
-digest every 3 runs or 10 minutes, a paper every 5 runs or 30 minutes) a lab
-spends roughly $10–13 in three hours on Sonnet-class models. Per-lab cap
-$12, cluster cap $650 for fifty labs, reviews $40, rehearsals about $70:
-reserve about $750 and expect about $550. The frugal profile
-(`researcher_min_interval_s: 600`) halves it.
+This branch routes routine research and literature review to Luna, difficult
+analysis and supervision to Sol, and short rebuttals to GPT-4.1 nano. Autonomous
+code editing stays disabled by the event intake policy; Sol is configured for
+the Coder only if an operator separately permits that capability. The proxy
+accepts only these three deployments, text/function-tool Chat Completions,
+non-streaming calls, at most 8,192 output tokens and 200 kB of request body.
+Its ledger uses conservative short-context Global Standard prices; check the
+current price and deployment type in Azure before setting the event budget.
+Do not reuse older Sonnet-based cost projections for this lineup.
 
 The shipped `cluster.yaml` defaults are **rehearsal values**: cluster cap $20,
 $3 per lab, $1 of intake per person. Raise them for the event; set the
-provider workspace spend limit a little above whatever the cluster cap is.
+an Azure budget alert below your available credit and check actual usage in
+Azure Cost Management during rehearsal. Azure budgets alert; the event's own
+caps are the active stop mechanism.
 
-Fifty daemons at peak push roughly 700k input tokens per minute. Input tokens
-per minute is the binding provider limit, not requests. The cluster limits
-in-flight calls across all daemons (`EFFERENTS_MAX_CONCURRENT_CALLS=12`) and
-fails over to the spillover provider on 429s. Confirm your provider tier a
-week ahead and ask for a temporary raise if it is below the level that
-allows about 800k input tokens per minute.
+Check Azure quotas for each of the three deployments. The cluster limits
+in-flight calls across all daemons (`EFFERENTS_MAX_CONCURRENT_CALLS=12`), but
+does not create extra Azure quota or automatically switch providers on 429s.
+Rehearse at the intended attendance, inspect 429s and latency, and request
+quota increases before event day if needed.
 
 ## Keys and privacy
 
@@ -188,6 +202,11 @@ sudo systemctl restart efferents-cluster efferents-keeper efferents-sync
 
 Daemons keep running from the release they were started in. Restart them
 (`efferents cluster restart-all --stagger 3`) only if daemon-side code changed.
+The hosted web server picks up the new release after its service restart;
+refresh the browser normally. The persistent `cluster/tracks/evacuation`
+directory is deliberately not overwritten by a release update. To change an
+already-installed track, review and update that directory separately, then
+run `efferents cluster check` before restarting the web service.
 
 ## Rehearsing from a laptop
 

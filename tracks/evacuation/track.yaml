@@ -1,0 +1,33 @@
+id: evacuation
+title: Congestion-aware evacuation
+summary: >-
+  CPU-only paired-seed simulation. Compare static shortest-path routing with
+  congestion-aware replanning in a synthetic building; no real-world safety claim.
+domain: multi-agent-routing
+knobs:
+  - {name: congestion_weight, description: Added cost for occupied and reserved cells, range: "0-10", default: 3.5}
+  - {name: reroute_interval, description: Steps between route reconsideration, range: "1-20", default: 4}
+  - {name: reservation_depth, description: Cells anticipated along other agents' paths, range: "1-30", default: 12}
+  - {name: agents, description: Evacuees in each paired scenario, range: "12-100", default: 56}
+columns:
+  - {name: evacuation_improvement_pct, description: Percent reduction in median evacuation steps versus static routing, direction: max}
+  - {name: baseline_median_steps, description: Static-routing median steps, direction: min}
+  - {name: candidate_median_steps, description: Congestion-aware median steps, direction: min}
+  - {name: baseline_p95_steps, description: Static-routing 95th percentile steps, direction: min}
+  - {name: candidate_p95_steps, description: Congestion-aware 95th percentile steps, direction: min}
+  - {name: baseline_completion_rate, description: Fraction completing under static routing, direction: max}
+  - {name: candidate_completion_rate, description: Fraction completing under congestion-aware routing, direction: max}
+  - {name: baseline_congestion_waits, description: Static-routing congestion waits, direction: min}
+  - {name: candidate_congestion_waits, description: Congestion-aware congestion waits, direction: min}
+  - {name: candidate_reroute_count, description: Congestion-aware reroutes, direction: min}
+comparison:
+  axis: policy
+  labels: {static: Static shortest path, congestion: Congestion-aware}
+  order: [static, congestion]
+example_falsifiers:
+  - id: improvement-below-target
+    description: Median improvement is below 10 percent after 12 valid paired seeds.
+    when: {column: evacuation_improvement_pct, agg: median, op: "<", value: 10, min_n: 12}
+  - id: completion-below-target
+    description: Candidate completion falls below 95 percent after 12 paired seeds.
+    when: {column: candidate_completion_rate, agg: min, op: "<", value: 0.95, min_n: 12}

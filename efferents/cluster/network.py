@@ -86,6 +86,24 @@ class NetworkHub:
 
     def config_payload(self, owner: Owner, base_url: str) -> dict:
         url = self.public_url(base_url)
+        azure_enabled = bool(os.environ.get("EFFERENTS_AZURE_OPENAI_ENDPOINT"))
+        if azure_enabled:
+            model_env = {
+                "OPENAI_API_KEY": owner.token,
+                "EFFERENTS_API_BASE": f"{url}/proxy/openai/v1",
+                "EFFERENTS_MODEL": "openai/gpt-5.6-luna",
+                "EFFERENTS_MODEL_LIBRARIAN": "openai/gpt-5.6-luna",
+                "EFFERENTS_MODEL_REVIEWER": "openai/gpt-5.6-luna",
+                "EFFERENTS_MODEL_REBUTTAL": "openai/gpt-4.1-nano",
+                "EFFERENTS_MODEL_SUPERVISOR": "openai/gpt-5.6-sol",
+                "EFFERENTS_MODEL_ANALYST": "openai/gpt-5.6-sol",
+                "EFFERENTS_MODEL_CODER": "openai/gpt-5.6-sol",
+            }
+        else:
+            model_env = {
+                "ANTHROPIC_API_KEY": owner.token,
+                "ANTHROPIC_BASE_URL": f"{url}/proxy/anthropic",
+            }
         return {
             "hub_url": url,
             "owner": owner.public(),
@@ -95,8 +113,7 @@ class NetworkHub:
                 "pip_spec": f"git+{self.cfg.network.repo_url}.git@{self.cfg.network.install_ref}",
             },
             "env": {
-                "ANTHROPIC_API_KEY": owner.token,
-                "ANTHROPIC_BASE_URL": f"{url}/proxy/anthropic",
+                **model_env,
                 "EFFERENTS_NETWORK_URL": url,
                 "EFFERENTS_NETWORK_TOKEN": owner.token,
                 "OMP_NUM_THREADS": "1",

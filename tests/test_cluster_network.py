@@ -30,9 +30,11 @@ def hub(tmp_path, monkeypatch):
     class FakeResp(io.BytesIO):
         status = 200
 
-        def __init__(self):
-            super().__init__(json.dumps({"model": "claude-sonnet-4-6", "content": [],
-                                         "usage": {"input_tokens": 10, "output_tokens": 5}}).encode())
+        def __init__(self, *, openai=False):
+            usage = ({"prompt_tokens": 10, "completion_tokens": 5} if openai else
+                     {"input_tokens": 10, "output_tokens": 5})
+            super().__init__(json.dumps({"model": "gpt-4.1-nano" if openai else "claude-sonnet-4-6",
+                                         "content": [], "usage": usage}).encode())
             self.headers = Message()
             self.headers["Content-Type"] = "application/json"
 
@@ -44,7 +46,7 @@ def hub(tmp_path, monkeypatch):
 
     def opener(req, timeout=0):
         upstream_calls.append(req)
-        return FakeResp()
+        return FakeResp(openai="/openai/v1/" in req.full_url)
 
     ctx.proxy._open = opener
     httpd, ctx = make_cluster_server(cfg, port=0, context=ctx, read_ttl_s=0)
@@ -205,3 +207,35 @@ def test_bind_and_proxy(hub):
     assert conn.getresponse().status == 401
     status, control, _ = _request(port, "/api/control", headers={"Cookie": f"efferents_owner={ada['cluster']['network_token']}"})
     assert control["cluster"]["proxy_spend_usd"] > 0
+
+
+def test_azure_config_and_proxy_token_boundary(hub, monkeypatch):
+    port, ctx, _, cfg, upstream = hub
+    monkeypatch.setenv("EFFERENTS_AZURE_OPENAI_ENDPOINT",
+                       "https://resource.openai.azure.com/openai/v1")
+    monkeypatch.setenv("OPENAI_API_KEY", "azure-host-key")
+    ada, _ = _join(port, "Ada")
+    status, config, _ = _request(port, "/api/network/config", headers=_bearer(ada))
+    assert status == 200
+    assert config["env"]["OPENAI_API_KEY"] == ada["cluster"]["network_token"]
+    assert config["env"]["EFFERENTS_API_BASE"].endswith("/proxy/openai/v1")
+    assert "ANTHROPIC_API_KEY" not in config["env"]
+    assert "azure-host-key" not in json.dumps(config)
+
+    import http.client
+    body = json.dumps({"model": "gpt-4.1-nano", "max_tokens": 50,
+                       "messages": [{"role": "user", "content": "hi"}]}).encode()
+    conn = http.client.HTTPConnection("127.0.0.1", port)
+    conn.request("POST", "/proxy/openai/v1/chat/completions", body=body,
+                 headers={"Content-Type": "application/json",
+                          "Authorization": f"Bearer {ada['cluster']['network_token']}"})
+    resp = conn.getresponse()
+    resp.read()
+    assert resp.status == 200
+    assert upstream[-1].get_header("Api-key") == "azure-host-key"
+    assert upstream[-1].get_header("Authorization") is None
+
+    conn = http.client.HTTPConnection("127.0.0.1", port)
+    conn.request("POST", "/proxy/openai/v1/chat/completions", body=body,
+                 headers={"Authorization": "Bearer bogus"})
+    assert conn.getresponse().status == 401

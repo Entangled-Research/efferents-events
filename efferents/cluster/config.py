@@ -245,7 +245,7 @@ DEFAULT_CONFIG = """\
 name: "Research lab night"
 join_code: "change-me"
 tracks_dir: tracks
-model: "claude-sonnet-4-6"          # intake dialogue, falsifier binding, cross-lab reviews
+model: "openai/gpt-5.6-luna"        # intake dialogue, falsifier binding, cross-lab reviews
 
 intake:
   cap_per_owner_usd: 1.0

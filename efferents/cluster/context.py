@@ -69,8 +69,11 @@ class ClusterContext:
     def owner_from_token(self, token: str | None) -> Owner | None:
         return self.owners.by_token(token)
 
-    def upstream_key(self) -> str:
-        key = os.environ.get("EFFERENTS_PROXY_UPSTREAM_KEY") or os.environ.get("ANTHROPIC_API_KEY") or ""
+    def upstream_key(self, provider: str = "anthropic") -> str:
+        if provider == "openai":
+            key = os.environ.get("EFFERENTS_AZURE_OPENAI_API_KEY") or os.environ.get("OPENAI_API_KEY") or ""
+        else:
+            key = os.environ.get("EFFERENTS_PROXY_UPSTREAM_KEY") or os.environ.get("ANTHROPIC_API_KEY") or ""
         if not key:
             raise ControlError("The hub has no upstream model key configured.", status=503)
         return key

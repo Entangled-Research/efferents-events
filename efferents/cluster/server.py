@@ -14,7 +14,7 @@ from efferents.cluster.binding import propose_falsifiers
 from efferents.cluster.budget import owner_intake_budget
 from efferents.cluster.intake_md import render_intake_md
 from efferents.cluster.owners import Owner, build_cookie, token_from_cookie_header
-from efferents.cluster.proxy import MAX_PROXY_BODY, PROXY_PREFIX, ProxyError
+from efferents.cluster.proxy import MAX_PROXY_BODY, OPENAI_PROXY_PREFIX, PROXY_PREFIX, ProxyError
 from efferents.dashboard.control import ConnectedLab, ControlError
 from efferents.dashboard.server import LAB_ID_PATTERN, DashboardHandler, make_server
 
@@ -188,7 +188,10 @@ class ClusterHandler(DashboardHandler):
         # Machine clients (daemons, agents) authenticate with a bearer token,
         # which browsers never attach on their own, so CSRF does not apply.
         if path.startswith(PROXY_PREFIX + "/"):
-            self._proxy(path[len(PROXY_PREFIX):])
+            self._proxy(path[len(PROXY_PREFIX):], provider="anthropic")
+            return True
+        if path.startswith(OPENAI_PROXY_PREFIX + "/"):
+            self._proxy(path[len(OPENAI_PROXY_PREFIX):], provider="openai")
             return True
         if path.startswith("/api/network/") and self._bearer():
             owner = self._require_joined()
@@ -238,7 +241,7 @@ class ClusterHandler(DashboardHandler):
                 return self._send_json(hub.push_journal(owner, lab_id, payload))
         self.send_error(404)
 
-    def _proxy(self, upstream_path: str) -> None:
+    def _proxy(self, upstream_path: str, *, provider: str = "anthropic") -> None:
         token = self.headers.get("x-api-key") or self._bearer()
         owner = self.cluster.owner_from_token(token)
         if owner is None:
@@ -248,7 +251,7 @@ class ClusterHandler(DashboardHandler):
         try:
             status, payload, resp_headers = self.cluster.proxy.forward(
                 owner_id=owner.owner_id, path=upstream_path, body=body, headers=headers,
-                api_key=self.cluster.upstream_key(),
+                api_key=self.cluster.upstream_key(provider), provider=provider,
             )
         except ProxyError as exc:
             self._send_bytes(exc.body(), "application/json", status=exc.status)

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import json
+import threading
 import urllib.error
 from email.message import Message
 
@@ -121,3 +122,95 @@ def test_upstream_errors_pass_through_without_charging(tmp_path, monkeypatch):
                                        headers={}, api_key="k")
     assert status == 429 and b"rate_limit_error" in body and headers["retry-after"] == "7"
     assert px.spend("o1") == 0.0
+
+
+def test_azure_openai_proxy_routes_and_prices(tmp_path, monkeypatch):
+    cfg = make_cluster(tmp_path, monkeypatch, proxy={"cap_per_owner_usd": 0.05,
+                                                   "cap_total_usd": 0.08})
+    monkeypatch.setenv("EFFERENTS_AZURE_OPENAI_ENDPOINT",
+                       "https://resource.openai.azure.com/openai/v1")
+    seen = []
+
+    def opener(req, timeout=0):
+        seen.append(req)
+        return FakeResponse({"model": "gpt-5.6-luna", "choices": [],
+                             "usage": {"prompt_tokens": 1000, "completion_tokens": 100}})
+
+    px = ModelProxy(cfg, opener=opener)
+    request = json.dumps({"model": "gpt-5.6-luna", "max_tokens": 200,
+                          "messages": [{"role": "user", "content": "hello"}],
+                          "tools": [{"type": "function", "function": {"name": "do_it"}}]}).encode()
+    status, _, _ = px.forward(owner_id="o1", path="/v1/chat/completions", body=request,
+                              headers={"authorization": "Bearer participant", "cookie": "secret"},
+                              api_key="azure-secret", provider="openai")
+    assert status == 200
+    assert seen[0].full_url == "https://resource.openai.azure.com/openai/v1/chat/completions"
+    assert seen[0].get_header("Api-key") == "azure-secret"
+    assert seen[0].get_header("Authorization") is None
+    assert seen[0].get_header("Cookie") is None
+    sent = json.loads(seen[0].data)
+    assert sent["max_completion_tokens"] == 200 and "max_tokens" not in sent
+    assert sent["reasoning_effort"] == "none"
+    assert px.spend("o1") > 0
+    assert json.loads((cfg.paths.root / "proxy" / "o1" / "budget.jsonl").read_text().splitlines()[0])["model"] == "openai/gpt-5.6-luna"
+
+
+def test_azure_openai_proxy_rejects_unpriced_or_unbounded_calls(tmp_path, monkeypatch):
+    cfg = make_cluster(tmp_path, monkeypatch)
+    monkeypatch.setenv("EFFERENTS_AZURE_OPENAI_ENDPOINT",
+                       "https://resource.openai.azure.com/openai/v1")
+    seen = []
+    px = ModelProxy(cfg, opener=lambda req, timeout=0: seen.append(req))
+    base = {"model": "gpt-5.6-sol", "max_tokens": 100,
+            "messages": [{"role": "user", "content": "hello"}]}
+    for changed in ({"model": "gpt-4o"}, {"stream": True}, {"n": 2},
+                    {"max_tokens": 9000}, {"temperature": 0.5}):
+        with pytest.raises(ProxyError) as exc:
+            px.forward(owner_id="o1", path="/v1/chat/completions",
+                       body=json.dumps({**base, **changed}).encode(), headers={},
+                       api_key="azure-secret", provider="openai")
+        assert exc.value.status == 400
+    assert not seen
+
+
+def test_pending_calls_count_against_shared_cap(tmp_path, monkeypatch):
+    cfg = make_cluster(tmp_path, monkeypatch, proxy={"cap_per_owner_usd": 0.01,
+                                                   "cap_total_usd": 0.015})
+    monkeypatch.setenv("EFFERENTS_AZURE_OPENAI_ENDPOINT",
+                       "https://resource.openai.azure.com/openai/v1")
+    entered, release = threading.Event(), threading.Event()
+
+    def opener(req, timeout=0):
+        entered.set()
+        assert release.wait(5)
+        return FakeResponse({"model": "gpt-5.6-sol", "choices": [],
+                             "usage": {"prompt_tokens": 100, "completion_tokens": 100}})
+
+    px = ModelProxy(cfg, opener=opener)
+    body = json.dumps({"model": "gpt-5.6-sol", "max_tokens": 300,
+                       "messages": [{"role": "user", "content": "hi"}]}).encode()
+    done = []
+    thread = threading.Thread(target=lambda: done.append(px.forward(
+        owner_id="o1", path="/v1/chat/completions", body=body, headers={},
+        api_key="key", provider="openai")))
+    thread.start()
+    assert entered.wait(5)
+    with pytest.raises(ProxyError) as exc:
+        px.forward(owner_id="o2", path="/v1/chat/completions", body=body,
+                   headers={}, api_key="key", provider="openai")
+    assert exc.value.status == 402
+    release.set()
+    thread.join(5)
+    assert not thread.is_alive() and done[0][0] == 200
+
+
+def test_azure_success_without_usage_is_charged_conservatively(tmp_path, monkeypatch):
+    cfg = make_cluster(tmp_path, monkeypatch)
+    monkeypatch.setenv("EFFERENTS_AZURE_OPENAI_ENDPOINT",
+                       "https://resource.openai.azure.com/openai/v1")
+    px = ModelProxy(cfg, opener=lambda req, timeout=0: FakeResponse({"choices": []}))
+    body = json.dumps({"model": "gpt-4.1-nano", "max_tokens": 50,
+                       "messages": [{"role": "user", "content": "hi"}]}).encode()
+    px.forward(owner_id="o1", path="/v1/chat/completions", body=body,
+               headers={}, api_key="key", provider="openai")
+    assert px.spend("o1") > 0

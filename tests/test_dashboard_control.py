@@ -143,6 +143,7 @@ def test_pause_and_resume_queue_owner_steering(tmp_path, monkeypatch):
 
 def test_start_requires_explicit_confirmation_and_api_key(tmp_path, monkeypatch):
     monkeypatch.setenv("EFFERENTS_HOME", str(tmp_path / "home"))
+    monkeypatch.delenv("EFFERENTS_MODEL", raising=False)
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     sub = _submission(tmp_path)
     control = ControlContext()

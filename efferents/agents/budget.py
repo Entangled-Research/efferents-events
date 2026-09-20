@@ -25,6 +25,11 @@ PRICING_PER_MTOK = {
     "claude-opus-4-7":    {"input":  5.00, "output": 25.00},
     "claude-sonnet-4-6":  {"input":  3.00, "output": 15.00},
     "claude-haiku-4-5":   {"input":  1.00, "output":  5.00},
+    # Conservative Global Standard short-context rates. Sol intentionally
+    # uses the pre-discount price so event caps do not under-reserve.
+    "openai/gpt-5.6-sol":  {"input": 5.00, "output": 30.00},
+    "openai/gpt-5.6-luna": {"input": 0.20, "output": 1.20},
+    "openai/gpt-4.1-nano": {"input": 0.10, "output": 0.40},
 }
 
 CACHE_WRITE_MULT = 1.25
