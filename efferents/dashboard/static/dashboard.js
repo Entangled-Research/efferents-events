@@ -500,6 +500,17 @@ function renderNetwork() {
   nodes.innerHTML = "";
   journalsLayer.innerHTML = "";
   ideasLayer.innerHTML = "";
+  const packet = (a, b, cls = "") => {
+    const motion = svgElement("animateMotion", {
+      dur: `${2.4 + (Math.abs(a.x - b.x) % 8) / 10}s`,
+      begin: `-${(Math.abs(a.x + b.y) % 20) / 10}s`,
+      repeatCount: "indefinite",
+      path: `M${a.x * 10},${a.y * 5.6} L${b.x * 10},${b.y * 5.6}`,
+    });
+    const dot = svgElement("circle", { r: 3, class: `network-packet ${cls}` });
+    dot.appendChild(motion);
+    lines.appendChild(dot);
+  };
   const people = isCluster() && controlState.session && controlState.session.people != null
     ? ` · ${controlState.session.people} ${controlState.session.people === 1 ? "person" : "people"}`
     : "";
@@ -580,6 +591,7 @@ function renderNetwork() {
       y2: target.y * 5.6,
       class: `domain-edge edge-${String(edge.kind || "shared-domain")}`,
     }));
+    packet(source, target, "domain");
   });
 
 }
