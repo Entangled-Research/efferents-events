@@ -573,6 +573,26 @@ function renderNetwork() {
     journalsLayer.appendChild(label);
     members.forEach((lab) => {
       const position = positions.get(lab.lab_id);
+      const hub = { x: center.x * 10, y: center.y * 5.6 };
+      const nucleus = { x: position.x * 10, y: position.y * 5.6 };
+      for (let fiber = -2; fiber <= 2; fiber += 1) {
+        const bend = (hub.y + nucleus.y) / 2;
+        lines.appendChild(svgElement("path", {
+          d: `M${hub.x},${hub.y} C${hub.x + fiber * 16},${bend} ${nucleus.x + fiber * 16},${bend} ${nucleus.x},${nucleus.y}`,
+          class: "journal-fiber",
+          fill: "none",
+        }));
+      }
+      for (let fiber = 0; fiber < 14; fiber += 1) {
+        const angle = fiber * Math.PI / 7;
+        const tip = { x: nucleus.x + Math.cos(angle) * 28, y: nucleus.y + Math.sin(angle) * 24 };
+        lines.appendChild(svgElement("path", {
+          d: `M${nucleus.x},${nucleus.y} C${nucleus.x + Math.cos(angle) * 10},${nucleus.y + Math.sin(angle) * 8} ${tip.x - Math.cos(angle) * 8},${tip.y - Math.sin(angle) * 8} ${tip.x},${tip.y}`,
+          class: "lab-fiber",
+          fill: "none",
+        }));
+      }
+      lines.appendChild(svgElement("circle", { cx: nucleus.x, cy: nucleus.y, r: 5, class: "lab-nucleus" }));
       const question = lab.hypothesis?.question || lab.hypothesis?.claim || "Awaiting first hypothesis";
       const card = document.createElement("article");
       card.className = `lab-structure ${lab.status || "stopped"}${lab.selected ? " selected" : ""}`;
