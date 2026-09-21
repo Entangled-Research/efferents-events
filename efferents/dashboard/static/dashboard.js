@@ -566,17 +566,22 @@ function renderNetwork() {
     label.className = "network-journal";
     label.style.left = `${center.x}%`;
     label.style.top = `${Math.max(7, center.y - 22)}%`;
-    label.innerHTML = `<small>journal</small>${esc(domain)}`;
+    label.innerHTML = `<small>JOURNAL · DOMAIN INBOX</small><b>${esc(domain)}</b><small>${members.length} labs</small>`;
+    const labGrid = document.createElement("div");
+    labGrid.className = "journal-labs";
+    label.appendChild(labGrid);
     journalsLayer.appendChild(label);
     members.forEach((lab) => {
       const position = positions.get(lab.lab_id);
       const question = lab.hypothesis?.question || lab.hypothesis?.claim || "Awaiting first hypothesis";
-      const idea = document.createElement("div");
-      idea.className = "network-idea";
-      idea.style.left = `${position.x}%`;
-      idea.style.top = `${Math.min(91, position.y + 15)}%`;
-      idea.textContent = question.length > 78 ? `${question.slice(0, 75)}…` : question;
-      ideasLayer.appendChild(idea);
+      const card = document.createElement("article");
+      card.className = `lab-structure ${lab.status || "stopped"}${lab.selected ? " selected" : ""}`;
+      const owner = lab.owner_name ? `<small class="map-node-owner">${esc(lab.owner_name)}${lab.remote ? " · laptop" : ""}</small>` : "";
+      card.innerHTML = `<button type="button" class="lab-identity"><strong>${esc(lab.lab_id)}</strong><small>${esc(lab.status || "stopped")}${lab.remote ? " · read only" : ""}</small>${owner}</button>` +
+        `<div class="lab-loop" aria-label="Autoresearch loop"><span>owner steering</span><i>→</i><span>supervisor + agents</span><i>→</i><span class="gate">hypothesis</span><i>→</i><span class="gate">bounded run</span><i>→</i><span>evidence + paper</span><b class="lab-flow-packet" aria-hidden="true">◆</b></div>` +
+        `<div class="lab-ideas"><small>GROUP OF IDEAS</small><p>${esc(question.length > 78 ? `${question.slice(0, 75)}…` : question)}</p></div>`;
+      card.querySelector(".lab-identity").addEventListener("click", async () => { await openLabTab(lab.lab_id); });
+      labGrid.appendChild(card);
     });
   });
 
