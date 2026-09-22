@@ -99,6 +99,9 @@ class NetworkHub:
                 "EFFERENTS_MODEL_ANALYST": "openai/gpt-5.6-sol",
                 "EFFERENTS_MODEL_CODER": "openai/gpt-5.6-sol",
             }
+            if self.cfg.network.lab_model:
+                model_env.update({key: self.cfg.network.lab_model for key in model_env
+                                  if key.startswith("EFFERENTS_MODEL")})
         else:
             model_env = {
                 "ANTHROPIC_API_KEY": owner.token,
@@ -123,7 +126,7 @@ class NetworkHub:
                            "total_cap_usd": self.cfg.labs.total_cap_usd,
                            "sonnet_default": True},
                 "cadence": dict(self.cfg.cadence_raw),
-                "autonomy": {"coder_enabled": False},
+                "autonomy": {"coder_enabled": self.cfg.labs.coder_enabled},
                 "routing": {
                     "pool": f"event:{self.cfg.name}",
                     "owner": owner.owner_id,

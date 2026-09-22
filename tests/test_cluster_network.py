@@ -21,7 +21,10 @@ from tests.test_cluster_server import _join, _request
 @pytest.fixture
 def hub(tmp_path, monkeypatch):
     make_popper_repo(monkeypatch, tmp_path)
-    cfg = make_cluster(tmp_path, monkeypatch, labs={"auto_start": False, "max_per_owner": 1})
+    cfg = make_cluster(tmp_path, monkeypatch,
+                       labs={"auto_start": False, "max_per_owner": 1,
+                             "coder_enabled": True},
+                       network={"lab_model": "openai/gpt-5.6-sol"})
     scripts: dict = {"replies": []}
     ctx = ClusterContext(cfg, tracks=load_tracks(cfg.tracks_path),
                          client_factory=lambda budget: ScriptedClient(scripts["replies"], budget=budget))
@@ -68,6 +71,7 @@ def test_intake_md_and_config(hub):
     assert f"Hub: http://127.0.0.1:{port}" in body["raw"]
     assert 'curl -fsS -H "Authorization: Bearer $TOKEN"' in body["raw"]
     assert "Do not ask for the event join code or try to join again." in body["raw"]
+    assert "python -m efferents.cluster.opencode_setup" in body["raw"]
     joined, hdrs = _join(port, "Ada")
     assert joined["cluster"]["network_token"] == joined["owner_link"].split("=")[1]
     status, config, _ = _request(port, "/api/network/config", headers=_bearer(joined))
@@ -234,6 +238,12 @@ def test_azure_config_and_proxy_token_boundary(hub, monkeypatch):
     assert status == 200
     assert config["env"]["OPENAI_API_KEY"] == ada["cluster"]["network_token"]
     assert config["env"]["EFFERENTS_API_BASE"].endswith("/proxy/openai/v1")
+    assert {config["env"][key] for key in (
+        "EFFERENTS_MODEL", "EFFERENTS_MODEL_LIBRARIAN", "EFFERENTS_MODEL_REVIEWER",
+        "EFFERENTS_MODEL_REBUTTAL", "EFFERENTS_MODEL_SUPERVISOR",
+        "EFFERENTS_MODEL_ANALYST", "EFFERENTS_MODEL_CODER",
+    )} == {"openai/gpt-5.6-sol"}
+    assert config["lab_yaml"]["autonomy"]["coder_enabled"] is True
     assert "ANTHROPIC_API_KEY" not in config["env"]
     assert "azure-host-key" not in json.dumps(config)
 
@@ -254,6 +264,53 @@ def test_azure_config_and_proxy_token_boundary(hub, monkeypatch):
     conn.request("POST", "/proxy/openai/v1/chat/completions", body=body,
                  headers={"Authorization": "Bearer bogus"})
     assert conn.getresponse().status == 401
+
+
+def test_azure_responses_stream_keeps_tool_reasoning_and_records_usage(hub, monkeypatch):
+    port, ctx, _, _, upstream = hub
+    monkeypatch.setenv("EFFERENTS_AZURE_OPENAI_ENDPOINT",
+                       "https://resource.openai.azure.com/openai/v1")
+    monkeypatch.setenv("OPENAI_API_KEY", "azure-host-key")
+    ada, _ = _join(port, "Ada")
+
+    class FakeSSE(io.BytesIO):
+        status = 200
+
+        def __init__(self):
+            completed = {"type": "response.completed", "response": {
+                "usage": {"input_tokens": 10, "output_tokens": 5}}}
+            super().__init__(("data: " + json.dumps(completed) + "\n\n").encode())
+            self.headers = Message()
+            self.headers["Content-Type"] = "text/event-stream"
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    def opener(req, timeout=0):
+        upstream.append(req)
+        return FakeSSE()
+
+    ctx.proxy._open = opener
+    request = {"model": "gpt-5.6-sol", "stream": True,
+               "input": [{"role": "user", "content": "hi"}],
+               "tools": [{"type": "function", "name": "read_file",
+                          "parameters": {"type": "object", "properties": {}}}]}
+    status, response, headers = _request(
+        port, "/proxy/openai/v1/responses", method="POST", payload=request,
+        headers=_bearer(ada),
+    )
+    assert status == 200 and "response.completed" in response["raw"]
+    assert headers["content-type"].startswith("text/event-stream")
+    assert upstream[-1].full_url.endswith("/openai/v1/responses")
+    forwarded = json.loads(upstream[-1].data)
+    assert forwarded["reasoning"] == {"effort": "high"}
+    assert forwarded["tools"] == request["tools"]
+    assert forwarded["max_output_tokens"] == 32768
+    assert upstream[-1].get_header("Api-key") == "azure-host-key"
+    assert ctx.proxy.spend(ada["owner"]["id"]) > 0
 
 
 def test_network_publications_require_a_persisted_three_score_journal(hub):

@@ -90,6 +90,7 @@ class LabPolicy:
     # False: every lab runs on its owner's laptop; the hub never creates or
     # starts a lab on the host.
     hosted: bool = True
+    coder_enabled: bool = False
 
 
 @dataclass(frozen=True)
@@ -134,6 +135,8 @@ class NetworkPolicy:
     heartbeat_s: float = 30.0
     pull_s: float = 120.0
     stale_after_s: float = 180.0
+    # Optional event-wide override for every lab model role.
+    lab_model: str | None = None
 
 
 @dataclass(frozen=True)
@@ -265,6 +268,7 @@ labs:
   max_per_owner: 2                  # 0: no limit, only the budget
   auto_start: true
   hosted: true                      # false: labs run only on participants' laptops
+  coder_enabled: false              # allow the autonomous Coder in participant labs
 
 caps:
   cluster_total_usd: 20.0           # intake + every lab ledger + reviews; freeze at this.
@@ -314,6 +318,7 @@ proxy:
 network:
   repo_url: https://github.com/Entangled-Research/efferents-events
   install_ref: main                 # branch participants install (e.g. glasgow, london)
+  # lab_model: openai/gpt-5.6-sol   # use one model for every lab agent role
   heartbeat_s: 30
   pull_s: 120
   stale_after_s: 180                # heartbeat age after which a lab shows as stale
