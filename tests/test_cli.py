@@ -222,7 +222,7 @@ def _sample(tmp_path, monkeypatch):
     return sub
 
 
-def test_foreground_then_detach_then_status_stop_survives_concurrent_readers(
+def test_daemon_lifecycle_with_readers(
     tmp_path, monkeypatch, capsys
 ):
     """Regression for the 2026-09-07 session: a bounded foreground run, then a

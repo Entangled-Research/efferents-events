@@ -27,7 +27,7 @@ def intake(tmp_path, monkeypatch):
     return paths
 
 
-def test_related_approaches_become_tracks_with_preserved_budget_and_provenance(intake):
+def test_related_approaches_become_tracks(intake):
     target, incoming = intake
     before = LabConfig.from_submission(target)
     result = routing.route(incoming, apply=True, student_id="bob", use_model=False)

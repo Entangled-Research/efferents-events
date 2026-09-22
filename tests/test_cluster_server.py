@@ -203,7 +203,7 @@ def laptop_only_server(tmp_path, monkeypatch):
     httpd.server_close()
 
 
-def test_hosted_off_never_creates_a_lab_on_the_host(laptop_only_server):
+def test_hosted_off_refuses_lab_creation(laptop_only_server):
     port, ctx, scripts, cfg = laptop_only_server
     body, ada = _join(port, "Ada")
     assert body["cluster"]["hosted_labs"] is False

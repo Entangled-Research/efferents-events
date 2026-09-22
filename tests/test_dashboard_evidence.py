@@ -6,7 +6,7 @@ from efferents.dashboard import reader
 from efferents.lab import Evidence
 
 
-def test_visual_evidence_uses_observation_contract_and_opaque_artifact_tokens(
+def test_visual_evidence_contract(
     tmp_path, smoke_lab_config
 ):
     samples = smoke_lab_config.source.dir / "samples"

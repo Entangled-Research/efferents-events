@@ -160,7 +160,7 @@ def test_cap_blocks_third_open_campaign(
     assert len(campaign_open_list(paths.runs_db, "qfm-diffusion")) == 2
 
 
-def test_gate_reject_drops_new_campaign_but_keeps_proposals_only_if_existing_campaign(
+def test_gate_reject_keeps_proposals_for_existing_campaign(
     paths, fake_anthropic_factory, tmp_path, monkeypatch
 ):
     from efferents.agents import popper_gate

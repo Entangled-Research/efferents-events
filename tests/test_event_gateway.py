@@ -149,7 +149,7 @@ def test_network_marks_silent_running_lab_stale_without_deleting_history(store):
         assert conn.execute("SELECT COUNT(*) FROM snapshot_history").fetchone()[0] == 1
 
 
-def test_remote_exchange_consent_identity_provenance_and_cross_domain_cadence(store):
+def test_remote_exchange_provenance(store):
     def enroll(name, domain="routing", goal=""):
         return store.join({**join_payload(name), "domain": domain, "goal": goal, "share_findings": True})
     author = enroll("author", goal="Shared objective")
@@ -240,7 +240,7 @@ def test_online_backup_is_private_and_restorable(store, tmp_path):
     ("openai/event-deep", "deep-model"),
 ])
 @pytest.mark.parametrize("with_tools", [False, True])
-def test_model_proxy_uses_vendor_key_and_accounts_usage_without_storing_prompt(
+def test_model_proxy_accounts_usage(
     store, monkeypatch, alias, deployment, with_tools
 ):
     seen = {}

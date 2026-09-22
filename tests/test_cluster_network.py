@@ -263,7 +263,7 @@ def test_network_publications_require_a_persisted_three_score_journal(hub):
     assert rows[0]["review_scores"] == {"critical": 6, "neutral": 7, "optimistic": 8}
 
 
-def test_zero_labs_per_owner_means_only_the_budget_limits(tmp_path, monkeypatch):
+def test_zero_lab_limit_is_unlimited(tmp_path, monkeypatch):
     make_popper_repo(monkeypatch, tmp_path)
     cfg = make_cluster(tmp_path, monkeypatch, labs={"auto_start": False, "max_per_owner": 0})
     ctx = ClusterContext(cfg, tracks=load_tracks(cfg.tracks_path),

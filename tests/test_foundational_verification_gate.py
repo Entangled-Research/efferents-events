@@ -55,7 +55,7 @@ def test_all_foundational_dependencies_must_be_verified(tmp_path):
     ]
 
 
-def test_reproduction_may_target_its_unverified_paper_but_not_bypass_others(tmp_path):
+def test_reproduction_targets(tmp_path):
     paper = tmp_path / "paper"
     own_reproduction = _proposal(reproduction_of={
         "lab_id": "lab-a", "campaign_id": "paper-1",

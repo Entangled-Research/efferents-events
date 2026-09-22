@@ -129,7 +129,7 @@ def test_offline_sync_keeps_latest_sanitized_snapshot(tmp_path, monkeypatch):
     assert "token" not in queued and "source" not in queued and "prompt" not in queued
 
 
-def test_heartbeat_refreshes_after_success_and_reuses_key_after_failed_delivery(
+def test_heartbeat_key_reuse(
     tmp_path, monkeypatch
 ):
     sub = make_submission(tmp_path)

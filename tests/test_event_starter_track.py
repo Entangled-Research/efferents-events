@@ -13,7 +13,7 @@ from efferents.cluster.tracks import validate_track
 TRACK = Path(__file__).resolve().parents[1] / "tracks" / "evacuation"
 
 
-def test_evacuation_track_validates_without_preset_hypothesis_or_falsifiers():
+def test_track_validates_without_hypothesis():
     track = validate_track(TRACK)
     assert track.id == "evacuation"
     assert track.domain == "multi-agent-routing"
