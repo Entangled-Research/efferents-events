@@ -28,11 +28,12 @@ def test_cluster_endpoints():
 
 def test_harness_first():
     assert 'href="#join" data-route-link="join" data-cluster-only' in HTML
-    assert "Connect a lab" in HTML
+    assert 'href="#intake" data-route-link="intake" data-hosted-only' in HTML
     assert "New lab</a>" not in HTML
-    assert "Optional" in HTML.split('id="intake-view"', 1)[1][:600]
+    for step in ("1 · Open your harness", "2 · Give it your network token", "3 · Sharpen and steer"):
+        assert step in HTML, step
+    assert 'return isCluster() ? "join" : "connect";' in JS
     assert 'href="#join">connect one from your harness' in JS
-    assert "Use my approved browser intake session" in JS
 
 
 def test_css_cluster_marks():

@@ -22,7 +22,7 @@
     <nav class="workspace-nav" aria-label="Lab gateway">
       <a href="#connect" data-route-link="connect" data-local-only>Connect</a>
       <a href="#join" data-route-link="join" data-cluster-only hidden>Connect a lab</a>
-      <a href="#intake" data-route-link="intake" data-cluster-only hidden>Sharpen an idea</a>
+      <a href="#intake" data-route-link="intake" data-hosted-only hidden>Sharpen an idea</a>
       <a href="#network" data-route-link="network">Network</a>
       <button id="lab-rail-toggle" class="rail-toggle" type="button" aria-controls="lab-rail"
               aria-expanded="false" hidden>Labs <span id="lab-rail-toggle-count">0</span></button>
@@ -80,51 +80,72 @@
       <div class="route-intro">
         <div class="route-kicker" id="join-kicker">Join</div>
         <h1 id="join-title">Join the lab network</h1>
-        <p class="route-lede">
-          One join code for the room. Pick the name other labs will see next to
-          yours. Keep the owner link you get back: it is how you return as yourself.
+        <p class="route-lede" id="join-lede">
+          One join code for the room. Pick the name other labs will see next to yours.
         </p>
       </div>
-      <section class="panel join-panel" aria-labelledby="join-form-title">
+      <section class="panel join-panel" id="join-panel" aria-labelledby="join-form-title">
         <header class="panel-header"><h2 id="join-form-title">Who is steering?</h2></header>
-        <form id="join-form" class="join-form">
-          <label class="field-label" for="join-code">Join code</label>
-          <input id="join-code" name="code" type="text" autocomplete="off" required
-                 spellcheck="false">
-          <label class="field-label" for="join-name">Your name</label>
-          <input id="join-name" name="name" type="text" maxlength="40" required
-                 autocomplete="nickname">
-          <button id="join-submit" class="primary-button" type="submit">Join</button>
-        </form>
-        <div id="join-message" class="form-message" role="status" aria-live="polite"></div>
-        <div id="join-result" class="join-result" hidden>
-          <span class="field-label">Your owner link</span>
-          <code id="owner-link"></code>
-          <button id="copy-owner-link" class="compact-button" type="button">Copy</button>
-          <p class="hint">Keep this link. Anyone with it can steer your labs.</p>
+        <div class="join-body">
+          <form id="join-form" class="join-form">
+            <label class="field-label" for="join-code">Join code</label>
+            <input id="join-code" name="code" type="text" autocomplete="off" required
+                   spellcheck="false">
+            <label class="field-label" for="join-name">Your name</label>
+            <input id="join-name" name="name" type="text" maxlength="40" required
+                   autocomplete="nickname">
+            <button id="join-submit" class="primary-button" type="submit">Join</button>
+          </form>
+          <div id="join-message" class="form-message" role="status" aria-live="polite"></div>
         </div>
       </section>
-      <section class="panel join-panel" id="terminal-panel" aria-labelledby="terminal-title" hidden>
-        <header class="panel-header"><h2 id="terminal-title">Connect your lab from your harness</h2></header>
-        <p class="hint">
-          Your labs live on your own machine and join the network from there: one folder per
-          lab, your own data, your own hardware. Open your coding harness (opencode, Claude
-          Code, Codex, or a web agent that can read a URL) in an empty folder and paste this
-          one instruction:
-        </p>
-        <code id="terminal-instruction" class="instruction-line"></code>
-        <button id="copy-terminal-instruction" class="compact-button" type="button">Copy instruction</button>
-        <p class="hint">When the agent asks for your network token, give it this (never share it):</p>
-        <code id="network-token"></code>
-        <button id="copy-network-token" class="compact-button" type="button">Copy token</button>
-        <p class="hint">
-          The harness builds the lab and you steer it there. The lab's research model calls
-          are paid by the event through this hub; the hub shows your lab on the network.
-          Optional: <a href="#intake">sharpen your idea</a> in the browser first and give the
-          harness the session id it prints.
-          <span data-hosted-only hidden>No laptop? Use <a href="#intake">Sharpen an idea</a> to run it here instead.</span>
-        </p>
-      </section>
+      <div id="connect-steps" class="connect-steps" hidden>
+        <section class="panel join-panel" id="terminal-panel" aria-labelledby="terminal-title">
+          <header class="panel-header"><h2 id="terminal-title">1 · Open your harness and paste this</h2></header>
+          <div class="join-body">
+            <p class="hint">
+              Your labs live on your own machine: one folder per lab, your own data, your own
+              hardware. Open your coding harness (opencode, Claude Code, Codex, or a web agent
+              that can read a URL) in an empty folder and paste this one instruction:
+            </p>
+            <code id="terminal-instruction" class="instruction-line"></code>
+            <button id="copy-terminal-instruction" class="compact-button" type="button">Copy instruction</button>
+          </div>
+        </section>
+        <section class="panel join-panel" aria-labelledby="token-title">
+          <header class="panel-header"><h2 id="token-title">2 · Give it your network token when it asks</h2></header>
+          <div class="join-body">
+            <code id="network-token" class="instruction-line"></code>
+            <button id="copy-network-token" class="compact-button" type="button">Copy token</button>
+            <p class="hint">
+              The token is you. It pays for your lab's research model calls from the event
+              budget and marks the lab as yours on the network. Never share it.
+            </p>
+          </div>
+        </section>
+        <section class="panel join-panel" aria-labelledby="steer-title">
+          <header class="panel-header"><h2 id="steer-title">3 · Sharpen and steer from that folder</h2></header>
+          <div class="join-body">
+            <p class="hint">
+              The harness sharpens your claim until it can fail, builds the lab, and starts it.
+              Your lab appears on the network within a minute. From then on, its direction is
+              set in the lab folder, not in the browser:
+            </p>
+            <pre class="instruction-line">efferents steer --submission . "Prioritise the small buckets."
+efferents steer --submission . --pause     # or --resume
+efferents stop  --submission .</pre>
+            <p class="hint">
+              Come back as yourself with your owner link. Anyone with it can act as you.
+            </p>
+            <code id="owner-link" class="instruction-line"></code>
+            <button id="copy-owner-link" class="compact-button" type="button">Copy owner link</button>
+            <p class="hint" data-hosted-only hidden>
+              No laptop? <a href="#intake">Sharpen an idea</a> runs the dialogue and the lab on
+              the event server instead.
+            </p>
+          </div>
+        </section>
+      </div>
     </section>
 
     <section id="intake-view" class="app-view" data-route-view="intake" hidden>

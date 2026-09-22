@@ -2548,7 +2548,26 @@ td.status-insufficient_data {
 /* --- join and intake views (hosted clusters) -------------------------------- */
 
 .join-panel {
-  max-width: 520px;
+  max-width: 720px;
+}
+
+.join-body {
+  display: grid;
+  gap: 12px;
+  padding: 16px 18px 18px;
+}
+
+.join-body .compact-button {
+  justify-self: start;
+}
+
+.connect-steps {
+  display: grid;
+  gap: 22px;
+}
+
+pre.instruction-line {
+  white-space: pre-wrap;
 }
 
 .join-form,
@@ -2729,7 +2748,7 @@ td.status-insufficient_data {
 .instruction-line,
 #network-token {
   display: block;
-  margin: 6px 0;
+  margin: 0;
   padding: 8px 10px;
   border: 1px solid var(--line);
   background: var(--panel);

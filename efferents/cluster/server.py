@@ -124,7 +124,7 @@ class ClusterHandler(DashboardHandler):
             owner = self.cluster.owner_from_token(token)
             if owner is not None:
                 self._set_owner_cookie(owner)
-                return self._redirect("/#network")
+                return self._redirect("/#join")
             return self._redirect("/#join")
         return super().do_GET()
 

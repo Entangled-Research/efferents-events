@@ -96,7 +96,7 @@ def test_owner_link_redirect_sets_cookie(cluster_server):
     port, *_ = cluster_server
     body, _ = _join(port)
     status, _, headers = _request(port, body["owner_link"])
-    assert status == 302 and headers["location"] == "/#network"
+    assert status == 302 and headers["location"] == "/#join"
     assert "efferents_owner=" in headers.get("set-cookie", "")
     status, _, headers = _request(port, "/?owner=bogus")
     assert status == 302 and headers["location"] == "/#join"

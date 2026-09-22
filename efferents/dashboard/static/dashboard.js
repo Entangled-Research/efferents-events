@@ -192,13 +192,8 @@ function currentRoute() {
   if (route === "steer") return "observe";
   const known = ["connect", "observe", "network", "join", "intake"];
   if (known.includes(route)) return route;
-  if (isCluster()) {
-    // The harness is the way onto the network: until this person has a lab,
-    // the instruction and token are what they need first.
-    const mine = (controlState.session && controlState.session.my_labs) || [];
-    return isJoined() && mine.length === 0 ? "join" : "network";
-  }
-  return "connect";
+  // Hosted events land on the connect page: the harness is the way onto the network.
+  return isCluster() ? "join" : "connect";
 }
 
 function renderRoute() {
@@ -209,15 +204,16 @@ function renderRoute() {
       route = "join";
     } else if (route === "join") {
       renderTerminalPanel(controlState.session);
-      document.getElementById("join-form").hidden = true;
-      text("join-kicker", "Connect");
+      document.getElementById("join-panel").hidden = true;
+      text("join-kicker", "Connect a lab");
       text("join-title", `You are in, ${(controlState.session.owner || {}).name || "friend"}`);
+      text("join-lede", "Three steps put a lab of yours on the network. Everything runs on your machine; the event pays for the model calls.");
     } else if (route === "connect") {
       route = "network";
     } else if (route === "observe" && controlState.hydrated && !controlState.connected) {
       route = "network";
     }
-  } else if (["join", "intake"].includes(route)) {
+  } else if (controlState.hydrated && ["join", "intake"].includes(route)) {
     route = "connect";
   } else if (controlState.hydrated && !controlState.connected && !["connect", "network"].includes(route)) {
     route = "connect";
@@ -1847,16 +1843,11 @@ function initJoinForm() {
       });
       if (result.csrf_token) csrfToken = result.csrf_token;
       controlState.session = result.cluster || { joined: true };
-      const link = `${window.location.origin}${result.owner_link}`;
-      text("owner-link", link);
-      document.getElementById("join-result").hidden = false;
-      showMessage("join-message", `Welcome, ${result.owner.name}.`, "success");
-      renderTerminalPanel(result.cluster || {});
-      controlState.session = result.cluster || { joined: true };
       controlState.mode = "cluster";
       controlState.hydrated = true;
+      // Stay on this page: it now shows the instruction and token they need next.
+      renderRoute();
       await refreshPortfolio().catch(() => {});
-      // Stay on this page: the instruction and token are what they need next.
     } catch (error) {
       showMessage("join-message", error.message, "error");
     } finally {
@@ -1884,14 +1875,15 @@ function initJoinForm() {
 }
 
 function renderTerminalPanel(session) {
-  const panel = document.getElementById("terminal-panel");
+  const steps = document.getElementById("connect-steps");
   if (!session || !session.network_token) {
-    panel.hidden = true;
+    steps.hidden = true;
     return;
   }
   text("terminal-instruction", `Read ${window.location.origin}/intake.md and follow it`);
   text("network-token", session.network_token);
-  panel.hidden = false;
+  text("owner-link", `${window.location.origin}${session.owner_link || `/?owner=${session.network_token}`}`);
+  steps.hidden = false;
 }
 
 // --- hosted cluster: intake dialogue ------------------------------------------
