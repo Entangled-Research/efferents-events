@@ -23,7 +23,7 @@ def test_load_defaults_and_cadence(tmp_path):
     cc.init_cluster(root)
     cfg = cc.load_cluster_config(root)
     assert cfg.name == "Research lab night" and cfg.join_code == "change-me"
-    assert cfg.labs.total_cap_usd == 3.0 and cfg.labs.max_per_owner == 2
+    assert cfg.labs.total_cap_usd == 10.0 and cfg.labs.max_per_owner == 2
     assert cfg.caps.cluster_total_usd == 20.0
     assert cfg.cadence.runs_per_digest == 3 and cfg.cadence_raw["runs_per_paper"] == 5
     assert cfg.tracks_path == root / "tracks"

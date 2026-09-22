@@ -403,6 +403,79 @@ th {
   color: var(--bg);
 }
 
+.lab-create-action {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.primary-button .button-spinner {
+  display: none;
+}
+
+.routing-progress .button-spinner {
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  border: 2px solid var(--signal);
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: lab-create-spin .75s linear infinite;
+}
+
+.primary-button.is-loading {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.primary-button.is-loading .button-spinner {
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: lab-create-spin .75s linear infinite;
+}
+
+.action-progress {
+  color: var(--dim);
+  font: 10px/1.4 var(--mono);
+  letter-spacing: .02em;
+}
+
+.routing-progress,
+.route-decision {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  font: 12px/1.5 var(--mono);
+}
+
+.routing-progress {
+  grid-template-columns: auto 1fr;
+  align-items: center;
+}
+
+.route-decision.existing { border-left: 3px solid var(--data); }
+.route-decision.new { border-left: 3px solid var(--mustard); }
+.route-decision small { color: var(--dim); }
+.route-decision p { margin: 0; }
+.token-details { margin-top: 12px; }
+.token-details summary { cursor: pointer; font: 11px/1.5 var(--mono); }
+.token-details code { display: block; overflow-wrap: anywhere; margin: 8px 0; }
+
+@keyframes lab-create-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .primary-button.is-loading .button-spinner { animation-duration: 1.5s; }
+}
+
 .primary-button:hover:not(:disabled) {
   background: var(--signal);
   border-color: var(--signal);

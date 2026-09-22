@@ -864,8 +864,7 @@ def _cmd_cluster(args: argparse.Namespace) -> int:
             print(f"track {track.id}: ok ({len(track.columns)} column(s), "
                   f"domain={track.domain or 'from lab.yaml'})")
         if not tracks:
-            print("tracks: none loaded (participants cannot create labs)", file=sys.stderr)
-            problems += 1
+            print("tracks: none loaded (new executors are built on participant laptops)")
         key_env = required_key_env(cfg.model)
         if credentials_available(cfg.model):
             print(f"credentials: present for {cfg.model}")

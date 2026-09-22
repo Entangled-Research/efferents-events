@@ -104,6 +104,17 @@ mutations. Single-user onboarding, trial and observe-peer endpoints are disabled
 in cluster mode; participant intake and owner-scoped lab endpoints remain the
 supported paths. The organizer owns event resources, not participants' findings.
 
+After a browser hypothesis is approved, the hub performs a conservative executor
+compatibility check automatically. A configured track is selected only at high
+confidence and only when its actual intervention and reported metrics can test the
+claim. Topic similarity alone never justifies reuse. When no executor fits, the
+session records a `new` route and hands the approved session to the participant's
+coding harness, which builds and validates a new evaluator on their laptop. The UI
+must not ask participants to choose from unrelated demo tracks. Hosted execution is
+an explicit fallback for a compatible executor; participant-owned compute is the
+primary path. Provider credentials remain on the hub and local labs call Azure
+through their owner-scoped proxy token.
+
 The isolated Docker Events hub in `deploy/events` listens on loopback 8810 and
 uses its own persistent volume. It must not overwrite the framework gateway on
 8800. Deployment can expose the join screen while the cluster is frozen; no live

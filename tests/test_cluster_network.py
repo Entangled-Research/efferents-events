@@ -73,6 +73,8 @@ def test_intake_md_and_config(hub):
     assert config["env"]["ANTHROPIC_BASE_URL"].endswith("/proxy/anthropic")
     assert config["env"]["EFFERENTS_NETWORK_TOKEN"] == joined["cluster"]["network_token"]
     assert config["lab_yaml"]["cadence"]["runs_per_digest"] == 3
+    assert config["lab_yaml"]["routing"]["owner"] == joined["owner"]["id"]
+    assert config["lab_yaml"]["routing"]["pool"].startswith("event:")
     assert config["tracks"][0]["id"] == "coefficient-sweep"
     assert "efferents-events" in config["install"]["pip_spec"]
     # Without a token the machine endpoints are closed.

@@ -46,11 +46,9 @@ Configure tracks, provider keys and budgets using the
 uv run efferents cluster check ./cluster
 ```
 
-The [congestion-aware evacuation starter](tracks/evacuation/track.yaml) is a
-CPU-only event track. It compares static and congestion-aware routing on
-paired synthetic scenarios; it is not real-world evacuation guidance. The
-host setup seeds this track once into the persistent cluster directory and
-never overwrites organizer edits on later releases.
+An approved idea is matched automatically to a compatible executor track.
+When none fits, the participant's coding harness builds a new evaluator on
+their laptop; the hub never forces an unrelated hypothesis into a demo track.
 
 For the event, use the guide's HTTPS deployment and services for the hub,
 supervision, shared journal and backups. Follow the

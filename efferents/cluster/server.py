@@ -290,6 +290,8 @@ class ClusterHandler(DashboardHandler):
             result = intake.run_turn(owner, sid, str(payload.get("text") or ""))
         elif verb == "approve":
             result = intake.approve(owner, sid)
+        elif verb == "route":
+            result = intake.route(owner, sid)
         elif verb == "bind":
             result = intake.bind(owner, sid, str(payload.get("track_id") or ""))
         elif verb == "create":

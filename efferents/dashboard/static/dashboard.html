@@ -124,8 +124,8 @@
         <h1>Sharpen a claim until it can fail</h1>
         <p class="route-lede">
           A Popperian probe pushes back on your idea, one question at a time, until
-          it has a falsifier an experiment could trip. Then you pick an executor
-          track and the falsifier is mapped onto the numbers that track reports.
+          it has a falsifier an experiment could trip. Efferents then routes it to
+          a compatible executor, or prepares a new lab for your coding harness.
         </p>
       </div>
       <div class="intake-grid">
@@ -160,20 +160,38 @@
             </button>
           </section>
           <section class="panel" id="track-panel" aria-labelledby="track-title" hidden>
-            <header class="panel-header"><h2 id="track-title">2 · Choose a track</h2></header>
+            <header class="panel-header"><h2 id="track-title">2 · Automatic routing</h2></header>
             <div id="track-picker" class="track-picker"></div>
-            <button id="intake-bind" class="primary-button" type="button" disabled>
-              Map falsifier onto this track
-            </button>
+            <button id="intake-bind" class="primary-button" type="button" hidden disabled>Route again</button>
+          </section>
+          <section class="panel" id="harness-panel" aria-labelledby="harness-title" hidden>
+            <header class="panel-header"><h2 id="harness-title">3 · Build on your laptop</h2></header>
+            <p id="harness-route-note" class="hint"></p>
+            <p class="hint">Open your preferred coding harness in an empty folder and paste:</p>
+            <code id="harness-instruction" class="instruction-line"></code>
+            <button id="copy-harness-instruction" class="primary-button" type="button">Copy harness instruction</button>
+            <details class="token-details">
+              <summary>Network token</summary>
+              <code id="harness-network-token"></code>
+              <button id="copy-harness-token" class="compact-button" type="button">Copy token</button>
+            </details>
+            <p class="hint">Your harness builds the evaluator and downloads any required data locally. Model calls go through the event server.</p>
           </section>
           <section class="panel" id="binding-panel" aria-labelledby="binding-title" hidden>
-            <header class="panel-header"><h2 id="binding-title">3 · Confirm and create</h2></header>
+            <header class="panel-header"><h2 id="binding-title">3 · Confirm executor</h2></header>
             <p id="binding-rationale" class="hint"></p>
             <div id="binding-rules" class="binding-rules"></div>
             <div id="binding-note" class="form-message" hidden></div>
             <label class="field-label" for="intake-lab-id">Lab id</label>
             <input id="intake-lab-id" type="text" maxlength="128" spellcheck="false">
-            <button id="intake-create" class="primary-button" type="button">Create lab</button>
+            <div class="lab-create-action">
+              <button id="intake-create" class="primary-button" type="button" aria-busy="false">
+                <span id="intake-create-spinner" class="button-spinner" aria-hidden="true"></span>
+                <span id="intake-create-label">Create lab</span>
+              </button>
+              <span id="intake-create-progress" class="action-progress" role="status" aria-live="polite" hidden></span>
+            </div>
+            <p class="hint">Server execution is a fallback. Use the laptop option above for participant-owned compute.</p>
             <div id="intake-create-message" class="form-message" role="status"></div>
           </section>
         </aside>
@@ -204,7 +222,7 @@
                aria-labelledby="intake-tab-idea" data-intake-panel="idea">
             <form id="onboard-form" class="connector-form">
               <label for="onboard-idea">What would you like to explore? <small>Optional</small></label>
-              <textarea id="onboard-idea" rows="3" maxlength="4000" placeholder="Try another approach to congestion, or explore numerical integration."></textarea>
+              <textarea id="onboard-idea" rows="3" maxlength="4000" placeholder="Describe the question and measurable outcome you want to test."></textarea>
               <label for="onboard-mode">How should this lab participate?</label>
               <select id="onboard-mode">
                 <option value="independent">Independent lab · occasional cross-domain observations</option>
@@ -220,7 +238,6 @@
                 <label for="onboard-starter">First executable experiment</label>
                 <select id="onboard-starter">
                   <option value="auto">Infer from my idea</option>
-                  <option value="evacuation">Congestion-aware evacuation · routing</option>
                   <option value="integration">Numerical integration · analytic ground truth</option>
                 </select>
                 <label for="onboard-approach">Approach <small>Optional</small></label>
@@ -228,7 +245,7 @@
               </details>
               <label class="execution-confirm"><input id="onboard-exchange" type="checkbox" checked>
                 <span>Share experiment claims and bounded findings with labs in this private workspace.</span></label>
-              <p class="form-hint">Three real CPU experiments on this machine, no model calls. Inferred choices are saved for review. Evacuation is the fallback starter; custom domains use Submit a repo. Agent runs later use a $1 daily / $2 total cap; code changes await review.</p>
+              <p class="form-hint">Three real CPU experiments on this machine, no model calls. Inferred choices are saved for review. Custom domains use your coding harness to build a relevant evaluator.</p>
               <div class="onboard-actions">
                 <button id="onboard-run" class="primary-button" type="submit">Infer defaults and run</button>
                 <button id="onboard-create" class="secondary-button" type="button">Create without running</button>

@@ -113,9 +113,10 @@ snapshot of the droplet the evening before the event.
    you will put on a slide, per-lab and cluster caps, cadence. Set
    `network.install_ref` to the same tested commit or event branch used by
    the host; otherwise terminal participants may install an older `main`.
-5. Add tracks under `/srv/efferents/cluster/tracks/<id>/` (contract below).
-   This event branch seeds the `evacuation` starter track on first setup.
-   Review its synthetic-simulation disclaimer and test it before attendees join.
+5. Add only real, event-approved tracks under
+   `/srv/efferents/cluster/tracks/<id>/` (contract below). An empty catalogue is
+   valid: unrelated ideas are handed to the participant's coding harness to
+   build a new local executor.
 6. Validate and start:
 
    ```bash
@@ -164,8 +165,9 @@ current price and deployment type in Azure before setting the event budget.
 Do not reuse older Sonnet-based cost projections for this lineup.
 
 The shipped `cluster.yaml` defaults are **rehearsal values**: cluster cap $20,
-$3 per lab, $1 of intake per person. Raise them for the event; set the
-an Azure budget alert below your available credit and check actual usage in
+$10 per lab, $10 of laptop proxy use per owner, and $1 of intake per person.
+Raise the cluster cap for a multi-lab event; set an Azure budget alert below
+your available credit and check actual usage in
 Azure Cost Management during rehearsal. Azure budgets alert; the event's own
 caps are the active stop mechanism.
 
@@ -203,10 +205,9 @@ sudo systemctl restart efferents-cluster efferents-keeper efferents-sync
 Daemons keep running from the release they were started in. Restart them
 (`efferents cluster restart-all --stagger 3`) only if daemon-side code changed.
 The hosted web server picks up the new release after its service restart;
-refresh the browser normally. The persistent `cluster/tracks/evacuation`
-directory is deliberately not overwritten by a release update. To change an
-already-installed track, review and update that directory separately, then
-run `efferents cluster check` before restarting the web service.
+refresh the browser normally. Persistent tracks are never overwritten by a
+release update. To change an installed track, review and update that directory
+separately, then run `efferents cluster check` before restarting the web service.
 
 ## Rehearsing from a laptop
 

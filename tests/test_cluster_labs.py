@@ -46,7 +46,7 @@ def test_create_lab_materialises_valid_submission(cluster):
     assert dest.is_dir() and lab.owner_id == ada.owner_id and lab.track == "coefficient-sweep"
     reloaded = LabConfig.from_submission(dest)
     assert reloaded.lab_id == lab.cfg.lab_id
-    assert reloaded.budget.total_cap_usd == 3.0 and reloaded.budget.daily_cap_usd == 3.0
+    assert reloaded.budget.total_cap_usd == 10.0 and reloaded.budget.daily_cap_usd == 10.0
     assert reloaded.cadence.runs_per_digest == 3
     assert reloaded.falsifiers[0].id == "F1"
     assert reloaded.autonomy.coder_enabled is False

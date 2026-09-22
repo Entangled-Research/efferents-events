@@ -82,7 +82,9 @@ class IntakeLimits:
 
 @dataclass(frozen=True)
 class LabPolicy:
-    total_cap_usd: float = 3.0
+    # Azure-backed event labs have enough headroom for a useful bounded run.
+    # The cluster-wide cap remains the separate event-level stop mechanism.
+    total_cap_usd: float = 10.0
     max_per_owner: int = 2
     auto_start: bool = True
 
@@ -117,8 +119,8 @@ class SyncPolicy:
 @dataclass(frozen=True)
 class ProxyLimits:
     """Organizer-paid model calls made by participants' local daemons."""
-    cap_per_owner_usd: float = 3.0
-    cap_total_usd: float = 15.0
+    cap_per_owner_usd: float = 10.0
+    cap_total_usd: float = 20.0
 
 
 @dataclass(frozen=True)
@@ -256,7 +258,7 @@ intake:
   message_max_chars: 4000
 
 labs:
-  total_cap_usd: 3.0                # per lab; also its daily cap so the lifetime halt wins
+  total_cap_usd: 10.0               # per lab; also its daily cap so the lifetime halt wins
   max_per_owner: 2
   auto_start: true
 
@@ -303,8 +305,8 @@ session:
 # come through this hub (proxy) with the organizer's key.
 public_url: ""                      # e.g. https://event.example.org — used in intake.md
 proxy:
-  cap_per_owner_usd: 3.0            # model spend per participant through the proxy
-  cap_total_usd: 15.0
+  cap_per_owner_usd: 10.0           # model spend per participant through the proxy
+  cap_total_usd: 20.0
 network:
   repo_url: https://github.com/Entangled-Research/efferents-events
   install_ref: main                 # branch participants install (e.g. glasgow, london)

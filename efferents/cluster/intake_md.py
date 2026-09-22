@@ -51,7 +51,21 @@ curl -sS -H "Authorization: Bearer $TOKEN" {hub_url}/api/network/config > .event
 It contains the `env` block for `.env`, the `lab_yaml` block (budget,
 cadence, autonomy) and the list of `tracks`. Keep it; step 5 uses it.
 
-## 3. Create the first falsifiable hypothesis (with the human)
+## 3. Load or create the first falsifiable hypothesis
+
+If the human gives you an approved browser intake session id, reuse that work:
+
+```bash
+curl -sS -H "Authorization: Bearer $TOKEN" \\
+  {hub_url}/api/intake/sessions/<session_id> > .browser-intake.json
+python3 -c 'import json; print(json.load(open(".browser-intake.json"))["draft"]["text"])' > hypothesis.md
+```
+
+Confirm that the returned session belongs to this owner, is `approved` or
+`bound`, and its draft has `valid: true` and `gate: passed`. Copy it to
+`popper-corpus/<slug>/hypothesis.md`. Do not make the human repeat the dialogue.
+
+If there is no approved browser session, run the intake dialogue below.
 
 Run the popper-probe intake dialogue WITH the human. Use the
 `popper-probe:intake` skill if installed; otherwise read and follow
@@ -78,10 +92,16 @@ python3 .popper-probe/scripts/validate_hypothesis.py popper-corpus/<slug>/hypoth
 Copy the approved file to `./hypothesis.md`. If the gate fails, help the human
 reformulate; do not build a lab around an unfalsifiable claim.
 
-## 4. Pick a track
+## 4. Route to an executor or build a new one
 
-Show the human the tracks from `.event-config.json` (title, summary, what
-they vary and measure) and let them choose. Download it:
+If the browser session contains `routing.action: existing`, use its exact
+`track_id`. Otherwise compare the approved hypothesis with the tracks in
+`.event-config.json` conservatively. Reuse a track only when its code can run
+the required experiment and its metrics can falsify this exact claim. Similar
+words are not enough. Never put a quantum, vision, language, biological, or
+other unrelated claim into an available demo executor.
+
+For a compatible existing track, download it:
 
 ```bash
 curl -sS -H "Authorization: Bearer $TOKEN" {hub_url}/api/network/tracks/<track_id>.tar.gz | tar xz
@@ -93,12 +113,23 @@ rm -rf <track_id>
 Now the directory holds `README.md`, `lab.yaml`, `src/`, `configs/` from the
 track plus your `hypothesis.md` and `popper-corpus/`.
 
+When no compatible track exists, create a new lab in this directory. Build a
+small real evaluator around the approved test design: `README.md`, `lab.yaml`,
+`configs/default.yaml`, `configs/smoke.yaml`, and the source files named by the
+executor commands. Use data and dependencies that are actually available on
+this laptop; download a required public dataset here and verify its checksum or
+source before claiming it was tested. Run the smoke command. The evaluator must
+emit one JSON result containing the declared headline metric and provenance.
+Inspect the installed Efferents examples and schema, then run `efferents
+validate --submission .`; do not copy an unrelated starter just to satisfy the
+schema. Set `<track_id>` to `custom-local` for the remaining steps.
+
 ## 5. Configure the lab
 
 Edit `lab.yaml`:
 
 - set `lab_id` to the human's lab name and keep the track's `domain`;
-- replace the `budget`, `cadence` and `autonomy` blocks with the `lab_yaml`
+- replace the `budget`, `cadence`, `autonomy`, and `routing` blocks with the `lab_yaml`
   block from `.event-config.json` (the organizer's caps and event cadence);
 - add `falsifiers:` — ask the hub to map the hypothesis's falsifier onto the
   track's ledger columns, show the human the rules, and keep the ones they
@@ -110,10 +141,11 @@ curl -sS -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -d "$(python3 -c 'import json,sys;print(json.dumps({{"track_id": sys.argv[1], "hypothesis": open("hypothesis.md").read()}}))' <track_id>)"
 ```
 
-  The response carries `falsifiers` (paste them into `lab.yaml` verbatim),
+  For an existing track, the response carries `falsifiers` (paste them into `lab.yaml` verbatim),
   `rules_text` (show these to the human) and a `rationale`. If it returns
   none, leave `falsifiers` out and tell the human the verdict will stay
-  undecided.
+  undecided. For a new custom executor, encode the approved falsifier directly
+  against the metrics you implemented and validate it with the lab config.
 
 Write `.env` from the `env` block of `.event-config.json`, one `KEY=value`
 per line, plus `EFFERENTS_NETWORK_TRACK=<track_id>`. Add `.env`,
@@ -125,12 +157,25 @@ per line, plus `EFFERENTS_NETWORK_TRACK=<track_id>`. Add `.env`,
 
 Fix field-level errors until it prints `OK`.
 
-## 6. Record the charter and start
+## 6. Route the idea, record the charter, and start
 
 Write `context/popper.md` with `efferents.agents.popper_gate.write_charter`
 (or by hand in the same shape): the human's initial claim verbatim,
 `prompted_by: <their name>`, the design decisions from the dialogue, and the
 path and hash of `hypothesis.md`.
+
+Before starting a new daemon, let Efferents compare this fresh idea with the
+same owner's compatible local labs:
+
+```bash
+.venv/bin/efferents route . --apply
+```
+
+If it returns `action: join` with `applied: true`, the idea is now a distinct
+student/campaign inside the existing target lab. Do not start this temporary
+submission; report the target lab and campaign. If it returns `action: create`,
+continue below. Different owners, executors, datasets, or uncertain matches
+remain separate labs.
 
 Present the launch contract (lab id, hypothesis title and falsifier, track,
 run command, headline metric, falsifier rules, caps) and ask for explicit

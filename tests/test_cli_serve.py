@@ -103,9 +103,10 @@ def test_cluster_init_and_check_commands(tmp_path, monkeypatch, capsys):
     assert (root / "cluster.yaml").exists()
     out = capsys.readouterr().out
     assert "wrote" in out and "efferents cluster check" in out
-    # check: no tracks, no credentials → problems reported, non-zero exit
+    # No hosted tracks is valid because a participant harness can build a new
+    # executor; missing credentials and Popper still fail readiness.
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     monkeypatch.setenv("POPPER_PROBE_REPO", str(tmp_path / "nope"))
     assert cli.main(["cluster", "check", str(root)]) == 1
-    err = capsys.readouterr().err
-    assert "tracks: none loaded" in err and "popper-probe" in err
+    captured = capsys.readouterr()
+    assert "tracks: none loaded" in captured.out and "popper-probe" in captured.err

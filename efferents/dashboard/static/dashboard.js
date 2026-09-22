@@ -91,6 +91,21 @@ function esc(value) {
     .replace(/"/g, "&quot;");
 }
 
+// The intake probe writes short Markdown replies. Keep the renderer deliberately
+// small: escape the complete source first, then add only the tags we own. This
+// keeps model output from becoming executable HTML while making the two bits of
+// formatting used in the conversation readable in the browser.
+function renderMarkdown(value) {
+  const source = String(value == null ? "" : value)
+    .replace(/\r\n?/g, "\n")
+    .replace(/\\n/g, "\n");
+  let rendered = esc(source)
+    .replace(/\*\*([^*\n]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/__([^_\n]+)__/g, "<strong>$1</strong>")
+    .replace(/`([^`\n]+)`/g, "<code>$1</code>");
+  return rendered.replace(/\n/g, "<br>");
+}
+
 function text(id, value) {
   const element = document.getElementById(id);
   if (element) element.textContent = value == null ? "" : String(value);
@@ -1898,7 +1913,12 @@ function renderIntakeSessions(sessions) {
 
 async function loadIntakeSession(sessionId) {
   intakeState.sessionId = sessionId;
-  renderIntake(await getJSON(`/api/intake/sessions/${encodeURIComponent(sessionId)}`));
+  let payload = await getJSON(`/api/intake/sessions/${encodeURIComponent(sessionId)}`);
+  if (payload.session && payload.session.state === "approved" && !payload.session.routing) {
+    renderIntake(payload);
+    payload = await postJSON(`/api/intake/sessions/${encodeURIComponent(sessionId)}/route`, {});
+  }
+  renderIntake(payload);
 }
 
 async function ensureIntakeSession() {
@@ -1918,7 +1938,7 @@ function renderIntake(payload) {
   const chat = document.getElementById("intake-chat");
   const turns = payload ? payload.transcript : [];
   chat.innerHTML = turns.length
-    ? turns.map((t) => `<div class="chat-turn ${esc(t.role)}"><span class="chat-who">${esc(t.role === "assistant" ? "probe" : t.role === "user" ? "you" : "note")}</span>${esc(t.text)}</div>`).join("")
+    ? turns.map((t) => `<div class="chat-turn ${esc(t.role)}"><span class="chat-who">${esc(t.role === "assistant" ? "probe" : t.role === "user" ? "you" : "note")}</span><span class="chat-copy">${renderMarkdown(t.text)}</span></div>`).join("")
     : '<div class="empty-state">Describe the claim you want to test.</div>';
   chat.scrollTop = chat.scrollHeight;
   const closed = ["approved", "bound", "created", "abandoned"].includes(state);
@@ -1926,7 +1946,7 @@ function renderIntake(payload) {
 
   const draft = payload ? payload.draft : null;
   const hasDraft = Boolean(draft && draft.valid);
-  document.getElementById("intake-draft").textContent = hasDraft ? draft.text : (draft && draft.text ? draft.text : "");
+  document.getElementById("intake-draft").innerHTML = renderMarkdown(hasDraft ? draft.text : (draft && draft.text ? draft.text : ""));
   const errors = document.getElementById("intake-draft-errors");
   errors.hidden = !(draft && draft.errors);
   errors.textContent = draft && draft.errors ? draft.errors : "";
@@ -1937,30 +1957,44 @@ function renderIntake(payload) {
 
   const trackPanel = document.getElementById("track-panel");
   trackPanel.hidden = !["approved", "bound", "created"].includes(state);
-  if (!trackPanel.hidden) renderTrackPicker(payload.tracks || [], session.track_id);
-  document.getElementById("intake-bind").disabled = !intakeState.trackId || state === "created";
+  if (!trackPanel.hidden) renderRouting(session, payload.tracks || []);
 
   const bindingPanel = document.getElementById("binding-panel");
   bindingPanel.hidden = !(["bound", "created"].includes(state) && payload.binding);
   if (!bindingPanel.hidden) renderBinding(payload.binding, session);
+
+  const harnessPanel = document.getElementById("harness-panel");
+  const routingFinished = Boolean(session && session.routing);
+  harnessPanel.hidden = !(routingFinished || ["bound", "created"].includes(state));
+  if (!harnessPanel.hidden) renderHarnessHandoff(session);
 }
 
-function renderTrackPicker(tracks, chosen) {
-  if (chosen && !intakeState.trackId) intakeState.trackId = chosen;
+function renderRouting(session, tracks) {
   const picker = document.getElementById("track-picker");
-  picker.innerHTML = tracks.length ? tracks.map((t) =>
-    `<label class="track-option${intakeState.trackId === t.id ? " selected" : ""}">` +
-    `<input type="radio" name="track" value="${esc(t.id)}"${intakeState.trackId === t.id ? " checked" : ""}>` +
-    `<span><strong>${esc(t.title)}</strong><br><small>${esc(t.summary)}</small><br>` +
-    `<small>${(t.columns || []).map((c) => esc(c.name)).join(" · ")}</small></span></label>`
-  ).join("") : '<div class="empty-state">No tracks are configured.</div>';
-  picker.querySelectorAll('input[name="track"]').forEach((input) => {
-    input.addEventListener("change", () => {
-      intakeState.trackId = input.value;
-      renderTrackPicker(tracks, null);
-      document.getElementById("intake-bind").disabled = false;
-    });
-  });
+  const routing = session.routing;
+  if (!routing) {
+    picker.innerHTML = '<div class="routing-progress"><span class="button-spinner" aria-hidden="true"></span>Checking executor compatibility…</div>';
+    return;
+  }
+  const track = tracks.find((item) => item.id === routing.track_id);
+  if (routing.action === "existing" && track) {
+    picker.innerHTML = `<div class="route-decision existing"><strong>${esc(track.title)}</strong>` +
+      `<small>Compatible executor · ${Math.round(Number(routing.confidence || 0) * 100)}% confidence</small>` +
+      `<p>${renderMarkdown(routing.reason || "")}</p></div>`;
+  } else {
+    picker.innerHTML = `<div class="route-decision new"><strong>New lab required</strong>` +
+      `<small>No compatible executor was found</small><p>${renderMarkdown(routing.reason || "")}</p></div>`;
+  }
+}
+
+function renderHarnessHandoff(session) {
+  const route = session.routing || {};
+  const existing = route.action === "existing" && session.track_id;
+  text("harness-route-note", existing
+    ? `The ${session.track_id} executor can be reused. Your harness will download it and run it locally.`
+    : "This idea needs a new evaluator. Your harness will build the lab around the approved hypothesis instead of forcing it into an unrelated template.");
+  text("harness-instruction", `Read ${window.location.origin}/intake.md and follow it. Use my approved browser intake session ${session.session_id}. Ask me for my network token.`);
+  text("harness-network-token", controlState.session ? controlState.session.network_token : "");
 }
 
 function renderBinding(binding, session) {
@@ -1979,7 +2013,7 @@ function renderBinding(binding, session) {
   if (!labId.value) labId.value = session.lab_id || binding.lab_id_suggestion || (session.draft ? session.draft.slug : "") || "";
   const create = document.getElementById("intake-create");
   create.disabled = session.state === "created";
-  create.textContent = session.state === "created"
+  document.getElementById("intake-create-label").textContent = session.state === "created"
     ? `Lab ${session.lab_id} created`
     : (controlState.session && controlState.session.auto_start ? "Create and start lab" : "Create lab");
 }
@@ -2014,10 +2048,16 @@ function initIntakeView() {
     }
   });
   document.getElementById("intake-approve").addEventListener("click", async () => {
+    const button = document.getElementById("intake-approve");
+    button.disabled = true;
+    button.textContent = "Routing idea…";
     try {
-      renderIntake(await postJSON(`/api/intake/sessions/${encodeURIComponent(intakeState.sessionId)}/approve`, {}));
+      await postJSON(`/api/intake/sessions/${encodeURIComponent(intakeState.sessionId)}/approve`, {});
+      renderIntake(await postJSON(`/api/intake/sessions/${encodeURIComponent(intakeState.sessionId)}/route`, {}));
     } catch (error) {
       showMessage("intake-message", error.message, "error");
+      button.disabled = false;
+      button.textContent = "Approve hypothesis";
     }
   });
   document.getElementById("intake-bind").addEventListener("click", async () => {
@@ -2034,8 +2074,15 @@ function initIntakeView() {
   });
   document.getElementById("intake-create").addEventListener("click", async () => {
     const button = document.getElementById("intake-create");
+    const label = document.getElementById("intake-create-label");
+    const progress = document.getElementById("intake-create-progress");
     button.disabled = true;
-    showMessage("intake-create-message", "Creating the lab…");
+    button.classList.add("is-loading");
+    button.setAttribute("aria-busy", "true");
+    label.textContent = "Building lab…";
+    progress.hidden = false;
+    progress.textContent = "Conjuring evals and preparing the research workspace…";
+    showMessage("intake-create-message");
     try {
       const kept = Array.from(document.querySelectorAll('#binding-rules input[name="rule"]:checked')).map((el) => el.value);
       const result = await postJSON(`/api/intake/sessions/${encodeURIComponent(intakeState.sessionId)}/create`, {
@@ -2050,7 +2097,21 @@ function initIntakeView() {
     } catch (error) {
       showMessage("intake-create-message", error.message, "error");
       button.disabled = false;
+      label.textContent = controlState.session && controlState.session.auto_start ? "Create and start lab" : "Create lab";
+    } finally {
+      button.classList.remove("is-loading");
+      button.setAttribute("aria-busy", "false");
+      progress.hidden = true;
+      progress.textContent = "";
     }
+  });
+  document.getElementById("copy-harness-instruction").addEventListener("click", async () => {
+    await navigator.clipboard.writeText(document.getElementById("harness-instruction").textContent);
+    showMessage("intake-create-message", "Harness instruction copied.", "success");
+  });
+  document.getElementById("copy-harness-token").addEventListener("click", async () => {
+    await navigator.clipboard.writeText(document.getElementById("harness-network-token").textContent);
+    showMessage("intake-create-message", "Network token copied. Keep it private.", "success");
   });
 }
 

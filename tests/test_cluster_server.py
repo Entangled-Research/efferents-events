@@ -126,14 +126,18 @@ def test_full_intake_creates_lab_and_enforces_ownership(cluster_server):
     status, payload, _ = _request(port, f"/api/intake/sessions/{sid}/approve", method="POST",
                                   payload={}, headers=ada)
     assert payload["session"]["state"] == "approved"
-    scripts["replies"].extend([json.dumps({
-        "falsifiers": [{"id": "F1", "description": "Median loss stays >= 0.1",
-                        "when": {"column": "synthetic_loss", "agg": "median", "op": ">=",
-                                 "value": 0.1, "min_n": 4}}],
-        "rationale": "r", "lab_id": "ada-coef",
-    })])
-    status, payload, _ = _request(port, f"/api/intake/sessions/{sid}/bind", method="POST",
-                                  payload={"track_id": "coefficient-sweep"}, headers=ada)
+    scripts["replies"].extend([
+        json.dumps({"action": "existing", "track_id": "coefficient-sweep",
+                    "confidence": 0.98, "reason": "compatible"}),
+        json.dumps({
+            "falsifiers": [{"id": "F1", "description": "Median loss stays >= 0.1",
+                            "when": {"column": "synthetic_loss", "agg": "median", "op": ">=",
+                                     "value": 0.1, "min_n": 4}}],
+            "rationale": "r", "lab_id": "ada-coef",
+        }),
+    ])
+    status, payload, _ = _request(port, f"/api/intake/sessions/{sid}/route", method="POST",
+                                  payload={}, headers=ada)
     assert status == 200 and payload["session"]["state"] == "bound"
     status, result, _ = _request(port, f"/api/intake/sessions/{sid}/create", method="POST",
                                  payload={"lab_id": "ada-coef", "falsifiers": ["F1"]}, headers=ada)

@@ -74,3 +74,37 @@ def test_empty_rules_is_valid_but_noted(tmp_path):
     client = FakeClient([json.dumps({"falsifiers": [], "rationale": "cannot", "lab_id": "z"})])
     b = bd.propose_falsifiers(HYP, _track(tmp_path), client=client, model="m")
     assert b.validated and b.falsifiers == [] and b.note == bd.UNDECIDED_NOTE
+
+
+def test_track_router_rejects_unrelated_executor(tmp_path):
+    client = FakeClient([json.dumps({
+        "action": "new", "track_id": None, "confidence": 0.99,
+        "reason": "A coefficient sweep cannot evaluate an image-classification claim.",
+    })])
+    result = bd.select_track(
+        "A quantum classifier outperforms a CNN on MNIST.",
+        {"coefficient-sweep": _track(tmp_path)}, client=client, model="m",
+    )
+    assert result["action"] == "new" and result["track_id"] is None
+    assert "Topic resemblance is insufficient" in client.calls[0]["system"]
+
+
+def test_track_router_accepts_only_high_confidence_known_track(tmp_path):
+    client = FakeClient([json.dumps({
+        "action": "existing", "track_id": "coefficient-sweep", "confidence": 0.92,
+        "reason": "The executor varies the coefficient and reports synthetic loss.",
+    })])
+    result = bd.select_track(
+        HYP, {"coefficient-sweep": _track(tmp_path)}, client=client, model="m",
+    )
+    assert result["action"] == "existing"
+    assert result["track_id"] == "coefficient-sweep"
+
+
+def test_track_router_fails_closed_on_unknown_or_low_confidence_track(tmp_path):
+    client = FakeClient([json.dumps({
+        "action": "existing", "track_id": "coefficient-sweep", "confidence": 0.6,
+        "reason": "Maybe.",
+    })])
+    result = bd.select_track(HYP, {"coefficient-sweep": _track(tmp_path)}, client=client, model="m")
+    assert result["action"] == "new" and result["track_id"] is None

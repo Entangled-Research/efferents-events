@@ -24,7 +24,7 @@ from efferents.agents.popper_gate import (
     frontmatter_value,
     validate_hypothesis_text,
 )
-from efferents.cluster.binding import Binding, propose_falsifiers
+from efferents.cluster.binding import Binding, propose_falsifiers, select_track
 from efferents.cluster.budget import DualBudget, owner_intake_budget, usage_from_response
 from efferents.cluster.config import ClusterConfig, is_frozen, write_event
 from efferents.cluster.owners import Owner
@@ -68,6 +68,7 @@ class Session:
     track_id: str | None = None
     lab_id: str | None = None
     binding: dict | None = None
+    routing: dict | None = None
     updated_at: str = ""
 
     def to_dict(self) -> dict:
@@ -440,6 +441,57 @@ class IntakeStore:
             write_event(self.cfg.paths, "bound", owner_id=owner.owner_id,
                         session_id=session_id, track=track.id,
                         n_rules=len(binding.falsifiers))
+            return self.payload(session)
+        finally:
+            lock.release()
+
+    def route(self, owner: Owner, session_id: str) -> dict:
+        """Automatically reuse a compatible executor or require a new local lab."""
+        session = self._load(owner, session_id)
+        if session.state == "bound":
+            return self.payload(session)
+        if session.state != "approved":
+            raise ControlError("Approve the hypothesis before routing it.", status=409)
+        if is_frozen(self.cfg.paths):
+            raise ControlError("The event budget is frozen.", status=409)
+        lock = self._lock_for(session_id)
+        if not lock.acquire(blocking=False):
+            raise ControlError("Still working on the previous request.", status=409)
+        try:
+            budget = owner_intake_budget(self.cfg, owner.owner_id)
+            client = self._client_factory(budget)
+            try:
+                decision = select_track(
+                    session.draft.text, self.tracks, client=client,
+                    model=self.cfg.model, budget=budget,
+                )
+            except BudgetExhausted as exc:
+                raise ControlError(
+                    "Your intake budget is used up; automatic routing could not finish.",
+                    status=402,
+                ) from exc
+            session.routing = decision
+            if decision["action"] == "existing":
+                track = self.tracks[decision["track_id"]]
+                try:
+                    binding = propose_falsifiers(
+                        session.draft.text, track, client=client,
+                        model=self.cfg.model, budget=budget,
+                    )
+                except BudgetExhausted as exc:
+                    raise ControlError(
+                        "Your intake budget is used up; executor mapping could not finish.",
+                        status=402,
+                    ) from exc
+                session.track_id = track.id
+                session.binding = binding.to_dict()
+                session.state = "bound"
+            self._save(session)
+            write_event(
+                self.cfg.paths, "intake_routed", owner_id=owner.owner_id,
+                session_id=session_id, action=decision["action"],
+                track=decision.get("track_id"), confidence=decision.get("confidence"),
+            )
             return self.payload(session)
         finally:
             lock.release()

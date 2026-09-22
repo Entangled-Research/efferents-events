@@ -28,10 +28,12 @@ intake API conversation passed on the HTTPS hub and local preview; the remote
 participant proxy also returned a real model response. Verification intakes
 were abandoned after testing and did not create labs.
 
-The external Popper checkout is installed at `/data/popper-probe`, the
-evacuation track validates, and `efferents cluster check /data/cluster` passes.
-Configured caps remain $20 for the cluster, $5 intake ($1 per owner), $15 proxy
-($3 per owner), $3 reviews and $3 per lab. These are separate from Azure credits.
+The external Popper checkout is installed at `/data/popper-probe`. The old
+evacuation placeholder has been removed from the event catalogue; an empty
+hosted-track catalogue is valid because new executors are built on participant
+laptops. `efferents cluster check /data/cluster` passes.
+Configured caps are $20 for the cluster, $5 intake ($1 per owner), $20 proxy
+($10 per owner), $3 reviews and $10 per lab. These are separate from Azure credits.
 The join code is retained in private access notes outside the repository.
 
 Local testing uses `http://localhost:8843`; the legacy preview at port 8840

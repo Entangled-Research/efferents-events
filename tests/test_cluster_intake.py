@@ -133,6 +133,48 @@ def test_approve_bind_and_notes(intake):
     assert "Track: coefficient-sweep" in notes and "median(synthetic_loss) >= 0.1" in notes
 
 
+def test_automatic_route_binds_compatible_executor(intake):
+    store, ada, scripts, _, cfg = intake
+    sid = store.create_session(ada)["session"]["session_id"]
+    scripts["replies"].append(hypothesis_block())
+    store.run_turn(ada, sid, "coefficient above 0.7 lowers loss below 0.1")
+    store.approve(ada, sid)
+    scripts["replies"].extend([
+        json.dumps({
+            "action": "existing", "track_id": "coefficient-sweep", "confidence": 0.96,
+            "reason": "The executor varies coefficient and reports synthetic loss.",
+        }),
+        json.dumps({
+            "falsifiers": [{"id": "F1", "description": "Median loss stays >= 0.1",
+                            "when": {"column": "synthetic_loss", "agg": "median",
+                                     "op": ">=", "value": 0.1, "min_n": 4}}],
+            "rationale": "The track measures the claimed outcome.", "lab_id": "coef-lab",
+        }),
+    ])
+    payload = store.route(ada, sid)
+    assert payload["session"]["state"] == "bound"
+    assert payload["session"]["routing"]["track_id"] == "coefficient-sweep"
+    assert payload["binding"]["validated"] is True
+    events = [json.loads(line)["event"] for line in cfg.paths.events.read_text().splitlines()]
+    assert "intake_routed" in events
+
+
+def test_automatic_route_creates_no_hosted_lab_for_unrelated_idea(intake):
+    store, ada, scripts, *_ = intake
+    sid = store.create_session(ada)["session"]["session_id"]
+    scripts["replies"].append(hypothesis_block())
+    store.run_turn(ada, sid, "a quantum classifier outperforms a CNN on MNIST")
+    store.approve(ada, sid)
+    scripts["replies"].append(json.dumps({
+        "action": "new", "track_id": None, "confidence": 0.99,
+        "reason": "The available executor cannot run quantum or MNIST experiments.",
+    }))
+    payload = store.route(ada, sid)
+    assert payload["session"]["state"] == "approved"
+    assert payload["session"]["routing"]["action"] == "new"
+    assert payload["binding"] is None and payload["session"]["track_id"] is None
+
+
 def test_limits_turns_sessions_and_budget(tmp_path, monkeypatch):
     make_popper_repo(monkeypatch, tmp_path)
     cfg = make_cluster(tmp_path, monkeypatch, intake={

@@ -124,6 +124,11 @@ class NetworkHub:
                            "sonnet_default": True},
                 "cadence": dict(self.cfg.cadence_raw),
                 "autonomy": {"coder_enabled": False},
+                "routing": {
+                    "pool": f"event:{self.cfg.name}",
+                    "owner": owner.owner_id,
+                    "accept_students": True,
+                },
             },
             "limits": {"labs_per_owner": self.cfg.labs.max_per_owner,
                        "proxy_cap_usd": self.cfg.proxy.cap_per_owner_usd},

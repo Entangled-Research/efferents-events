@@ -1,4 +1,4 @@
-"""Map a gated hypothesis's falsifier onto one track's ledger columns."""
+"""Route a gated hypothesis to a compatible track and map its falsifier."""
 
 from __future__ import annotations
 
@@ -58,6 +58,67 @@ UNDECIDED_NOTE = (
     "No machine-checkable falsifier could be mapped onto this track; the "
     "verdict panel will stay undecided until one is added."
 )
+
+TRACK_ROUTER_GRAMMAR = """\
+You route a research hypothesis to an existing executable experiment track only
+when that track can actually run the required experiment and report metrics that
+could falsify the claim. Topic resemblance is insufficient. A track for a
+different dataset, scientific domain, intervention, or outcome is incompatible.
+When no track is compatible, choose `new`; a coding harness will build a new lab
+and executor on the participant's laptop.
+
+Return JSON only:
+{"action":"existing","track_id":"exact-id","confidence":0.0,"reason":"short"}
+or
+{"action":"new","track_id":null,"confidence":0.0,"reason":"short"}
+"""
+
+
+def select_track(
+    hypothesis_text: str,
+    tracks: dict[str, Track],
+    *,
+    client: Any,
+    model: str,
+    budget: DualBudget | None = None,
+    max_tokens: int = 500,
+) -> dict:
+    """Choose a compatible executor conservatively; uncertainty creates a new one."""
+    if not tracks:
+        return {
+            "action": "new", "track_id": None, "confidence": 1.0,
+            "reason": "No compatible executor tracks are configured.",
+        }
+    catalogue = "\n\n".join(t.catalogue_text() for t in tracks.values())
+    response = client.messages.create(
+        model=model,
+        max_tokens=max_tokens,
+        system=TRACK_ROUTER_GRAMMAR + "\n\nAvailable tracks:\n\n" + catalogue,
+        messages=[{"role": "user", "content": "Approved hypothesis:\n\n" + hypothesis_text}],
+    )
+    if budget is not None:
+        budget.record(agent="track_router", model=model,
+                      usage=usage_from_response(response), notes="automatic executor routing")
+    text = _extract_text(response)
+    try:
+        data = parse_json_loose(text, must_contain='"action"')
+    except (json.JSONDecodeError, ValueError):
+        return {
+            "action": "new", "track_id": None, "confidence": 0.0,
+            "reason": "The compatibility check was inconclusive, so a new executor is required.",
+        }
+    confidence = data.get("confidence")
+    confidence = float(confidence) if isinstance(confidence, (int, float)) else 0.0
+    track_id = str(data.get("track_id") or "")
+    if data.get("action") == "existing" and track_id in tracks and confidence >= 0.85:
+        return {
+            "action": "existing", "track_id": track_id,
+            "confidence": confidence, "reason": str(data.get("reason") or "")[:1000],
+        }
+    return {
+        "action": "new", "track_id": None, "confidence": confidence,
+        "reason": str(data.get("reason") or "No high-confidence compatible executor exists.")[:1000],
+    }
 
 
 def _render_track(track: Track) -> str:
