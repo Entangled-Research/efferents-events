@@ -60,6 +60,18 @@ def test_hosted_lab_creation_is_gated_by_cluster_policy():
     assert "payload.binding && hostedLabsEnabled()" in js
 
 
+def test_harness_is_the_default_way_onto_the_network():
+    html = (STATIC / "dashboard.html").read_text()
+    js = (STATIC / "dashboard.js").read_text()
+    assert 'data-route-link="intake" data-cluster-only hidden>Sharpen an idea</a>' in html
+    assert "New lab</a>" not in html
+    assert "Connect your lab from your harness" in html
+    assert "Optional · before your harness" in html
+    assert 'href="#join" data-cluster-only hidden>+ Connect from your harness</a>' in html
+    assert "connect one from your harness (see Join)" in js
+    assert "start one under New lab" not in js
+
+
 def test_css_covers_cluster_marks():
     css = (STATIC / "dashboard.css").read_text()
     for needle in (".map-node.mine", ".edge-reviewed", ".chat-turn", ".track-option"):

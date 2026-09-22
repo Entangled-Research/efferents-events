@@ -41,7 +41,7 @@ network map. Everything runs on one Linux host that you rent for the day.
   each participant has a proxy cap. The daemon registers with the hub, sends
   a heartbeat every 30 s, pushes accepted papers, and pulls the shared feed
   and the reviews other labs wrote about it. The hub can pause it.
-- **Hosted fallback.** "New lab" in the browser runs the dialogue and the lab
+- **Hosted fallback.** "Sharpen an idea" in the browser runs the dialogue and the lab
   on the server for anyone whose laptop setup fails. Set `labs.hosted: false`
   in `cluster.yaml` to turn this off: the hub then never creates or starts a
   lab on the host, the intake ends at the harness instruction, and the host

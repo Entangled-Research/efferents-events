@@ -631,7 +631,7 @@ function renderNetwork() {
   document.querySelector(".network-hub").hidden = true;
   const empty = document.getElementById("network-empty");
   empty.hidden = labs.length > 0;
-  empty.textContent = isCluster() ? "No labs yet · start one under New lab" : "Connect a lab to build a reviewed journal.";
+  empty.textContent = isCluster() ? "No labs on the network yet · connect one from your harness (see Join)" : "Connect a lab to build a reviewed journal.";
   const selected = labs.find(lab => lab.lab_id === networkSelection) || labs[0];
   networkSelection = selected?.lab_id || null;
   const groups = new Map();

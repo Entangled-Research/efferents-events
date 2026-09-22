@@ -21,7 +21,7 @@
 
     <nav class="workspace-nav" aria-label="Lab gateway">
       <a href="#connect" data-route-link="connect" data-local-only>Connect</a>
-      <a href="#intake" data-route-link="intake" data-cluster-only hidden>New lab</a>
+      <a href="#intake" data-route-link="intake" data-cluster-only hidden>Sharpen an idea</a>
       <a href="#network" data-route-link="network">Network</a>
       <button id="lab-rail-toggle" class="rail-toggle" type="button" aria-controls="lab-rail"
               aria-expanded="false" hidden>Labs <span id="lab-rail-toggle-count">0</span></button>
@@ -68,7 +68,7 @@
       <div id="lab-list" class="lab-list" role="list"></div>
       <nav class="lab-rail-actions" aria-label="Portfolio actions">
         <a href="#connect" data-local-only>+ Connect lab</a>
-        <a href="#intake" data-cluster-only hidden>+ New lab</a>
+        <a href="#join" data-cluster-only hidden>+ Connect from your harness</a>
       </nav>
     </aside>
 
@@ -104,28 +104,38 @@
         </div>
       </section>
       <section class="panel join-panel" id="terminal-panel" aria-labelledby="terminal-title" hidden>
-        <header class="panel-header"><h2 id="terminal-title">Run your lab on your own laptop</h2></header>
-        <p class="hint">Open your coding agent in an empty folder and paste this one instruction:</p>
+        <header class="panel-header"><h2 id="terminal-title">Connect your lab from your harness</h2></header>
+        <p class="hint">
+          Your labs live on your own machine and join the network from there: one folder per
+          lab, your own data, your own hardware. Open your coding harness (opencode, Claude
+          Code, Codex, or a web agent that can read a URL) in an empty folder and paste this
+          one instruction:
+        </p>
         <code id="terminal-instruction" class="instruction-line"></code>
         <button id="copy-terminal-instruction" class="compact-button" type="button">Copy instruction</button>
         <p class="hint">When the agent asks for your network token, give it this (never share it):</p>
         <code id="network-token"></code>
         <button id="copy-network-token" class="compact-button" type="button">Copy token</button>
         <p class="hint">
-          Your laptop runs the experiments; the hub pays for the model calls and shows your lab on
-          the network. <span data-hosted-only hidden>No laptop? Use <a href="#intake">New lab</a> to run it here instead.</span>
+          The harness builds the lab and you steer it there. The lab's research model calls
+          are paid by the event through this hub; the hub shows your lab on the network.
+          Optional: <a href="#intake">sharpen your idea</a> in the browser first and give the
+          harness the session id it prints.
+          <span data-hosted-only hidden>No laptop? Use <a href="#intake">Sharpen an idea</a> to run it here instead.</span>
         </p>
       </section>
     </section>
 
     <section id="intake-view" class="app-view" data-route-view="intake" hidden>
       <div class="route-intro">
-        <div class="route-kicker">New lab</div>
+        <div class="route-kicker">Optional · before your harness</div>
         <h1>Sharpen a claim until it can fail</h1>
         <p class="route-lede">
           A Popperian probe pushes back on your idea, one question at a time, until
-          it has a falsifier an experiment could trip. Efferents then routes it to
-          a compatible executor, or prepares a new lab for your coding harness.
+          it has a falsifier an experiment could trip. The approved hypothesis is
+          handed to your coding harness, which builds the lab on your laptop and
+          connects it to the network. Skip this and the harness runs the same
+          dialogue in the terminal.
         </p>
       </div>
       <div class="intake-grid">
