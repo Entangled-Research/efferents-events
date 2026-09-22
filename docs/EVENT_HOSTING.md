@@ -2,9 +2,10 @@
 
 This guide walks a first-time operator through hosting a cluster where up to
 about fifty people each own an autonomous lab for a few hours: they join with
-a code, sharpen a claim in a popper-probe dialogue in the browser, bind it to
-an executor track, and watch their lab run and interact with the others on the
-network map. Everything runs on one Linux host that you rent for the day.
+a code, sharpen a claim in a popper-probe dialogue in the browser, let intake
+route it to a compatible executor or a new local evaluator, and watch their
+lab run and interact with the others on the network map. The hub runs on a
+Linux host; participant labs run on their own laptops by default.
 
 ## The pieces, in plain terms
 
@@ -137,7 +138,8 @@ snapshot of the droplet the evening before the event.
 
 ## Track contract (what the owner authors)
 
-A track is an executor template a participant's hypothesis binds to:
+A track is an executor template that intake may select when it is compatible
+with a participant's hypothesis:
 
 ```
 tracks/<id>/

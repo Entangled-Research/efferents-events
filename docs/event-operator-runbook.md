@@ -33,10 +33,11 @@ The owner-provided credit and provider decision is recorded in
   GPT-5.6 function-tool calls use `reasoning_effort=none` on Chat Completions;
   no-tool calls retain medium reasoning. Full reasoning with tools requires a
   future Responses API integration and is not claimed for this event.
-- Limits: $3 per event token, $50 event total, 30 requests/minute/token, 16,384
-  output tokens/request; the starter additionally caps a lab at $1/day and
-  $2 total. One token belongs to one generated unique lab ID. The organizer
-  must monitor Azure billing separately; Azure budget alerts do not stop spend.
+- Limits: $10 per participant through the proxy, $20 proxy total, $20 cluster
+  total, $1 per intake owner with a $5 intake total, and $10 per lab. Reviews
+  have a separate $3 event allowance. One owner can use the $10 lab allowance
+  for one lab or spread it across two. The organizer must monitor Azure billing
+  separately; Azure budget alerts do not stop spend.
 - Heartbeat: at daemon start and safe step boundaries, with manual sync and
   offline queue. Mark a running lab stale after 180 seconds without a received
   heartbeat. Paused and stopped states remain explicit.

@@ -34,9 +34,9 @@ def test_two_domains_real_evidence_shared_goal_and_observation(tmp_path, monkeyp
     env = os.environ.copy()
     env["PATH"] = str(Path(sys.executable).parent) + os.pathsep + env.get("PATH", "")
     paths = [tmp_path / name for name in ("responsive", "stable", "numerical")]
-    create_lab(paths[0], idea="Frequent rerouting", goal="Reduce congestion", exchange=True)
-    create_lab(paths[1], idea="Stable routes", goal="Reduce congestion", exchange=True)
-    create_lab(paths[2], idea="Numerical integration", exchange=True)
+    create_lab(paths[0], starter="evacuation", idea="Frequent rerouting", goal="Reduce congestion", exchange=True)
+    create_lab(paths[1], starter="evacuation", idea="Stable routes", goal="Reduce congestion", exchange=True)
+    create_lab(paths[2], starter="integration", idea="Numerical integration", exchange=True)
     for path in paths:
         run_trial(path, env)
     config_a = yaml.safe_load((paths[0] / "configs/default.yaml").read_text())

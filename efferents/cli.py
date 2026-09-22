@@ -1083,9 +1083,12 @@ def _cmd_event(args: argparse.Namespace) -> int:
 
 def _cmd_starter(args: argparse.Namespace) -> int:
     from efferents.onboarding import create_lab, suggest_lab_id
+    from efferents.starter_catalog import DOCUMENTED
     idea, goal = getattr(args, "idea", ""), getattr(args, "goal", "")
     approach, name = getattr(args, "approach", ""), getattr(args, "name", "")
     try:
+        if args.starter_name not in set(DOCUMENTED) | {"auto", "evacuation", "integration"}:
+            raise ValueError("unknown starter; choose a documented starter or auto")
         out = Path(args.out).expanduser().resolve() if args.out else None
         if out is not None and not (name or idea or approach or goal):
             name = out.name  # an explicit directory name is what the owner typed
@@ -1194,7 +1197,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_event_doctor.set_defaults(func=_cmd_event)
 
     p_starter = sub.add_parser("starter", help="Create a versioned starter lab")
-    p_starter.add_argument("starter_name", choices=("coloring", "active-learning", "orbit", "vehicle", "evacuation", "integration", "auto"), nargs="?", default="auto")
+    # The evacuation and integration starters remain readable by old saved
+    # submissions, but are no longer offered to new participants. Validation
+    # in _cmd_starter keeps those compatibility aliases out of CLI help.
+    p_starter.add_argument("starter_name", metavar="{coloring,active-learning,orbit,vehicle,auto}", nargs="?", default="auto")
     p_starter.add_argument("--out", default=None, help="Destination directory (default: ./<lab id>)")
     p_starter.add_argument("--name", default="", help="Lab id (default: derived from --idea)")
     p_starter.add_argument("--idea", default="")

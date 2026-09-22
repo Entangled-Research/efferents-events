@@ -2072,18 +2072,6 @@ function initIntakeView() {
       button.textContent = "Approve hypothesis";
     }
   });
-  document.getElementById("intake-bind").addEventListener("click", async () => {
-    const button = document.getElementById("intake-bind");
-    button.disabled = true;
-    showMessage("intake-message", "Mapping the falsifier onto the track…");
-    try {
-      renderIntake(await postJSON(`/api/intake/sessions/${encodeURIComponent(intakeState.sessionId)}/bind`, { track_id: intakeState.trackId }));
-      showMessage("intake-message");
-    } catch (error) {
-      showMessage("intake-message", error.message, "error");
-      button.disabled = false;
-    }
-  });
   document.getElementById("intake-create").addEventListener("click", async () => {
     const button = document.getElementById("intake-create");
     const label = document.getElementById("intake-create-label");

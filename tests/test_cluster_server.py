@@ -126,6 +126,9 @@ def test_full_intake_creates_lab_and_enforces_ownership(cluster_server):
     status, payload, _ = _request(port, f"/api/intake/sessions/{sid}/approve", method="POST",
                                   payload={}, headers=ada)
     assert payload["session"]["state"] == "approved"
+    status, body, _ = _request(port, f"/api/intake/sessions/{sid}/bind", method="POST",
+                               payload={"track_id": "coefficient-sweep"}, headers=ada)
+    assert status == 409 and "automatic" in body["error"]
     scripts["replies"].extend([
         json.dumps({"action": "existing", "track_id": "coefficient-sweep",
                     "confidence": 0.98, "reason": "compatible"}),

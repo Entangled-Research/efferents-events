@@ -68,6 +68,21 @@ def test_lab_ids_come_from_the_owners_words(tmp_path, monkeypatch):
     long = suggest_lab_id(idea="one two three four five six seven eight", taken=set())
     assert long == "one-two-three-four-five-six" and len(long) <= 48
 
-    decisions = create_lab(tmp_path / "lab", idea="Frequent rerouting", goal="Reduce congestion")
+    decisions = create_lab(
+        tmp_path / "lab",
+        starter="coloring",
+        idea="Frequent rerouting",
+        goal="Reduce congestion",
+    )
     assert decisions["lab_id"] == "frequent-rerouting"
     assert LabConfig.from_submission(tmp_path / "lab").lab_id == "frequent-rerouting"
+
+
+@pytest.mark.parametrize("idea", [
+    "Congestion-aware evacuation",
+    "Numerical integration",
+    "Quantum error correction",
+])
+def test_auto_onboarding_rejects_ideas_without_a_compatible_executor(tmp_path, idea):
+    with pytest.raises(ValueError, match="No compatible starter"):
+        create_lab(tmp_path / "lab", idea=idea)

@@ -36,6 +36,10 @@ real two-laptop and venue rehearsal justifies a change. Azure budgets alert;
 they do not stop usage, so they are not a substitute for the proxy caps.
 
 The credits are an account fact supplied by the owner, not verified by code.
-No Azure resource, deployment, subscription, billing meter, or successful API
-call was available to this task. Record the offer type, expiry, and remaining
-balance privately in the operator's billing console, not in this repository.
+The original decision note did not include live resource verification. The
+deployed Events hub now uses the owner's Azure OpenAI v1 endpoint with the
+three deployments above; a small request has passed through each deployment.
+The provider key remains in the server-only environment and is never copied to
+participant machines or experiment subprocesses. Record the offer type, expiry,
+and remaining balance privately in the operator's billing console, not in this
+repository.

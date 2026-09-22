@@ -38,10 +38,10 @@ The external Popper checkout is installed at `/data/popper-probe`. The old
 evacuation placeholder has been removed from the event catalogue; an empty
 hosted-track catalogue is valid because new executors are built on participant
 laptops. `efferents cluster check /data/cluster` passes.
-Configured caps (set 2026-09-22 for the event): $1,500 for the cluster and
-$1,500 proxy total; $50 per person through the proxy and $50 per lab, so one
-person can spend their allowance on one lab or spread it across two; $50 intake
-total ($1 per person); $3 reviews. These are separate from Azure credits.
+Configured caps (set 2026-09-22 for the event): $20 for the cluster and $20
+proxy total; $10 per person through the proxy and $10 per lab, so one person
+can spend their allowance on one lab or spread it across two; $5 intake total
+($1 per person); $3 reviews. These are separate from Azure credits.
 The join code is retained in private access notes outside the repository.
 
 Local testing uses `http://localhost:8843`; the legacy preview at port 8840

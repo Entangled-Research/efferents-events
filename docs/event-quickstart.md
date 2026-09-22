@@ -19,10 +19,12 @@ in another domain. Leave optional choices blank and choose **Infer defaults and
 run** to create a lightweight contract and run three real CPU experiments.
 No API key or Popper Probe is required.
 
-The two executable starters are evacuation routing and numerical integration.
-Inference chooses a starter and records its settings; it does not magically
-implement arbitrary research domains. Use **Connect a repository** for your own
-executor. Review the visible finding-sharing consent before launch.
+The event does not present a menu of placeholder tracks. Intake compares the
+idea with compatible labs automatically. A relevant idea becomes a new student
+track inside that lab; an unrelated idea is routed to a new lab. If no existing
+executor can test the idea, intake hands it to your coding harness to build and
+validate a local evaluator on your laptop. Review the visible finding-sharing
+consent before launch.
 
 Equivalent terminal flow:
 
@@ -32,9 +34,8 @@ uv run efferents trial --submission ../my-event-lab --runs 3
 uv run efferents serve --lab-root ../my-event-lab/lab
 ```
 
-Use `--idea "Numerical integration"` and omit `--goal` for an independent
-second domain. Repeat trials use new seeds. Three evacuation runs are preliminary,
-not enough to establish its twelve-seed claim.
+The event route is recorded before any experiment starts. It does not start a
+lab merely because an idea was submitted.
 
 ## Coding-agent lane
 

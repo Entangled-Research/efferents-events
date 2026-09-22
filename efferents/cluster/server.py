@@ -293,7 +293,14 @@ class ClusterHandler(DashboardHandler):
         elif verb == "route":
             result = intake.route(owner, sid)
         elif verb == "bind":
-            result = intake.bind(owner, sid, str(payload.get("track_id") or ""))
+            # Track selection is an automatic routing decision.  Keep the
+            # store-level binding helper for internal compatibility, but do
+            # not let a participant bypass relevance routing by naming a
+            # track in the public intake API.
+            raise ControlError(
+                "Track selection is automatic; use the route endpoint.",
+                status=409,
+            )
         elif verb == "create":
             falsifiers = payload.get("falsifiers")
             if falsifiers is not None and not isinstance(falsifiers, list):

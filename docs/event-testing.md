@@ -13,21 +13,22 @@ it preserves the password and evidence. This is not an Internet-accessible link.
 
 ## Five-minute test
 
-1. Inspect the two evacuation approaches under **Reduce congestion**, and the
-   independent numerical-integration lab. Their measurements are real CPU runs.
-2. Switch the graph between **Shared goal** and **Research domain**. Dotted
-   relationships indicate affinity; directed observation edges mean a finding
-   was delivered, not validated or reproduced.
-3. Choose **Add an idea or lab**. Enter “Frequent rerouting” under the shared goal
-   “Reduce congestion”, or leave the idea blank. **Infer defaults and run** records
-   the defaults and executes three model-free experiments. Advanced choices are
-   optional; sharing consent remains visible.
-4. Add “Numerical integration with a trapezoid baseline” as an independent lab.
-   This deliberately weaker approach should fail the starter's error target.
-   A negative result is evidence, not a broken run.
-5. Choose **Observe peer findings**, inspect the receipts and arrows, then open
-   a lab to inspect metrics, verdict and SVG evidence. Three evacuation seeds
-   are preliminary; its claim requires twelve distinct seeds.
+1. Open **Add an idea or lab** and submit a concrete idea, such as “reduce
+   error in a variational quantum circuit.” There is no evacuation or other
+   placeholder track to choose.
+2. Confirm that intake records an automatic route: a compatible idea joins an
+   existing lab as Idea A, Idea B, and so on; an unrelated idea creates a new
+   lab; an unsupported idea is handed to the participant's coding harness for a
+   new local evaluator.
+3. Confirm that the route does not start computation by itself. Connect the
+   participant's harness, then start the bounded local lab and watch its status
+   heartbeat appear in the network.
+4. Inspect the graph's lab boundary, internal ideas, reviewer board and journal
+   edges. The server may proxy model calls, but source, experiments and raw
+   evidence remain on the participant laptop.
+5. Verify that review outcomes animate toward the journal on acceptance and
+   back to the lab on rejection. Cross-lab learning occurs through journal
+   publications only.
 
 ## What is implemented
 
@@ -39,9 +40,9 @@ Receipt arrows record exposure, not scientific agreement. Peer material is marke
 untrusted in researcher context and must be reproduced before reliance.
 
 New starters use lightweight claim / measurement / stop-condition contracts;
-Popper Probe is not needed. Existing Popper-based labs remain supported. Inference
-chooses between two actual executable starter domains, not an invented experiment
-for every possible idea. Connect an existing repository for other domains.
+Popper Probe is not needed. Existing Popper-based labs remain supported. Intake
+routes ideas by relevance and executor compatibility; it never forces an
+unrelated idea into a placeholder track.
 
 ## Model and remote limitations
 
@@ -52,10 +53,11 @@ The UI authorizes at most three agent iterations per start. An iteration can
 include multiple model calls, constrained by the lab's monetary limits.
 Credit/auth/quota failures halt the bounded run with an auditable reason.
 
-The available Anthropic account rejected the live check for insufficient credit.
-No live Azure upstream, public hosting, or two-laptop remote rehearsal has been
-verified. Gateway protocol, enrollment, quotas, consent and receipts have automated
-tests; those do not substitute for a real cloud rehearsal. See the
+The deployed event uses an organizer-owned Azure OpenAI proxy; participant
+machines receive scoped event tokens and never receive the provider key. The
+hosted fallback is disabled in the current deployment, so the hub does not run
+participant labs. Gateway protocol, enrollment, quotas, consent and receipts
+have automated tests; those do not substitute for a real cloud rehearsal. See the
 [operator runbook](event-operator-runbook.md) before inviting remote participants.
 
 Owner steering and pause/stop remain available. Inference does not authorize public
