@@ -262,7 +262,8 @@ class ClusterHandler(DashboardHandler):
 
     def _extra_post(self, path: str, payload: dict) -> bool:
         if path in ("/api/connect", "/api/labs/select", "/api/steer",
-                    "/api/lab/start", "/api/lab/stop"):
+                    "/api/lab/start", "/api/lab/stop", "/api/onboard",
+                    "/api/lab/trial", "/api/network/observe"):
             # Cluster mode has no default lab and no repository connect.
             self.send_error(404)
             return True

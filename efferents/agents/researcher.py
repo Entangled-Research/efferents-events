@@ -45,6 +45,7 @@ from efferents.agents import popper_gate as _popper_gate
 from efferents.agents.budget import (
     BudgetTracker,
     CallUsage,
+    billing_model,
     model_for,
     model_for_supervisor,
 )
@@ -609,7 +610,7 @@ def _simple_call(
         cache_read_input_tokens=getattr(resp.usage, "cache_read_input_tokens", 0) or 0,
     )
     budget.record(
-        agent=agent, model=model, usage=usage,
+        agent=agent, model=billing_model(client, model), usage=usage,
         notes=f"{notes} | stop={resp.stop_reason}".strip(" |"),
     )
     return "".join(b.text for b in resp.content if getattr(b, "type", "") == "text")
@@ -1155,6 +1156,8 @@ def propose(
         blocked=_format_open_blocks(open_blocks(paths.root)),
     )
     kb_index_block = _kb_block(kb_index)
+    from efferents.agents import conference
+    dynamic_block += conference.prompt_context(paths.root, _lab.get_config())
 
     saturation = _saturation_report(paths)
     coder_log = _coder_log_tail(paths, n=10)
@@ -1198,6 +1201,9 @@ def propose(
     )
 
     # --- Cost guardrail before Turn 3 ---
+    conference.record_responses(
+        paths.root, _lab.get_config(), student_parsed.get("conference_responses"), student_id,
+    )
     spend_after_student = budget.spend_today()
     over_cap = (spend_after_student - spend_start) >= PER_CALL_COST_CAP_USD
 
@@ -1245,15 +1251,18 @@ def propose(
             corpus_root = paths.root.parent / "popper-corpus"
         else:
             corpus_root = paths.root.parent / "popper-corpus" / student_id
-        gate_result = _popper_gate.run_gate(
-            draft_claim=new_campaign.get("draft_hypothesis", ""),
-            slug=slug,
-            corpus_root=corpus_root,
-            client=client,
-            budget=budget,
-            charter_dir=Path(context_dir),
-            prompted_by=f"student:{student_id}",
-        )
+        if _lab.get_config().hypothesis_validation == "lightweight":
+            from efferents.agents.experiment_contract import write_contract
+            gate_result = write_contract(
+                claim=new_campaign.get("draft_hypothesis", ""), slug=slug,
+                root=corpus_root, cfg=_lab.get_config(),
+            )
+        else:
+            gate_result = _popper_gate.run_gate(
+                draft_claim=new_campaign.get("draft_hypothesis", ""),
+                slug=slug, corpus_root=corpus_root, client=client, budget=budget,
+                charter_dir=Path(context_dir), prompted_by=f"student:{student_id}",
+            )
         if gate_result.ok:
             campaign_id = "c-" + uuid.uuid4().hex[:10]
             _hm, _hd = _campaign_metric_from_proposal(new_campaign)
@@ -1284,7 +1293,7 @@ def propose(
         else:
             notebook_append(
                 paths.notebook,
-                f"## {now_iso()} — popper-gate REJECTED draft hypothesis: "
+                f"## {now_iso()} — experiment contract REJECTED draft hypothesis: "
                 f"{gate_result.reason}\n",
             )
 

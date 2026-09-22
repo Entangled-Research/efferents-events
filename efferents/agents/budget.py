@@ -1,27 +1,31 @@
 """Spend tracking, daily cap, model routing.
 
-Pricing as of 2026-08 (per million tokens):
+Pricing as of 2026-09 (per million tokens):
 
     claude-opus-4-7    : $5 in, $25 out
     claude-sonnet-4-6  : $3 in, $15 out
     claude-haiku-4-5   : $1 in, $5 out
+    claude-sonnet-5    : $2 in, $10 out
 
 Cache pricing (relative to input):
     cache_creation_input_tokens : 1.25x base input
     cache_read_input_tokens     : 0.1x base input
 
-These constants are baked in. Update if Anthropic changes pricing.
+These constants are baked in. Update when provider prices change.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
+import json
+import os
 from pathlib import Path
 from typing import Any
 
 from efferents.agents.state import append_jsonl, read_jsonl
 
 PRICING_PER_MTOK = {
+    "claude-sonnet-5":   {"input": 2.00, "output": 10.00},
     "claude-opus-4-7":    {"input":  5.00, "output": 25.00},
     "claude-sonnet-4-6":  {"input":  3.00, "output": 15.00},
     "claude-haiku-4-5":   {"input":  1.00, "output":  5.00},
@@ -62,10 +66,16 @@ class CallUsage:
 
 def cost_usd(model: str, usage: CallUsage) -> float:
     if "," in model:
-        # Model chains are priced at their preferred (first) entry; the ledger
-        # notes field records the actually-served model when it differs.
+        # Estimates without a response use the preferred entry. Agent call
+        # sites use billing_model() to record the actual model after fallback.
         model = model.split(",", 1)[0].strip()
-    p = PRICING_PER_MTOK.get(model)
+    if model in {"openai/event-fast", "openai/event-model", "openai/event-deep"}:
+        try:
+            p = json.loads(os.environ["EFFERENTS_EVENT_MODEL_PRICING"])[model]
+        except (KeyError, ValueError, TypeError) as exc:
+            raise RuntimeError("event model pricing is not configured") from exc
+    else:
+        p = PRICING_PER_MTOK.get(model)
     if p is None:
         # LiteLLM maintains pricing for its provider catalogue.  Keep the
         # framework's small Claude table as the stable default, then consult
@@ -82,6 +92,9 @@ def cost_usd(model: str, usage: CallUsage) -> float:
         return (
             usage.input_tokens * float(entry.get("input_cost_per_token", 0.0) or 0.0)
             + usage.output_tokens * float(entry.get("output_cost_per_token", 0.0) or 0.0)
+            + usage.cache_read_input_tokens * float(entry.get(
+                "cache_read_input_token_cost", entry.get("input_cost_per_token", 0.0)
+            ) or 0.0)
         )
     base_in = p["input"] / 1_000_000
     base_out = p["output"] / 1_000_000
@@ -89,8 +102,20 @@ def cost_usd(model: str, usage: CallUsage) -> float:
         usage.input_tokens * base_in
         + usage.output_tokens * base_out
         + usage.cache_creation_input_tokens * base_in * CACHE_WRITE_MULT
-        + usage.cache_read_input_tokens * base_in * CACHE_READ_MULT
+        + usage.cache_read_input_tokens * p.get(
+            "cache_read", p["input"] if model.startswith("openai/event-") else p["input"] * CACHE_READ_MULT
+        ) / 1_000_000
     )
+
+
+def billing_model(client: Any, requested: str) -> str:
+    """Record the actual provider after a successful routed call."""
+    served = getattr(client, "last_served_model", None)
+    if served in {"openai/event-fast", "openai/event-model", "openai/event-deep"}:
+        return served
+    if isinstance(served, str) and served in [part.strip() for part in requested.split(",")]:
+        return served
+    return requested
 
 
 def estimate_call_cost_usd(model: str, max_tokens: int, input_estimate: int = 0) -> float:

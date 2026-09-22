@@ -1,6 +1,6 @@
 let csrfToken = "";
 let controlState = { connected: false, hydrated: false };
-let portfolioState = { labs: [], edges: [] };
+let portfolioState = { labs: [], edges: [], findings: [], observations: [], eventNetwork: null };
 let isConnecting = false;
 let runtimeAction = "start";
 let renderedRoute = "";
@@ -181,6 +181,7 @@ function currentRoute() {
 }
 
 function renderRoute() {
+  const networkWasHidden = document.getElementById("network-view").hidden;
   let route = currentRoute();
   if (isCluster()) {
     if (controlState.hydrated && !isJoined()) {
@@ -213,10 +214,7 @@ function renderRoute() {
       link.removeAttribute("aria-current");
     }
   });
-  const labRail = document.getElementById("lab-rail");
-  const showRail = !["connect", "join"].includes(route) && portfolioState.labs.length > 0;
-  labRail.hidden = !showRail;
-  document.getElementById("workspace-frame").classList.toggle("with-lab-rail", showRail);
+  applyLabRail(route);
   if (renderedRoute && renderedRoute !== route) window.scrollTo(0, 0);
   renderedRoute = route;
   if (isCluster() && isJoined() && !controlState.connected) {
@@ -228,6 +226,31 @@ function renderRoute() {
   document.title = `efferents — ${route}`;
   renderLabTabs();
   renderBudget();
+  if (route === "network" && networkWasHidden) renderNetwork();
+}
+
+// The labs rail pops in and out from the topbar. Collapsed by default so the
+// network gets the full width; the choice is a per-browser convenience.
+let labRailOpen = readStored("efferents-lab-rail", false) === true;
+
+function applyLabRail(route) {
+  const available = !["connect", "join"].includes(route) && portfolioState.labs.length > 0;
+  const toggle = document.getElementById("lab-rail-toggle");
+  const showRail = available && labRailOpen;
+  toggle.hidden = !available;
+  toggle.setAttribute("aria-expanded", String(showRail));
+  text("lab-rail-toggle-count", String(portfolioState.labs.length).padStart(2, "0"));
+  document.getElementById("lab-rail").hidden = !showRail;
+  document.getElementById("workspace-frame").classList.toggle("with-lab-rail", showRail);
+}
+
+function initLabRailToggle() {
+  document.getElementById("lab-rail-toggle").addEventListener("click", () => {
+    labRailOpen = !labRailOpen;
+    writeStored("efferents-lab-rail", labRailOpen);
+    applyLabRail(currentRoute());
+    if (currentRoute() === "network") renderNetwork();
+  });
 }
 
 function initRouting() {
@@ -318,17 +341,19 @@ function renderControl(info) {
     return;
   }
 
-  text("observe-lab-title", info.lab_id || "unnamed-lab");
+  text("observe-lab-title", labDisplayName(info.lab_id));
   text("observe-lab-meta", `${info.domain || "unclassified"} / ${info.status || "stopped"}`);
   text("connection-source", info.remote
     ? `runs on ${info.source || "the owner's machine"} · steer it there`
     : (info.source || info.submission_dir || "local submission"));
   setRuntimeStatus(info.status);
+  document.getElementById("trial-lab").hidden = isCluster();
+  document.getElementById("trial-lab").disabled = pausedDemo || info.status === "running";
   setContractState(info.contract);
   renderSteering(info.steering);
 
   const keyState = document.getElementById("api-key-state");
-  keyState.textContent = pausedDemo
+  keyState.textContent = info.remote ? "Credentials managed on owner’s laptop" : pausedDemo
     ? "Paused demo · no model calls"
     : info.has_api_key ? "API key ready" : "API key missing";
   keyState.classList.toggle("ready", Boolean(info.has_api_key) && !pausedDemo);
@@ -350,6 +375,7 @@ function renderControl(info) {
     : "";
   const steerForm = document.getElementById("steer-form");
   steerForm.hidden = !mine;
+  steerForm.closest("section").hidden = !mine;
   steerForm.querySelectorAll("textarea, select, button").forEach((control) => {
     control.disabled = pausedDemo;
   });
@@ -388,7 +414,7 @@ function renderLabTabs() {
     openTabs.push(selected.lab_id);
   }
   writeStored("efferents-open-labs", openTabs);
-  strip.hidden = route === "connect" || portfolioState.labs.length === 0;
+  strip.hidden = !["network", "observe"].includes(route) || openTabs.length === 0;
   const networkActive = route === "network";
   strip.innerHTML =
     `<button class="lab-tab home${networkActive ? " active" : ""}" type="button" ` +
@@ -400,7 +426,7 @@ function renderLabTabs() {
       return `<button class="lab-tab${active ? " active" : ""}" type="button" ` +
         `data-tab="${esc(labId)}" aria-current="${active ? "true" : "false"}">` +
         `<i class="tab-led ${esc(lab.status || "stopped")}" aria-hidden="true"></i>` +
-        `<span class="tab-name">${esc(labId)}</span>` +
+        `<span class="tab-name">${esc(labDisplayName(labId))}</span>` +
         `<span class="tab-close" data-close="${esc(labId)}" title="Close tab">×</span></button>`;
     }).join("");
   strip.querySelector("[data-tab-network]").addEventListener("click", () => {
@@ -443,6 +469,29 @@ async function openLabTab(labId) {
   await selectPortfolioLab(labId, true);
 }
 
+// Ideas (autoresearchers) belong to a lab and are shown by name. A verdict
+// falsifies an idea, never the lab that hosts it.
+const IDEA_NAME_STOPWORDS = new Set("a an and at by for from in of on or that the to with".split(" "));
+function ideaName(idea) {
+  if (idea.name) return idea.name;
+  if (idea.id && idea.id !== "primary") return idea.id.replace(/[-_]/g, " ");
+  const words = String(idea.focus || "").split(/\s+/).filter(Boolean).slice(0, 6);
+  while (words.length && IDEA_NAME_STOPWORDS.has(words.at(-1).toLowerCase())) words.pop();
+  return words.join(" ").replace(/[ .,:;?!]+$/, "") || idea.id || "idea";
+}
+
+function labIdeas(lab) {
+  if (lab.ideas?.length) return lab.ideas;
+  const focus = lab.hypothesis?.question || lab.approach || "Initial research idea";
+  return [{id: "primary", focus, verdict: lab.verdict?.status || "undecided"}];
+}
+
+function ideaLineMarkup(idea) {
+  const falsified = idea.verdict === "falsified";
+  return `<span class="lab-idea-node${falsified ? " falsified" : ""}" title="${esc(idea.focus || "")}">` +
+    `${esc(ideaName(idea))}${falsified ? " · falsified" : ""}</span>`;
+}
+
 function renderLabRail() {
   const labs = Array.isArray(portfolioState.labs) ? portfolioState.labs : [];
   text("lab-portfolio-count", String(labs.length).padStart(2, "0"));
@@ -462,11 +511,10 @@ function renderLabRail() {
       `type="button" data-lab-select="${esc(lab.lab_id)}" role="listitem" ` +
       `aria-current="${lab.selected ? "true" : "false"}">` +
       `<span class="lab-seq">${String(index + 1).padStart(2, "0")}</span>` +
-      `<span class="lab-list-copy"><strong>${esc(lab.lab_id)}</strong>` +
+      `<span class="lab-list-copy"><strong>${esc(labDisplayName(lab.lab_id))}</strong>` +
       `<small>${esc(lab.domain || "unclassified")}${ownerLine}</small>` +
       `<span>${metric}</span>` +
-      `<span class="lab-verdict${lab.verdict?.status === "falsified" ? " falsified" : ""}">` +
-      `${esc(lab.verdict?.line || "verdict: undecided")}</span></span>` +
+      `<span class="lab-ideas">${labIdeas(lab).map(ideaLineMarkup).join("")}</span></span>` +
       `<span class="lab-list-state ${esc(lab.status || "stopped")}">` +
       `<i aria-hidden="true"></i>${esc(formatRelativeTime(lab.last_activity))}</span>` +
       `</button>`;
@@ -487,144 +535,413 @@ function portfolioNodePosition(index, count) {
   };
 }
 
+// Geometry adapted from docs/prototypes/event-network.html: journal hubs,
+// curved home branches, lab nuclei, idea tips and a selected-lab inspector.
+let networkSelection = null;
+function homeJournal(lab) {
+  if (lab.journal) return lab.journal;
+  const domain = (lab.domain || "").toLowerCase();
+  if (/machine.learning|active.learning|^ml$/.test(domain)) return "ML & Autonomous Systems";
+  if (/vehicle|traffic|simulation|routing|transport/.test(domain)) return "Simulation & Autonomous Systems";
+  if (/physics|orbit|mechanics/.test(domain)) return "Physics & Dynamics";
+  if (/math|graph|numerical|algorithm|optimi/.test(domain)) return "Mathematics & Computation";
+  return lab.domain || "General Research";
+}
+function portfolioLabs() {
+  const localIds = new Set(portfolioState.labs.map(lab => lab.lab_id));
+  return [...portfolioState.labs,
+    ...(portfolioState.eventNetwork?.labs || []).filter(lab => !localIds.has(lab.lab_id))];
+}
+
+function labDisplayName(labId) {
+  if (!labId) return "Unnamed lab";
+  const labs = portfolioLabs();
+  if (!labs.some(lab => lab.lab_id === labId)) labs.push({lab_id: labId});
+  return networkLabNames(labs).get(labId);
+}
+
+function networkLabNames(labs) {
+  const names = new Map();
+  const counts = new Map();
+  let placeholder = 0;
+  const placeholderName = () => {
+    let index = ++placeholder;
+    let suffix = "";
+    while (index > 0) {
+      suffix = String.fromCharCode(65 + (index - 1) % 26) + suffix;
+      index = Math.floor((index - 1) / 26);
+    }
+    return `Lab ${suffix}`;
+  };
+  [...labs].sort((a, b) => a.lab_id.localeCompare(b.lab_id)).forEach(lab => {
+    const actualName = String(lab.display_name || "").trim();
+    const generatedId = /-[a-f0-9]{8,}$/i.test(lab.lab_id || "");
+    const base = actualName || (generatedId || !lab.lab_id
+      ? placeholderName()
+      : lab.lab_id.replace(/[-_]+/g, " ").replace(/^lab ([a-z])$/i, (_, letter) => `Lab ${letter.toUpperCase()}`).replace(/^./, c => c.toUpperCase()));
+    const count = (counts.get(base) || 0) + 1;
+    counts.set(base, count);
+    names.set(lab.lab_id, {base, count});
+  });
+  return new Map([...names].map(([id, {base, count}]) =>
+    [id, counts.get(base) > 1 ? `${base} ${count}` : base]));
+}
+function publishedFindings() {
+  return [...portfolioState.findings, ...(portfolioState.eventNetwork?.findings || [])]
+    .filter(item => item.kind === "publication" && item.publication_status === "accepted");
+}
+
+function reviewBoardMarkup(board = {}) {
+  const personas = ["critical", "neutral", "optimistic"];
+  const scores = board.scores || {};
+  return `<div class="review-board-title">Review board <small>${esc(board.status || "awaiting paper")}</small></div>` +
+    `<div class="review-scores">${personas.map(persona => {
+      const score = scores[persona] ?? (persona === "optimistic" ? scores.enthusiast : null);
+      return `<div><span>${persona}</span><strong>${Number.isInteger(score) && score >= 1 && score <= 10 ? `${score}/10` : "—"}</strong></div>`;
+    }).join("")}</div>`;
+}
+
 function renderNetwork() {
-  const labs = portfolioState.labs || [];
+  if (document.getElementById("network-view").hidden) return;
+  const labs = portfolioLabs();
+  const findings = publishedFindings();
+  const publicationById = new Map(findings.map(item => [item.id, item]));
+  const observations = [...portfolioState.observations, ...(portfolioState.eventNetwork?.observations || [])]
+    .filter(item => publicationById.has(item.finding_id));
   const lines = document.getElementById("network-lines");
   const nodes = document.getElementById("network-nodes");
   const journalsLayer = document.getElementById("network-journals");
   const ideasLayer = document.getElementById("network-ideas");
+  [lines, nodes, journalsLayer, ideasLayer].forEach(el => el.replaceChildren());
+  document.querySelector(".network-hub").hidden = true;
   const empty = document.getElementById("network-empty");
-  const hub = document.querySelector(".network-hub");
-  const positions = new Map();
-  lines.innerHTML = "";
-  nodes.innerHTML = "";
-  journalsLayer.innerHTML = "";
-  ideasLayer.innerHTML = "";
-  const packet = (a, b, cls = "") => {
-    const motion = svgElement("animateMotion", {
-      dur: `${2.4 + (Math.abs(a.x - b.x) % 8) / 10}s`,
-      begin: `-${(Math.abs(a.x + b.y) % 20) / 10}s`,
-      repeatCount: "indefinite",
-      path: `M${a.x * 10},${a.y * 5.6} L${b.x * 10},${b.y * 5.6}`,
-    });
-    const dot = svgElement("circle", { r: 3, class: `network-packet ${cls}` });
-    dot.appendChild(motion);
-    lines.appendChild(dot);
-  };
-  const people = isCluster() && controlState.session && controlState.session.people != null
-    ? ` · ${controlState.session.people} ${controlState.session.people === 1 ? "person" : "people"}`
-    : "";
-  text("network-node-count", `${labs.length} ${labs.length === 1 ? "lab" : "labs"}${people}`);
-
-  if (!labs.length) {
-    empty.hidden = false;
-    empty.textContent = isCluster() ? "No labs yet · start one under New lab" : "Connect a lab";
-    hub.hidden = true;
-    return;
+  empty.hidden = labs.length > 0;
+  empty.textContent = isCluster() ? "No labs yet · start one under New lab" : "Connect a lab to build a reviewed journal.";
+  const selected = labs.find(lab => lab.lab_id === networkSelection) || labs[0];
+  networkSelection = selected?.lab_id || null;
+  const groups = new Map();
+  labs.forEach(lab => groups.set(homeJournal(lab), [...(groups.get(homeJournal(lab)) || []), lab]));
+  const names = [...groups.keys()];
+  const sizes = names.map(name => groups.get(name).length);
+  // Re-layout when the lab set, the journals, or the viewport changed; never on a plain poll.
+  const change = sizeMapViewport([...labs.map(lab => lab.lab_id).sort(), ...names].join("|"));
+  if (change.content || change.view) mapView.layout = chooseMapLayout(sizes);
+  const {cols: columns, groupCols} = mapView.layout;
+  const world = layoutMapGroups(sizes, columns, groupCols);
+  const rowHeight = MAP_CELL.row;
+  lines.setAttribute("viewBox", `0 0 ${world.width} ${world.height}`);
+  const defs = svgElement("defs", {});
+  for (const kind of ["publish", "subscribe", "accepted", "rejected"]) {
+    const marker = svgElement("marker", {id: `${kind}-arrow`, viewBox: "0 0 10 10",
+      refX: 9, refY: 5, markerWidth: 9, markerHeight: 9, markerUnits: "userSpaceOnUse", orient: "auto"});
+    marker.appendChild(svgElement("path", {d: "M0 0 L10 5 L0 10 Z", class: `${kind}-arrow`}));
+    defs.appendChild(marker);
   }
-  empty.hidden = true;
-  hub.hidden = false;
-
-  labs.forEach((lab, index) => {
-    const position = portfolioNodePosition(index, labs.length);
-    positions.set(lab.lab_id, position);
-    lines.appendChild(svgElement("line", {
-      x1: 500,
-      y1: 280,
-      x2: position.x * 10,
-      y2: position.y * 5.6,
-      class: "hub-edge",
-    }));
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = `map-node ${lab.status || "stopped"}${lab.selected ? " selected" : ""}${lab.mine ? " mine" : ""}${lab.remote ? " remote" : ""}`;
-    button.dataset.mapLab = lab.lab_id;
-    button.style.left = `${position.x}%`;
-    button.style.top = `${position.y}%`;
-    const owner = lab.owner_name ? `<small class="map-node-owner">${esc(lab.owner_name)}${lab.remote ? " · laptop" : ""}</small>` : "";
-    button.innerHTML = `<span class="map-node-state"><i aria-hidden="true"></i>${esc(lab.status || "stopped")}</span>` +
-      `<strong>${esc(lab.lab_id)}</strong><small>${esc(lab.domain || "unclassified")}</small>${owner}`;
-    button.addEventListener("click", async () => {
-      await openLabTab(lab.lab_id);
-    });
-    nodes.appendChild(button);
-  });
-
-  const journals = new Map();
-  labs.forEach((lab) => {
-    const key = lab.domain || "unclassified";
-    const group = journals.get(key) || [];
-    group.push(lab);
-    journals.set(key, group);
-  });
-  journals.forEach((members, domain) => {
-    const points = members.map((lab) => positions.get(lab.lab_id));
-    const center = points.reduce((sum, point) => ({ x: sum.x + point.x, y: sum.y + point.y }), { x: 0, y: 0 });
-    center.x /= points.length;
-    center.y /= points.length;
-    const label = document.createElement("div");
-    label.className = "network-journal";
-    label.style.left = `${center.x}%`;
-    label.style.top = `${Math.max(7, center.y - 22)}%`;
-    label.innerHTML = `<small>JOURNAL · DOMAIN INBOX</small><b>${esc(domain)}</b><small>${members.length} labs</small>`;
-    const labGrid = document.createElement("div");
-    labGrid.className = "journal-labs";
-    label.appendChild(labGrid);
-    journalsLayer.appendChild(label);
-    members.forEach((lab) => {
-      const position = positions.get(lab.lab_id);
-      const hub = { x: center.x * 10, y: center.y * 5.6 };
-      const nucleus = { x: position.x * 10, y: position.y * 5.6 };
-      for (let fiber = -2; fiber <= 2; fiber += 1) {
-        const bend = (hub.y + nucleus.y) / 2;
-        lines.appendChild(svgElement("path", {
-          d: `M${hub.x},${hub.y} C${hub.x + fiber * 16},${bend} ${nucleus.x + fiber * 16},${bend} ${nucleus.x},${nucleus.y}`,
-          class: "journal-fiber",
-          fill: "none",
-        }));
-      }
-      for (let fiber = 0; fiber < 14; fiber += 1) {
-        const angle = fiber * Math.PI / 7;
-        const tip = { x: nucleus.x + Math.cos(angle) * 28, y: nucleus.y + Math.sin(angle) * 24 };
-        lines.appendChild(svgElement("path", {
-          d: `M${nucleus.x},${nucleus.y} C${nucleus.x + Math.cos(angle) * 10},${nucleus.y + Math.sin(angle) * 8} ${tip.x - Math.cos(angle) * 8},${tip.y - Math.sin(angle) * 8} ${tip.x},${tip.y}`,
-          class: "lab-fiber",
-          fill: "none",
-        }));
-      }
-      lines.appendChild(svgElement("circle", { cx: nucleus.x, cy: nucleus.y, r: 5, class: "lab-nucleus" }));
-      const question = lab.hypothesis?.question || lab.hypothesis?.claim || "Awaiting first hypothesis";
+  lines.appendChild(defs);
+  const route = (d, kind, active, label) => {
+    const edge = svgElement("path", {d, fill: "none", class: `journal-route ${kind}${active ? " active" : " pending"}`,
+      "marker-end": `url(#${kind}-arrow)`});
+    const title = svgElement("title", {}); title.textContent = label;
+    edge.appendChild(title); lines.appendChild(edge);
+    if (active) {
+      const dot = svgElement("circle", {r: 3, class: `network-packet ${kind}`});
+      dot.appendChild(svgElement("animateMotion", {dur: "4s", repeatCount: "indefinite", path: d}));
+      lines.appendChild(dot);
+    }
+  };
+  const labPorts = new Map(), journalPorts = new Map();
+  names.forEach((name, groupIndex) => {
+    const members = groups.get(name);
+    const {x: groupLeft, y: groupTop, width: groupWidth} = world.origins[groupIndex];
+    const groupRight = groupLeft + groupWidth;
+    const rows = Math.ceil(members.length / columns);
+    const journalY = groupTop + rows * rowHeight + 15;
+    const width = MAP_CELL.card, half = width / 2;
+    members.forEach((lab, index) => {
+      const x = groupLeft + MAP_CELL.pad + (index % columns + 0.5) * MAP_CELL.slot;
+      const y = groupTop + Math.floor(index / columns) * rowHeight + 24;
       const card = document.createElement("article");
-      card.className = `lab-structure ${lab.status || "stopped"}${lab.selected ? " selected" : ""}`;
-      const owner = lab.owner_name ? `<small class="map-node-owner">${esc(lab.owner_name)}${lab.remote ? " · laptop" : ""}</small>` : "";
-      card.innerHTML = `<button type="button" class="lab-identity"><strong>${esc(lab.lab_id)}</strong><small>${esc(lab.status || "stopped")}${lab.remote ? " · read only" : ""}</small>${owner}</button>` +
-        `<div class="lab-loop" aria-label="Autoresearch loop"><span>owner steering</span><i>→</i><span>supervisor + agents</span><i>→</i><span class="gate">hypothesis</span><i>→</i><span class="gate">bounded run</span><i>→</i><span>evidence + paper</span><b class="lab-flow-packet" aria-hidden="true">◆</b></div>` +
-        `<div class="lab-ideas"><small>GROUP OF IDEAS</small><p>${esc(question.length > 78 ? `${question.slice(0, 75)}…` : question)}</p></div>`;
-      card.querySelector(".lab-identity").addEventListener("click", async () => { await openLabTab(lab.lab_id); });
-      labGrid.appendChild(card);
+      card.className = "network-lab-boundary";
+      Object.assign(card.style, {left: `${x}px`, top: `${y}px`, width: `${width}px`});
+      const ideas = labIdeas(lab);
+      card.innerHTML = `<button type="button" class="lab-identity" aria-pressed="${lab.lab_id === networkSelection}"><strong>${esc(labDisplayName(lab.lab_id))}</strong><small>${esc(lab.status || "stopped")}${lab.remote ? " · read only" : ""}</small></button>` +
+        `<div class="lab-idea-nodes" aria-label="Ideas in ${esc(labDisplayName(lab.lab_id))}"><span class="lab-idea-label">Ideas · ${ideas.length}</span>${ideas.map(ideaLineMarkup).join("")}</div>` +
+        `<div class="internal-research"><span>Supervisor · Researcher · Librarian</span><b>Hypothesis → Experiment</b><b>Evidence → Paper</b><span>Executor · Coder · Analyst · Writer</span></div>`;
+      // Events exposes read-only evidence for remote labs through its hub.
+      card.querySelector("button").onclick = () => {
+        networkSelection = lab.lab_id;
+        openLabTab(lab.lab_id);
+      };
+      nodes.appendChild(card);
+      const owned = findings.filter(item => item.lab_id === lab.lab_id);
+      const latest = owned.at(-1);
+      const board = lab.review_board?.status ? lab.review_board : (latest ? {status: "accepted", scores: latest.review_scores} : {});
+      const review = document.createElement("div");
+      review.className = "network-review-board";
+      Object.assign(review.style, {left: `${x}px`, top: `${y + 242}px`, width: `${width}px`});
+      review.innerHTML = reviewBoardMarkup(board);
+      nodes.appendChild(review);
+      route(`M${x},${y + 210} V${y + 237}`, "publish", false,
+        `${labDisplayName(lab.lab_id)} submits a paper to its three-reviewer board`);
+      if (board.status === "rejected") {
+        route(`M${x + half},${y + 300} H${x + half + 20} V${y + 110} H${x + half + 5}`,
+          "rejected", true, `Rejected paper → ${labDisplayName(lab.lab_id)} for revision`);
+      }
+      // Each lab publishes down the gutter on its right and subscribes up the
+      // gutter on its left, so paths stay out of other labs in larger journals.
+      const lane = x + half + 35;
+      const accepted = board.status === "accepted" && owned.some(item =>
+        !board.campaign_id || item.campaign_id === board.campaign_id);
+      if (board.status !== "rejected") {
+        const entry = lane > groupRight - 100 ? `V${journalY + 35} H${groupRight - 100}` : `V${journalY}`;
+        route(`M${x},${y + 332} V${y + 350} H${lane} ${entry}`,
+          accepted ? "accepted" : "publish", accepted, `${labDisplayName(lab.lab_id)} → ${name}: accepted papers only`);
+      }
+      labPorts.set(lab.lab_id, {x: x - half, y: y + 75, lane: x - half - 35});
+    });
+    const published = findings.filter(item => (item.journal || homeJournal(item)) === name);
+    const journal = document.createElement("div");
+    journal.className = "shared-journal-node";
+    Object.assign(journal.style, {left: `${groupLeft + 100}px`, top: `${journalY}px`, width: `${groupWidth - 200}px`});
+    journal.innerHTML = `<small>SHARED JOURNAL · ACCEPTED PAPERS</small><strong>${esc(name)}</strong><small>${published.length} ${published.length === 1 ? "publication" : "publications"} · append-only evidence</small>`;
+    journalsLayer.appendChild(journal);
+    journalPorts.set(name, {x: groupRight - 150, y: journalY + 70});
+    // Subscription capability is visible; animation requires a persisted receipt.
+    members.forEach(lab => {
+      const port = labPorts.get(lab.lab_id);
+      const active = observations.some(item => item.target === lab.lab_id && publicationById.get(item.finding_id)?.journal === name);
+      route(`M${groupLeft + 150},${journalY + 70} V${journalY + 94} H${port.lane} V${port.y} H${port.x - 7}`,
+        "subscribe", active, `${name} → ${labDisplayName(lab.lab_id)}: journal subscription`);
     });
   });
-
-  (portfolioState.edges || []).forEach((edge) => {
-    const source = positions.get(edge.source);
-    const target = positions.get(edge.target);
-    if (!source || !target) return;
-    lines.appendChild(svgElement("line", {
-      x1: source.x * 10,
-      y1: source.y * 5.6,
-      x2: target.x * 10,
-      y2: target.y * 5.6,
-      class: `domain-edge edge-${String(edge.kind || "shared-domain")}`,
-    }));
-    packet(source, target, "domain");
+  const subscriptions = new Set();
+  observations.forEach(receipt => {
+    const publication = publicationById.get(receipt.finding_id);
+    const name = publication.journal || homeJournal(publication);
+    const lab = labs.find(item => item.lab_id === receipt.target);
+    const journal = journalPorts.get(name), port = labPorts.get(receipt.target);
+    const key = `${name}:${receipt.target}`;
+    if (!journal || !port || !lab || homeJournal(lab) === name || subscriptions.has(key)) return;
+    subscriptions.add(key);
+    route(`M${journal.x},${journal.y} V${journal.y + 40} H${port.lane - 10} V${port.y - 16} H${port.x - 7} V${port.y}`,
+      "subscribe", true, `${name} → ${labDisplayName(lab.lab_id)}: cross-field journal subscription`);
   });
+  setMapWorld(world.width, world.height, change.view || (change.content && !mapView.moved));
+  text("network-node-count", `${labs.length} ${labs.length === 1 ? "lab" : "labs"} · ${groups.size} ${groups.size === 1 ? "journal" : "journals"}`);
+  renderEventAdmin(); renderExchange();
+}
 
+// ---------------------------------------------------------- map pan / zoom
+// #lab-map is a fixed viewport; #network-world holds every layer at its
+// natural layout size and only its transform changes.
+const mapView = {x: 0, y: 0, k: 1, width: 1000, height: 460, contentKey: "", viewKey: "", moved: false, layout: {cols: 2, groupCols: 1}};
+const MAP_ZOOM = {min: 0.25, max: 2.5, fitMin: 0.35, fitMax: 1, margin: 16, step: 1.3, pan: 60};
+// World geometry in px: a lab slot is a card plus its two routing gutters.
+const MAP_CELL = {slot: 460, card: 360, pad: 40, row: 410, journal: 150};
+const clamp = (value, low, high) => Math.min(high, Math.max(low, value));
+
+function applyMapView(animated = false) {
+  const world = document.getElementById("network-world");
+  world.classList.toggle("animated", animated);
+  world.style.transform = `translate(${mapView.x}px, ${mapView.y}px) scale(${mapView.k})`;
+  text("map-zoom-level", `${Math.round(mapView.k * 100)}%`);
+}
+
+function fitMap(animated = false) {
+  const map = document.getElementById("lab-map");
+  const room = (size) => Math.max(1, size - 2 * MAP_ZOOM.margin);
+  mapView.k = clamp(Math.min(room(map.clientWidth) / mapView.width, room(map.clientHeight) / mapView.height),
+    MAP_ZOOM.fitMin, MAP_ZOOM.fitMax);
+  // Centered; content larger than the viewport at the minimum fit starts at its top-left.
+  const center = (view, size) => Math.max(MAP_ZOOM.margin, (view - size * mapView.k) / 2);
+  mapView.x = center(map.clientWidth, mapView.width);
+  mapView.y = center(map.clientHeight, mapView.height);
+  mapView.moved = false;
+  applyMapView(animated);
+}
+
+function zoomMapAt(px, py, factor, animated = false) {
+  const k = clamp(mapView.k * factor, MAP_ZOOM.min, MAP_ZOOM.max);
+  mapView.x = px - (px - mapView.x) * k / mapView.k;
+  mapView.y = py - (py - mapView.y) * k / mapView.k;
+  mapView.k = k;
+  mapView.moved = true;
+  applyMapView(animated);
+}
+
+function zoomMapCentered(factor) {
+  const map = document.getElementById("lab-map");
+  zoomMapAt(map.clientWidth / 2, map.clientHeight / 2, factor, true);
+}
+
+function panMap(dx, dy) {
+  mapView.x += dx;
+  mapView.y += dy;
+  mapView.moved = true;
+  applyMapView();
+}
+
+// Journal groups flow in rows of groupCols; each group holds its labs in up to
+// cols columns and is only as wide as the labs it has.
+function layoutMapGroups(sizes, cols, groupCols) {
+  const origins = [];
+  let top = 0, width = MAP_CELL.slot + 2 * MAP_CELL.pad;
+  for (let i = 0; i < sizes.length; i += groupCols) {
+    const row = sizes.slice(i, i + groupCols);
+    let left = 0;
+    row.forEach(size => {
+      const groupWidth = Math.min(cols, size) * MAP_CELL.slot + 2 * MAP_CELL.pad;
+      origins.push({x: left, y: top, width: groupWidth});
+      left += groupWidth;
+    });
+    width = Math.max(width, left);
+    top += Math.max(...row.map(size => Math.ceil(size / cols) * MAP_CELL.row + MAP_CELL.journal));
+  }
+  return {origins, width, height: Math.max(460, top)};
+}
+
+// Pick the column counts whose world shape fits the viewport at the largest scale.
+function chooseMapLayout(sizes) {
+  const map = document.getElementById("lab-map");
+  let best = {cols: 1, groupCols: 1, scale: 0};
+  for (let cols = 1; cols <= Math.max(1, ...sizes); cols++) {
+    for (let groupCols = 1; groupCols <= Math.max(1, sizes.length); groupCols++) {
+      const world = layoutMapGroups(sizes, cols, groupCols);
+      const scale = Math.min(map.clientWidth / world.width, map.clientHeight / world.height);
+      if (scale > best.scale) best = {cols, groupCols, scale};
+    }
+  }
+  return best;
+}
+
+// Size the viewport to the window and report what changed since the last render.
+function sizeMapViewport(contentKey) {
+  const map = document.getElementById("lab-map");
+  const below = map.closest(".panel").getBoundingClientRect().bottom - map.getBoundingClientRect().bottom;
+  const top = map.getBoundingClientRect().top + window.scrollY;
+  // Fill the window below the map's top; when stacked panels push the map
+  // under the fold (narrow screens), give it most of one screen instead.
+  const room = Math.floor(window.innerHeight - top - below - MAP_ZOOM.margin);
+  map.style.height = `${room >= 320 ? room : Math.floor(window.innerHeight * 0.7)}px`;
+  const viewKey = `${map.clientWidth}x${map.clientHeight}`;
+  const change = {content: contentKey !== mapView.contentKey, view: viewKey !== mapView.viewKey};
+  Object.assign(mapView, {contentKey, viewKey});
+  return change;
+}
+
+function setMapWorld(width, height, refit) {
+  Object.assign(mapView, {width, height});
+  Object.assign(document.getElementById("network-world").style, {width: `${width}px`, height: `${height}px`});
+  if (refit) fitMap(); else applyMapView();
+}
+
+function initMapPanZoom() {
+  const map = document.getElementById("lab-map");
+  const pointers = new Map();
+  let dragging = false;
+  map.addEventListener("wheel", (event) => {
+    event.preventDefault();
+    const rect = map.getBoundingClientRect();
+    const delta = event.deltaY * (event.deltaMode === 1 ? 16 : 1);
+    zoomMapAt(event.clientX - rect.left, event.clientY - rect.top, Math.exp(-delta * (event.ctrlKey ? 0.01 : 0.0015)));
+  }, {passive: false});
+  map.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0 || event.target.closest("button, a, summary, input, .map-controls")) return;
+    pointers.set(event.pointerId, {x: event.clientX, y: event.clientY});
+    dragging = pointers.size > 1;
+  });
+  map.addEventListener("pointermove", (event) => {
+    const last = pointers.get(event.pointerId);
+    if (!last) return;
+    const now = {x: event.clientX, y: event.clientY};
+    // Movement under 4px stays a click.
+    if (!dragging && Math.hypot(now.x - last.x, now.y - last.y) < 4) return;
+    if (!dragging) pointers.forEach((_, id) => map.setPointerCapture(id));
+    dragging = true;
+    map.classList.add("panning");
+    const other = [...pointers].find(([id]) => id !== event.pointerId)?.[1];
+    if (other) {
+      const rect = map.getBoundingClientRect();
+      const spread = (point) => Math.hypot(point.x - other.x, point.y - other.y) || 1;
+      zoomMapAt((now.x + other.x) / 2 - rect.left, (now.y + other.y) / 2 - rect.top, spread(now) / spread(last));
+    }
+    panMap((now.x - last.x) / pointers.size, (now.y - last.y) / pointers.size);
+    pointers.set(event.pointerId, now);
+  });
+  const release = (event) => {
+    pointers.delete(event.pointerId);
+    if (pointers.size) return;
+    dragging = false;
+    map.classList.remove("panning");
+  };
+  map.addEventListener("pointerup", release);
+  map.addEventListener("pointercancel", release);
+  map.addEventListener("keydown", (event) => {
+    if (event.target.closest("input") || event.metaKey || event.ctrlKey || event.altKey) return;
+    const actions = {
+      "+": () => zoomMapCentered(MAP_ZOOM.step), "=": () => zoomMapCentered(MAP_ZOOM.step),
+      "-": () => zoomMapCentered(1 / MAP_ZOOM.step), "0": () => fitMap(true),
+      ArrowLeft: () => panMap(MAP_ZOOM.pan, 0), ArrowRight: () => panMap(-MAP_ZOOM.pan, 0),
+      ArrowUp: () => panMap(0, MAP_ZOOM.pan), ArrowDown: () => panMap(0, -MAP_ZOOM.pan),
+    };
+    if (!actions[event.key]) return;
+    event.preventDefault();
+    actions[event.key]();
+  });
+  map.querySelector(".map-controls").addEventListener("click", (event) => {
+    const action = event.target.closest("[data-map-zoom]")?.dataset.mapZoom;
+    if (action === "fit") fitMap(true);
+    else if (action) zoomMapCentered(action === "in" ? MAP_ZOOM.step : 1 / MAP_ZOOM.step);
+  });
+  window.addEventListener("resize", renderNetwork);
+}
+
+function renderExchange() {
+  const findings = new Map(publishedFindings().map(item => [item.id, item]));
+  const receipts = [...portfolioState.observations, ...(portfolioState.eventNetwork?.observations || [])].filter(item => findings.has(item.finding_id));
+  const feed = document.getElementById("exchange-feed");
+  const rows = Array.from(findings.values()).reverse().slice(0, 30);
+  feed.innerHTML = rows.length ? rows.map((item) => {
+    const observers = [...new Set(receipts.filter((r) => r.finding_id === item.id).map((r) => r.target))];
+    return `<article class="exchange-record"><div class="exchange-record-meta"><strong>${esc(labDisplayName(item.lab_id))}</strong>` +
+      `<span>${esc(item.kind)} → ${esc(homeJournal(item))}</span></div>` +
+      (item.kind === "hypothesis" ? `<details><summary>Experiment claim</summary><p>${esc(item.body)}</p></details>` : `<p>${esc(item.body)}</p>`) + `<div class="exchange-provenance">` +
+      `${item.run_id ? `Run ${esc(item.run_id)} · ` : ""}Record ${esc(item.id.slice(0, 12))}` +
+      `</div><div class="exchange-receipt">${observers.length ? `Received by ${observers.map(id => esc(labDisplayName(id))).join(", ")}` : "Awaiting a peer visit"}</div></article>`;
+  }).join("") : "";
+  // The panel carries no copy of its own; it appears only once papers exist.
+  document.getElementById("exchange-panel").hidden = !rows.length;
+  const goals = [...new Set(portfolioState.labs.map((lab) => lab.goal).filter(Boolean))];
+  document.getElementById("known-goals").innerHTML = goals.map((goal) => `<option value="${esc(goal)}"></option>`).join("");
+}
+
+function renderEventAdmin() {
+  const network = portfolioState.eventNetwork;
+  const panel = document.getElementById("event-admin-panel");
+  panel.hidden = !network?.configured;
+  if (!network?.configured) return;
+  const event = network.event || {};
+  text("event-admin-meta", network.available ? "live · sanitized summaries" : "registry unavailable");
+  text("event-id", event.event_id || "—");
+  text("event-spend", `$${Number(event.spent_usd || 0).toFixed(4)} / $${Number(event.total_cap_usd || 0).toFixed(2)}`);
+  text("event-token-count", String(event.token_count ?? network.tokens?.length ?? 0));
+  text("event-generated-at", formatTimestamp(network.generated_at, true));
+  const body = document.querySelector("#event-tokens tbody");
+  const tokens = Array.isArray(network.tokens) ? network.tokens : [];
+  body.innerHTML = tokens.length ? tokens.map((token) =>
+    `<tr><td>${esc(token.token_id)}</td><td>${esc(labDisplayName(token.lab_id))}</td>` +
+    `<td>${esc(token.status)}</td><td>$${Number(token.spent_usd || 0).toFixed(4)} / $${Number(token.cap_usd || 0).toFixed(2)}</td>` +
+    `<td>${esc(token.requests || 0)}</td><td>${esc(formatTimestamp(token.last_sync_at, true))}</td></tr>`
+  ).join("") : '<tr><td colspan="6" class="empty-state">No event tokens issued</td></tr>';
 }
 
 function renderPortfolio(payload) {
   portfolioState = {
     labs: Array.isArray(payload?.labs) ? payload.labs : [],
     edges: Array.isArray(payload?.edges) ? payload.edges : [],
+    findings: Array.isArray(payload?.findings) ? payload.findings : [],
+    observations: Array.isArray(payload?.observations) ? payload.observations : [],
+    eventNetwork: payload?.event_network || null,
   };
   if (!selectedLabId) {
     // First load in a single-lab workspace: follow the server's default lab.
@@ -633,6 +950,7 @@ function renderPortfolio(payload) {
   }
   markSelected();
   markMine();
+  text("observe-lab-title", labDisplayName(selectedLabId || controlState.lab_id));
   portfolioBudget = portfolioState.labs.reduce(
     (sum, lab) => ({
       spent: sum.spent + Number(lab.budget?.spent || 0),
@@ -654,9 +972,11 @@ async function selectPortfolioLab(labId, openObserver) {
   selectedLabId = labId;
   writeStored("efferents-selected-lab", labId);
   markSelected();
-  if (openObserver) window.location.hash = "observe";
   const info = await getJSON(labPath("control"));
+  if (selectedLabId !== labId) return;
+  info.mine = Boolean(portfolioState.labs.find(lab => lab.lab_id === labId)?.mine);
   renderControl(info);
+  if (openObserver) window.location.hash = "observe";
   renderLabRail();
   renderLabTabs();
   renderNetwork();
@@ -711,19 +1031,23 @@ function renderState(state) {
   applyThesisClamp("falsifier");
 }
 
+function hasMetricValue(value) {
+  return value != null && value !== "" && Number.isFinite(Number(value));
+}
+
 function renderRuns(data) {
   const headline = data.headline || { column: "metric", direction: "min" };
   const direction = headline.direction === "max" ? "max" : "min";
   const directionLabel = direction === "max" ? "higher is better" : "lower is better";
   const runs = Array.isArray(data.runs) ? data.runs : [];
   const history = data.history || {};
-  const observedRuns = runs.filter((run) => Number.isFinite(Number(run.value)));
+  const observedRuns = runs.filter((run) => hasMetricValue(run.value));
   const eligibleRuns = observedRuns.filter((run) => run.eligible !== false);
   const eligibleValues = eligibleRuns.map((run) => Number(run.value));
   const recentBest = eligibleValues.length
     ? (direction === "max" ? Math.max(...eligibleValues) : Math.min(...eligibleValues))
     : null;
-  const best = Number.isFinite(Number(history.best)) ? Number(history.best) : recentBest;
+  const best = hasMetricValue(history.best) ? Number(history.best) : recentBest;
   const latest = eligibleRuns.length ? Number(eligibleRuns[0].value) : null;
   const bestRunId = history.best_run_id ||
     eligibleRuns.find((run) => Number(run.value) === best)?.run_id || "";
@@ -815,7 +1139,7 @@ function svgElement(name, attributes = {}) {
 function renderTrend(series, direction, summary = {}) {
   const svg = document.getElementById("trend");
   svg.innerHTML = "";
-  const finiteSeries = series.filter((point) => Number.isFinite(Number(point.value)));
+  const finiteSeries = series.filter((point) => hasMetricValue(point.value));
   svg.setAttribute(
     "aria-label",
     `${summary.metric || "metric"} across ${finiteSeries.length} eligible observations`,
@@ -1224,7 +1548,7 @@ async function refresh() {
     renderSession(session);
     if (isCluster() && !isJoined()) {
       // Reads are gated on the join code; show the join view and stop here.
-      portfolioState = { labs: [], edges: [] };
+      portfolioState = { labs: [], edges: [], findings: [], observations: [], eventNetwork: null };
       renderControl(session);
       return;
     }
@@ -1248,6 +1572,7 @@ function renderSession(session) {
   controlState.session = session.cluster || null;
   const cluster = isCluster();
   const joined = cluster && isJoined();
+  document.getElementById("event-status").hidden = !cluster || !controlState.session?.frozen;
   document.querySelectorAll("[data-cluster-only]").forEach((el) => { el.hidden = !joined; });
   document.querySelectorAll("[data-local-only]").forEach((el) => { el.hidden = cluster; });
   if (cluster) {
@@ -1304,10 +1629,13 @@ function initConnectForm() {
     showMessage("connect-message", "Checking out and validating the submission contract…");
     try {
       const info = await postJSON("/api/connect", { source });
+      await refreshPortfolio();
       renderControl(info);
       showMessage(
         "connect-message",
-        `${info.lab_id} connected · not executed`,
+        info.routing?.applied
+          ? `${labDisplayName(info.lab_id)} · joined as student ${info.routing.student_id}`
+          : `${labDisplayName(info.lab_id)} connected · not executed`,
         "success",
       );
       window.location.hash = "observe";
@@ -1320,6 +1648,41 @@ function initConnectForm() {
       button.disabled = false;
       button.textContent = "Connect lab";
     }
+  });
+}
+
+function initOnboarding() {
+  const mode = document.getElementById("onboard-mode");
+  mode.addEventListener("change", () => { document.getElementById("onboard-goal-field").hidden = mode.value !== "shared"; });
+  const submit = async (run) => {
+    const buttons = [document.getElementById("onboard-run"), document.getElementById("onboard-create")];
+    buttons.forEach((button) => { button.disabled = true; });
+    showMessage("onboard-message", "Recording choices and creating your lab…");
+    try {
+      const goal = mode.value === "shared" ? (document.getElementById("onboard-goal").value.trim() || "Reduce congestion") : "";
+      const info = await postJSON("/api/onboard", {
+        confirmed: true, run, goal, idea: document.getElementById("onboard-idea").value,
+        starter: document.getElementById("onboard-starter").value,
+        approach: document.getElementById("onboard-approach").value,
+        exchange: document.getElementById("onboard-exchange").checked,
+      });
+      await refreshPortfolio();
+      renderControl(info);
+      showMessage("onboard-message", `${labDisplayName(info.lab_id)} · ${info.decisions.starter} · choices saved in context/onboarding.json`, "success");
+      window.location.hash = "network";
+      await refreshPortfolio();
+    } catch (error) { showMessage("onboard-message", error.message, "error"); }
+    finally { buttons.forEach((button) => { button.disabled = false; }); }
+  };
+  document.getElementById("onboard-form").addEventListener("submit", (event) => { event.preventDefault(); submit(true); });
+  document.getElementById("onboard-create").addEventListener("click", () => submit(false));
+  document.getElementById("trial-lab").addEventListener("click", async (event) => {
+    event.target.disabled = true;
+    try {
+      await postJSON("/api/lab/trial", { runs: 3 });
+      window.location.hash = "network";
+    } catch (error) { console.error(error); }
+    finally { event.target.disabled = false; }
   });
 }
 
@@ -1358,7 +1721,7 @@ function initSteeringForm() {
 const RUNTIME_COPY = {
   start: {
     kicker: "Local execution", title: "Start lab?",
-    copy: "Repository commands · local compute · configured LLM budget",
+    copy: "Up to 3 agent iterations · local repository commands · configured LLM budget. Missing credit or credentials stops this run.",
     label: "Authorize this local run.", button: "Confirm start",
     progress: "Starting the daemon…",
   },
@@ -1692,9 +2055,12 @@ function initIntakeView() {
 }
 
 initRouting();
+initLabRailToggle();
+initMapPanZoom();
 initPanelToggles();
 initIntakeTabs();
 initConnectForm();
+initOnboarding();
 initSteeringForm();
 initRuntimeControls();
 initJoinForm();

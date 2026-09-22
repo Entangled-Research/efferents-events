@@ -44,6 +44,7 @@ class ClusterContext:
         self.control.extra_edges = partial(derive_edges, cluster_dir=self.paths.root)
         self.hub = NetworkHub(cfg, self.tracks)
         self.control.extra_labs = self.hub.portfolio_rows
+        self.control.extra_evidence = self.hub.network_evidence
         self.proxy = ModelProxy(cfg)
         self.network_limiter = RateLimiter(120, 60.0)
         factory = client_factory or (lambda budget: make_client(budget=budget))

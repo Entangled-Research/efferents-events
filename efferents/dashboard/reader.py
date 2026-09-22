@@ -27,6 +27,7 @@ if TYPE_CHECKING:
 _ACTIVITY_BODY_PREVIEW = 300
 _EVIDENCE_RUN_LIMIT = 120
 ARTIFACT_CONTENT_TYPES = {
+    ".svg": "image/svg+xml",
     ".gif": "image/gif",
     ".jpeg": "image/jpeg",
     ".jpg": "image/jpeg",
@@ -374,6 +375,30 @@ def _falsifier_results(rows: list[dict], cfg: "LabConfig") -> list[dict]:
 _SHORT_STATUS = {"insufficient_data": "insufficient"}
 
 
+_NAME_STOPWORDS = frozenset(
+    "a an and at by for from in of on or that the to with".split())
+
+
+def _idea_name(student: dict, cfg: "LabConfig", question: str = "") -> str:
+    """Readable idea (autoresearcher) name: its handle, else its id. The
+    implicit ``primary`` idea is named after the running claim: its slug,
+    else the first words of what it investigates."""
+    handle = str(student.get("handle") or "").strip()
+    if handle:
+        return handle
+    slug = student["id"]
+    if slug == "primary":
+        if cfg.hypothesis_slug:
+            slug = cfg.hypothesis_slug
+        else:
+            source = student.get("focus") or question or cfg.approach or ""
+            words = str(source).split()[:6]
+            while words and words[-1].lower().strip(".,:;?!") in _NAME_STOPWORDS:
+                words.pop()
+            return " ".join(words).rstrip(" .,:;?!") or slug
+    return slug.replace("-", " ").replace("_", " ")
+
+
 def _verdict_line(status: str, falsifiers: list[dict]) -> str:
     if not falsifiers:
         return f"verdict: {status} · no falsifiers"
@@ -496,6 +521,32 @@ def read_activity(lab_root: Path, n: int = 20) -> list[dict]:
     return entries[:n]
 
 
+def read_review_board(lab_root: Path) -> dict:
+    """Latest real review artifact, including rejected boards; no synthetic scores."""
+    from efferents.journal.reviews import review_scores
+    candidates = [p for directory in paper_dirs(lab_root) if directory.exists()
+                  for p in directory.glob("*.reviews.md")
+                  if p.resolve().is_relative_to(Path(lab_root).resolve().parent)]
+    if not candidates:
+        return {"status": "awaiting paper", "scores": {}}
+    path = max(candidates, key=lambda p: p.stat().st_mtime)
+    content = path.read_text()[:100_000]
+    board = {"campaign_id": path.name.removesuffix(".reviews.md"),
+             "status": "accepted" if "**Verdict**: **ACCEPT**" in content else "rejected",
+             "scores": review_scores(content)}
+    structured = path.with_suffix(".json")
+    if structured.exists() and structured.resolve().is_relative_to(Path(lab_root).resolve().parent):
+        try:
+            data = json.loads(structured.read_text()[:100_000])
+            board["reviews"] = data.get("reviews", [])
+            board["decision"] = data.get("decision", {})
+            if len(board["reviews"]) != 3 or any(not review.get("valid", True) for review in board["reviews"]):
+                board["status"] = "review incomplete"
+        except (ValueError, OSError):
+            pass
+    return board
+
+
 def read_summary(lab_root: Path, cfg: "LabConfig") -> dict:
     """Return the compact, evidence-backed state used by the lab portfolio rail."""
     state = read_state(lab_root, cfg=cfg)
@@ -525,6 +576,16 @@ def read_summary(lab_root: Path, cfg: "LabConfig") -> dict:
             "observations": state_mod.runs_count(lab_root / "runs.sqlite"),
         },
         "papers": len(papers),
+        "review_board": read_review_board(lab_root),
+        # A verdict falsifies an idea, never the lab: the lab's declared
+        # falsifiers test the running claim, which the default idea owns.
+        "ideas": [{"id": student["id"],
+                   "name": _idea_name(student, cfg, state["hypothesis"].get("question") or ""),
+                   "focus": student.get("focus") or
+                   state["hypothesis"].get("question") or cfg.approach or cfg.domain,
+                   "verdict": verdict if student["id"] == cfg.default_student_id
+                   else "undecided"}
+                  for student in cfg.students],
         "last_activity": last_activity,
         "hypothesis": state["hypothesis"],
         "verdict": {"status": verdict, "line": _verdict_line(verdict, falsifiers)},
@@ -564,7 +625,8 @@ def _current_hypothesis(lab_root: Path, lab_id: str) -> dict:
     if hyp_md.exists():
         text = hyp_md.read_text()
         claim = _section(text, "Claim") or _section(text, "Operational restatement")
-        falsifier = _section(text, "Falsifier") or _section(text, "Falsifier(s)")
+        falsifier = (_section(text, "Falsifier") or _section(text, "Falsifier(s)")
+                     or _section(text, "Stop condition"))
     return {"question": question, "claim": claim,
             "falsifier": falsifier, "student": student}
 

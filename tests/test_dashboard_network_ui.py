@@ -26,6 +26,45 @@ def test_dashboard_has_portfolio_rail_and_network_map():
     assert "function labPath(kind)" in javascript
     assert 'labPath("control")' in javascript
     assert "renderNetwork();" in javascript
+    assert 'id="event-admin-panel"' in html
+    assert "network-lab-boundary" in javascript
+    assert "read only" in javascript
+    # The network route renders the animated live graph; the entry page stays
+    # focused on onboarding and does not embed the illustrative prototype.
+    assert 'src="/prototypes/event-network.html"' not in html
+    assert "network-packet" in javascript
+
+
+def test_network_map_is_a_pan_zoom_viewport():
+    html = (STATIC / "dashboard.html").read_text()
+    css = (STATIC / "dashboard.css").read_text()
+    javascript = (STATIC / "dashboard.js").read_text()
+
+    # The map is a focusable fixed viewport; every layer lives in one world.
+    assert 'id="lab-map" class="lab-map living-network" tabindex="0"' in html
+    world = html.index('id="network-world"')
+    for layer in ("network-lines", "network-journals", "network-nodes", "network-ideas"):
+        assert html.index(f'id="{layer}"') > world
+    assert 'data-map-zoom="in"' in html
+    assert 'data-map-zoom="out"' in html
+    assert 'data-map-zoom="fit"' in html
+    assert 'id="map-zoom-level"' in html
+    assert "transform-origin: 0 0;" in css
+    assert ".map-controls" in css
+    # Wheel zoom must be able to preventDefault, so the listener is non-passive.
+    assert "}, {passive: false});" in javascript
+    assert "setPointerCapture" in javascript
+    assert "initMapPanZoom();" in javascript
+    assert "translate(${mapView.x}px, ${mapView.y}px) scale(${mapView.k})" in javascript
+    # Events exposes read-only evidence for remote labs as well.
+    assert "openLabTab(lab.lab_id);" in javascript
+    # Layout follows the viewport shape and the lab set, not the poll interval.
+    assert "function chooseMapLayout(sizes)" in javascript
+    assert "labs.map(lab => lab.lab_id).sort()" in javascript
+    assert "change.view || (change.content && !mapView.moved)" in javascript
+    assert 'lines.setAttribute("viewBox", `0 0 ${world.width} ${world.height}`);' in javascript
+    # The map no longer grows to its content height.
+    assert "map.style.minHeight" not in javascript
 
 
 def test_shared_visual_contract_is_minimal_paper_and_ink_research_ledger():
@@ -95,3 +134,30 @@ def test_observer_is_compact_validity_aware_and_supports_visual_evidence():
     assert "groupEvidenceRecords" in javascript
     assert "Matched comparison" in javascript
     assert "Eligible-run summary statistics" in html
+
+
+def test_ideas_are_named_and_carry_the_verdict_not_the_lab():
+    static = Path(__file__).resolve().parents[1] / "efferents" / "dashboard" / "static"
+    js = (static / "dashboard.js").read_text()
+    html = (static / "dashboard.html").read_text()
+    # Ideas are listed by name inside their lab, on the map and in the rail.
+    assert "function labIdeas(lab)" in js
+    assert "esc(ideaName(idea))" in js
+    assert 'class="lab-idea-label">Ideas · ${ideas.length}' in js
+    assert "Idea ${String.fromCharCode" not in js
+    # A lab is never marked falsified; only an idea is.
+    assert "lab-verdict" not in js
+    assert 'idea.verdict === "falsified"' in js
+    assert '<h2 id="verdict-title">Idea verdict</h2>' in html
+
+
+def test_journal_panel_has_no_explanatory_copy_and_hides_when_empty():
+    static = Path(__file__).resolve().parents[1] / "efferents" / "dashboard" / "static"
+    html = (static / "dashboard.html").read_text()
+    js = (static / "dashboard.js").read_text()
+    for removed in ("Journal publications", "Labs communicate only", "exchange-count",
+                    "exchange-explanation"):
+        assert removed not in html and removed not in js
+    assert '<section id="exchange-panel" class="panel exchange-panel" ' \
+           'aria-label="Published journal papers" hidden>' in html
+    assert 'document.getElementById("exchange-panel").hidden = !rows.length;' in js

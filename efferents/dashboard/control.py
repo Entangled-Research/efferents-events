@@ -9,6 +9,7 @@ Starting the daemon remains a separate, explicit action.
 from __future__ import annotations
 
 import os
+import json
 import re
 import shutil
 import subprocess
@@ -29,6 +30,7 @@ from efferents.dashboard import reader
 from efferents.dashboard.cache import TTLCache
 from efferents.lab import LabConfig, SubmissionError
 from efferents.registry import LabRecord, Registry
+from efferents.journals import journal_for_domain
 
 _GITHUB_PART_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
 _README_RE = re.compile(r"^readme(?:\.[A-Za-z0-9_-]+)?$", re.IGNORECASE)
@@ -306,7 +308,7 @@ def _locate_submission(readme: Path, search_root: Path) -> Path:
     if not candidates:
         raise ControlError(
             "No valid submission contract was found. The repository must contain "
-            "lab.yaml and a Popper-passed hypothesis.md in the same directory.",
+            "lab.yaml and an experiment hypothesis.md in the same directory.",
             status=422,
         )
     relative = ", ".join(str(path.relative_to(search_root)) for path in candidates[:6])
@@ -337,6 +339,12 @@ def _local_source(value: str) -> tuple[Path, Path] | None:
 
 
 def _dotenv_has_key(submission_dir: Path) -> bool:
+    from efferents.event import load_credentials, EventClientError
+    try:
+        if load_credentials(submission_dir):
+            return True
+    except EventClientError:
+        return False
     from efferents.agents.model_client import credentials_available
     if credentials_available():
         return True
@@ -350,9 +358,12 @@ def _dotenv_has_key(submission_dir: Path) -> bool:
             if separator and key.strip() and value.strip():
                 values[key.strip()] = value.strip().strip("'\"")
         model = values.get("EFFERENTS_MODEL") or os.environ.get("EFFERENTS_MODEL")
-        from efferents.agents.model_client import required_key_env
-        key_name = required_key_env(model)
-        return key_name is None or bool(values.get(key_name) or os.environ.get(key_name, "").strip())
+        from efferents.agents.model_client import required_key_env, resolve_chain
+        for candidate in resolve_chain(model):
+            key_name = required_key_env(candidate)
+            if key_name is None or values.get(key_name) or os.environ.get(key_name, "").strip():
+                return True
+        return False
     except OSError:
         return False
 
@@ -464,6 +475,7 @@ class ControlContext:
             labs.append({
                 "lab_id": lab.cfg.lab_id,
                 "domain": lab.cfg.domain,
+                "journal": journal_for_domain(lab.cfg.domain),
                 "subdomain": lab.cfg.subdomain,
                 "pi_handle": lab.cfg.pi_handle,
                 "repository": lab.cfg.code_repo,
@@ -472,6 +484,9 @@ class ControlContext:
                 "owner_name": lab.owner_name,
                 "track": lab.track,
                 "visibility": "private",
+                "goal": lab.cfg.research_goal,
+                "approach": lab.cfg.approach,
+                "exchange_enabled": lab.cfg.conference.enabled,
                 **summary,
             })
         return labs
@@ -522,9 +537,16 @@ class ControlContext:
                 edges.extend(self.extra_edges(labs))
             except Exception:  # never let a derived edge break the network view
                 pass
+        from efferents.dashboard.exchange import network_evidence
+        evidence = network_evidence()
+        extra_evidence = getattr(self, "extra_evidence", None)
+        if extra_evidence is not None:
+            for key, rows in extra_evidence().items():
+                evidence.setdefault(key, []).extend(rows)
         return {
             "labs": labs,
             "edges": edges,
+            **evidence,
             "public_network": {
                 "connected": False,
                 "labs": 0,
@@ -542,6 +564,68 @@ class ControlContext:
             self._connected = connected
         self._portfolio_cache.invalidate()
         return self.info()
+
+    def onboard(self, payload: dict) -> dict:
+        self._require_mutable()
+        from efferents.onboarding import create_lab, suggest_lab_id
+        if payload.get("confirmed") is not True:
+            raise ControlError("Choose Create lab or Infer defaults and run to accept the displayed scope.", 409)
+        choices = {key: payload.get(key, "") for key in ("starter", "idea", "goal", "approach", "name")}
+        choices["starter"] = choices["starter"] or "auto"
+        for key, value in choices.items():
+            if not isinstance(value, str):
+                raise ControlError(f"{key} must be text.")
+        with self._lock:
+            labs_dir = _efferents_home() / "labs"
+            existing = {path.name for path in labs_dir.glob("*")} if labs_dir.is_dir() else set()
+            lab_id = suggest_lab_id(**choices, taken=existing | {r.lab_id for r in Registry().list()})
+            destination = labs_dir / lab_id
+            decisions = create_lab(
+                destination, starter=choices["starter"], idea=choices["idea"], goal=choices["goal"],
+                approach=choices["approach"], exchange=payload.get("exchange") is True, name=lab_id,
+            )
+            info = self.connect(str(destination))
+            if payload.get("run") is True:
+                routed_student = (info.get("routing") or {}).get("student_id")
+                self.run_trial(3, student_id=routed_student)
+            return {**info, "decisions": decisions}
+
+    def run_trial(self, runs: int = 3, *, student_id: str | None = None) -> dict:
+        self._require_mutable()
+        connected = self.snapshot()
+        if connected is None:
+            raise ControlError("Connect a lab first.", 409)
+        if type(runs) is not int or not 1 <= runs <= 12:
+            raise ControlError("Choose 1 to 12 trial runs.")
+        pid = daemon.read_pidfile(connected.lab_root / "daemon.pid")
+        if pid and daemon.is_pid_alive(pid):
+            raise ControlError("This lab is already running.", 409)
+        if student_id is not None and student_id not in {s["id"] for s in connected.cfg.students}:
+            raise ControlError("Unknown idea/student track.")
+        log_path = connected.lab_root / "trial.log"
+        env = os.environ.copy()
+        env["PATH"] = f"{Path(sys.executable).parent}{os.pathsep}{env.get('PATH', '')}"
+        with log_path.open("a") as log:
+            process = subprocess.Popen(
+                [sys.executable, "-m", "efferents", "trial", "--submission",
+                 str(connected.submission_dir), "--runs", str(runs),
+                 *(["--student-id", student_id] if student_id else [])],
+                cwd=connected.submission_dir, env=env, stdout=log, stderr=log, start_new_session=True,
+            )
+        # Reap the child without holding a request open for experiment execution.
+        threading.Thread(target=process.wait, daemon=True).start()
+        return {"ok": True, "lab_id": connected.cfg.lab_id, "runs": runs}
+
+    def observe_peers(self) -> dict:
+        self._require_mutable()
+        from efferents.agents.conference import attend
+        received = 0
+        for record in Registry().list():
+            cfg = LabConfig.from_submission(record.submission_dir, check_paths=False)
+            result = attend(cfg=cfg, lab_root=Path(record.lab_root), force=True, include_cross=True)
+            if result:
+                received += len(result["received"])
+        return {"ok": True, "received": received}
 
     def connect(self, value: str) -> dict:
         self._require_mutable()
@@ -565,6 +649,28 @@ class ControlContext:
             cfg = LabConfig.from_submission(submission)
         except SubmissionError as exc:
             raise ControlError(f"Lab validation failed: {exc}", status=422) from exc
+
+        from efferents.agents.routing import policy
+        try:
+            routing_policy = policy(submission)
+        except ValueError as exc:
+            raise ControlError(str(exc), status=422) from exc
+        routing = None
+        if routing_policy and Registry().get(cfg.lab_id) is None:
+            # Separate trusted process: submission provider keys never enter gateway env.
+            try:
+                result = subprocess.run(
+                    [sys.executable, "-I", "-m", "efferents.agents.routing", str(submission), "--apply"],
+                    capture_output=True, text=True, timeout=120, check=False,
+                )
+                if result.returncode:
+                    raise ControlError("Intake routing failed; check the routing configuration and provider budget.", status=422)
+                routing = json.loads(result.stdout)
+                if routing.get("applied"):
+                    submission = Path(routing["target"])
+                    cfg = LabConfig.from_submission(submission)
+            except (OSError, subprocess.TimeoutExpired, ValueError) as exc:
+                raise ControlError("Intake routing could not complete.", status=422) from exc
 
         lab_root = (submission / "lab").resolve()
         _init_lab_root(submission, lab_root, cfg=cfg)
@@ -597,7 +703,11 @@ class ControlContext:
             self._connected = connected
         self.labs.invalidate(cfg.lab_id)
         self._portfolio_cache.invalidate()
-        return self.info()
+        info = self.info()
+        if routing is not None:
+            info["routing"] = routing
+        return info
+
 
     # --- per-lab reads ---------------------------------------------------------
 
@@ -777,6 +887,8 @@ class ControlContext:
             "--lab-root",
             str(lab.lab_root),
             "--detach",
+            "--max-iterations",
+            "3",
         ]
         result = subprocess.run(
             command,

@@ -120,6 +120,8 @@ def test_register_heartbeat_push_pull_and_portfolio(hub):
                          "latest": 0.1, "observations": 7},
             "hypothesis": {"question": "Does it?", "claim": "yes", "falsifier": "no", "student": "primary"},
             "verdict": {"status": "survives", "line": "verdict: survives"}, "papers": 1,
+            "ideas": [{"name": "Bounded search"}],
+            "review_board": {"status": "rejected", "scores": {"critical": 2, "neutral": 4, "optimistic": 6}},
             "edges": {"cited": [{"target": "bob-lab", "campaign_id": "c9"}]}}
     status, reply, _ = _request(port, "/api/network/labs/ada-lab/heartbeat", method="POST",
                                 payload=beat, headers=A)
@@ -131,6 +133,8 @@ def test_register_heartbeat_push_pull_and_portfolio(hub):
     status, portfolio, _ = _request(port, "/api/labs", headers=bob_hdrs)
     rows = {r["lab_id"]: r for r in portfolio["labs"]}
     assert rows["ada-lab"]["remote"] is True and rows["ada-lab"]["owner_name"] == "Ada"
+    assert rows["ada-lab"]["ideas"] == beat["ideas"]
+    assert rows["ada-lab"]["review_board"] == beat["review_board"]
     assert rows["ada-lab"]["status"] == "running" and rows["ada-lab"]["headline"]["best"] == 0.09
     status, state, _ = _request(port, "/api/labs/ada-lab/state", headers=bob_hdrs)
     assert status == 200 and state["budget"]["spent"] == 0.42
@@ -239,3 +243,19 @@ def test_azure_config_and_proxy_token_boundary(hub, monkeypatch):
     conn.request("POST", "/proxy/openai/v1/chat/completions", body=body,
                  headers={"Authorization": "Bearer bogus"})
     assert conn.getresponse().status == 401
+
+
+def test_network_publications_require_a_persisted_three_score_journal(hub):
+    _, ctx, _, cfg, _ = hub
+    journal = cfg.paths.shared_journal / "journal.md"
+    journal.parent.mkdir(parents=True, exist_ok=True)
+    journal.write_text("# Journal\n\n<!-- ENTRIES BELOW -->\n\n"
+                       "## 2026-09-20 14:00 UTC — c1\n**Lab**: lab-a\n"
+                       "**Headline**: Accepted result\n"
+                       "critical=6, neutral=7, optimistic=8\n\n"
+                       "## 2026-09-20 13:00 UTC — c2\n**Lab**: lab-b\n"
+                       "**Headline**: Incomplete review\ncritical=5\n")
+    rows = ctx.control.portfolio()["findings"]
+    assert len(rows) == 1
+    assert rows[0]["campaign_id"] == "c1"
+    assert rows[0]["review_scores"] == {"critical": 6, "neutral": 7, "optimistic": 8}

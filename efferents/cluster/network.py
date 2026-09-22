@@ -205,6 +205,8 @@ class NetworkHub:
             "headline": payload.get("headline") if isinstance(payload.get("headline"), dict) else {},
             "hypothesis": payload.get("hypothesis") if isinstance(payload.get("hypothesis"), dict) else {},
             "verdict": payload.get("verdict") if isinstance(payload.get("verdict"), dict) else {},
+            "ideas": payload.get("ideas", [])[:100] if isinstance(payload.get("ideas"), list) else [],
+            "review_board": payload.get("review_board") if isinstance(payload.get("review_board"), dict) else {},
             "papers": int(payload.get("papers") or 0),
             "last_activity": payload.get("last_activity"),
             "halt_reason": (str(payload.get("halt_reason"))[:200] if payload.get("halt_reason") else None),
@@ -312,7 +314,30 @@ class NetworkHub:
             return "stale"
         return beat.get("status") or "running"
 
+    def network_evidence(self) -> dict:
+        """Expose persisted accepted journal entries, never raw research messages."""
+        from efferents.agents.federation import parse_journal_entries
+        from efferents.journal.reviews import review_scores, is_publication
+        from efferents.journals import journal_for_domain
+        findings = []
+        domains = {item["registration"]["lab_id"]: item["registration"].get("domain")
+                   for item in self.list_labs()}
+        for entry in parse_journal_entries(self.feed()):
+            lab_id = entry.get("lab_id")
+            domain = domains.get(lab_id) or "unspecified"
+            row = {"id": f"journal:{lab_id}:{entry['campaign_id']}",
+                   "lab_id": lab_id, "campaign_id": entry["campaign_id"],
+                   "kind": "publication", "publication_status": "accepted",
+                   "journal": journal_for_domain(domain), "domain": domain,
+                   "review_scores": review_scores(entry["body"]),
+                   "title": entry.get("headline") or entry["campaign_id"],
+                   "body": entry["body"][:4000], "at": entry.get("ts")}
+            if is_publication(row):
+                findings.append(row)
+        return {"findings": findings[-150:]}
+
     def portfolio_rows(self) -> list[dict]:
+        from efferents.journals import journal_for_domain
         rows = []
         for lab in self.list_labs():
             reg, beat = lab["registration"], lab["heartbeat"]
@@ -322,6 +347,7 @@ class NetworkHub:
             rows.append({
                 "lab_id": reg["lab_id"],
                 "domain": reg.get("domain"),
+                "journal": journal_for_domain(reg.get("domain") or "unspecified"),
                 "subdomain": None,
                 "pi_handle": None,
                 "repository": None,
@@ -341,6 +367,8 @@ class NetworkHub:
                 "last_activity": beat.get("last_activity") or beat.get("ts"),
                 "hypothesis": beat.get("hypothesis") or {"question": "", "claim": "", "falsifier": "", "student": ""},
                 "verdict": beat.get("verdict") or {"status": "undecided", "line": "verdict: undecided"},
+                "ideas": beat.get("ideas", []),
+                "review_board": beat.get("review_board", {}),
                 "heartbeat_ts": beat.get("ts"),
                 "halt_reason": beat.get("halt_reason"),
             })

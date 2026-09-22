@@ -4,10 +4,15 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   test:
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
@@ -20,3 +25,54 @@ jobs:
         run: uv sync --extra dev
       - name: Test
         run: uv run pytest -m "not integration and not slow" -q
+
+  deploy-digitalocean:
+    name: deploy DigitalOcean
+    needs: test
+    if: >-
+      vars.DIGITALOCEAN_DEPLOY_ENABLED == 'true' &&
+      ((github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    environment: production
+    concurrency:
+      group: digitalocean-production
+      cancel-in-progress: false
+    env:
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+      DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure deployment SSH key
+        shell: bash
+        run: |
+          test -n "$DEPLOY_HOST"
+          test -n "$DEPLOY_USER"
+          test -n "$DEPLOY_SSH_KEY"
+          test -n "$DEPLOY_KNOWN_HOSTS"
+          install -m 0700 -d "$HOME/.ssh"
+          printf '%s\n' "$DEPLOY_SSH_KEY" > "$HOME/.ssh/deploy_key"
+          chmod 0600 "$HOME/.ssh/deploy_key"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          chmod 0644 "$HOME/.ssh/known_hosts"
+
+      - name: Deploy the Events hub
+        shell: bash
+        run: |
+          SSH="ssh -i $HOME/.ssh/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes"
+          $SSH "$DEPLOY_USER@$DEPLOY_HOST" 'mkdir -p /opt/efferents-events'
+          git ls-files -z > /tmp/events-files
+          rsync -az --from0 --files-from=/tmp/events-files -e "$SSH" \
+            ./ "$DEPLOY_USER@$DEPLOY_HOST:/opt/efferents-events/"
+          $SSH "$DEPLOY_USER@$DEPLOY_HOST" 'bash -se' <<'REMOTE'
+          set -euo pipefail
+          cd /opt/efferents-events/deploy/events
+          docker compose config --quiet
+          docker compose up -d --build
+          curl --fail --silent --show-error --retry 12 --retry-delay 5 --retry-connrefused \
+            http://127.0.0.1:8810/api/control >/dev/null
+          docker compose ps
+          REMOTE

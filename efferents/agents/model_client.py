@@ -65,6 +65,8 @@ def resolve_chain(model: str | None = None) -> list[str]:
 
 
 def provider_for_model(model: str | None = None) -> str:
+    if os.environ.get("EFFERENTS_EVENT_PROXY_ACTIVE") == "1":
+        return "openai"
     explicit = os.environ.get("EFFERENTS_MODEL_PROVIDER", "").strip().lower()
     if explicit:
         return explicit
@@ -117,7 +119,10 @@ def make_client(budget: BudgetTracker | None = None) -> Any:
 
 # --- provider error classification -------------------------------------------
 
-PROVIDER_ERROR_KINDS = ("credit", "auth", "rate_limit", "transient")
+PROVIDER_ERROR_KINDS = (
+    "credit", "auth", "rate_limit", "event_revoked", "event_expired",
+    "event_quota", "transient",
+)
 
 _CREDIT_PHRASES = (
     "credit balance",
@@ -255,6 +260,14 @@ def classify_provider_error(exc: BaseException) -> tuple[str, float | None]:
         return exc.kind, exc.retry_after
     text = str(exc).lower()
     code = _status_code(exc)
+    if "event token revoked" in text or "event_token_revoked" in text:
+        return "event_revoked", None
+    if "event token expired" in text or "event_token_expired" in text:
+        return "event_expired", None
+    if "event token quota exhausted" in text or "event total quota exhausted" in text or "event_quota_exhausted" in text:
+        return "event_quota", None
+    if "event token rate limited" in text or "event_rate_limited" in text:
+        return "rate_limit", _retry_after_seconds(exc)
     if any(phrase in text for phrase in _CREDIT_PHRASES) and code in (None, 400, 402, 403):
         return "credit", None
     if code == 402:
@@ -485,14 +498,18 @@ class _Messages:
                 name=tool_call.function.name, input=payload,
             ))
         usage = response.usage
+        details = getattr(usage, "prompt_tokens_details", None)
+        cached = getattr(details, "cached_tokens", 0) or 0
+        prompt_tokens = getattr(usage, "prompt_tokens", 0) or 0
+        cached = min(cached, prompt_tokens)
         return SimpleNamespace(
             content=blocks,
             stop_reason="tool_use" if (message.tool_calls or []) else choice.finish_reason,
             usage=SimpleNamespace(
-                input_tokens=getattr(usage, "prompt_tokens", 0) or 0,
+                input_tokens=prompt_tokens - cached,
                 output_tokens=getattr(usage, "completion_tokens", 0) or 0,
                 cache_creation_input_tokens=0,
-                cache_read_input_tokens=0,
+                cache_read_input_tokens=cached,
             ),
         )
 
@@ -507,6 +524,10 @@ class _RoutingMessages:
         self._parent = parent
 
     def create(self, **kwargs: Any) -> Any:
+        if os.environ.get("EFFERENTS_EVENT_PROXY_ACTIVE") == "1":
+            allowed = {"openai/event-fast", "openai/event-model", "openai/event-deep"}
+            requested = kwargs.get("model")
+            kwargs = {**kwargs, "model": requested if requested in allowed else "openai/event-model"}
         chain = resolve_chain(kwargs.get("model"))
         failures: list[tuple[str, str]] = []
         last_exc: Exception | None = None

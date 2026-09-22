@@ -426,7 +426,7 @@ _FRONTMATTER_RE = re.compile(r"^---\n(.*?)\n---\n", re.DOTALL)
 _COL_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
-def _parse_hypothesis(path: Path) -> dict:
+def _parse_hypothesis(path: Path, *, validation: str = "popper") -> dict:
     """Parse YAML frontmatter from hypothesis.md and validate the gate."""
     if not path.exists():
         raise SubmissionError(f"hypothesis.md not found at {path}")
@@ -438,8 +438,17 @@ def _parse_hypothesis(path: Path) -> dict:
         fm = yaml.safe_load(m.group(1)) or {}
     except yaml.YAMLError as e:
         raise SubmissionError(f"hypothesis.md frontmatter not valid YAML: {e}") from e
+    if not isinstance(fm, dict):
+        raise SubmissionError("hypothesis.md frontmatter must be a mapping")
     gate = fm.get("falsifiability_gate")
-    if gate != "passed":
+    if validation == "lightweight":
+        if not isinstance(fm, dict) or not fm.get("slug"):
+            raise SubmissionError("hypothesis.md requires a slug")
+        for section in ("Claim", "Measurement", "Stop condition"):
+            match = re.search(rf"(?ms)^## {section}\s*\n(.+?)(?=^## |\Z)", text)
+            if not match or not match.group(1).strip():
+                raise SubmissionError(f"lightweight hypothesis requires a non-empty ## {section}")
+    elif gate != "passed":
         raise SubmissionError(
             f"hypothesis.md has falsifiability_gate={gate!r}; expected 'passed'"
         )
@@ -787,6 +796,7 @@ def _build_labconfig(
             sonnet_default=bool(budget_raw.get("sonnet_default", True)),
             total_cap_usd=total_cap_usd,
         ),
+        conference=Conference.from_dict(raw.get("conference", {})),
         cadence=_parse_cadence(raw.get("cadence")),
         autonomy=Autonomy(
             coder_enabled=bool(autonomy_raw.get("coder_enabled", False)),
@@ -808,7 +818,34 @@ def _build_labconfig(
         prompts_dir=prompts_dir,
         hypothesis_slug=fm.get("slug"),
         hypothesis_supersedes=fm.get("supersedes"),
+        hypothesis_validation=raw.get("hypothesis_validation", "popper"),
+        research_goal=str(raw.get("research_goal") or ""),
+        approach=str(raw.get("approach") or ""),
     )
+
+
+@dataclass(frozen=True)
+class Conference:
+    enabled: bool = False
+    venue: str = "event"
+    interval_minutes: int = 10
+    interdisciplinary_every: int = 5
+
+    @classmethod
+    def from_dict(cls, raw: dict) -> "Conference":
+        if not isinstance(raw, dict):
+            raise SubmissionError("conference must be a mapping")
+        if set(raw) - {"enabled", "venue", "interval_minutes", "interdisciplinary_every"}:
+            raise SubmissionError("unknown conference option")
+        enabled = raw.get("enabled", False)
+        venue = raw.get("venue", "event")
+        interval = raw.get("interval_minutes", 10)
+        every = raw.get("interdisciplinary_every", 5)
+        if type(enabled) is not bool or not isinstance(venue, str) or not venue.strip():
+            raise SubmissionError("conference requires boolean enabled and non-empty venue")
+        if type(interval) is not int or interval < 1 or type(every) is not int or every < 2:
+            raise SubmissionError("conference interval must be >= 1; interdisciplinary_every >= 2")
+        return cls(enabled, venue.strip(), interval, every)
 
 
 @dataclass(frozen=True)
@@ -823,6 +860,7 @@ class LabConfig:
     subdomain: str | None = None
     code_repo: str | None = None
     autonomy: Autonomy = field(default_factory=Autonomy)
+    conference: Conference = field(default_factory=Conference)
     cadence: Cadence = field(default_factory=Cadence)
     evidence: Evidence = field(default_factory=Evidence)
     falsifiers: tuple[Falsifier, ...] = ()
@@ -840,6 +878,9 @@ class LabConfig:
     # replaced an earlier claim, the slug it supersedes.
     hypothesis_slug: str | None = None
     hypothesis_supersedes: str | None = None
+    hypothesis_validation: str = "popper"
+    research_goal: str = ""
+    approach: str = ""
 
     @classmethod
     def from_submission(
@@ -848,7 +889,7 @@ class LabConfig:
         """Load a LabConfig from a submission directory.
 
         The directory must contain:
-          - hypothesis.md  (with YAML frontmatter; falsifiability_gate must be 'passed')
+          - hypothesis.md  (lightweight measurable contract, or passed Popper gate)
           - lab.yaml       (executor, source, metrics configuration)
 
         Pass ``check_paths=False`` to skip source.dir / config_template existence
@@ -857,8 +898,19 @@ class LabConfig:
         whose source tree is rooted in the parent submission directory).
         """
         submission_dir = Path(submission_dir).resolve()
-        fm = _parse_hypothesis(submission_dir / "hypothesis.md")
+        if not (submission_dir / "hypothesis.md").is_file():
+            raise SubmissionError(f"hypothesis.md not found at {submission_dir / 'hypothesis.md'}")
         raw = _load_lab_yaml(submission_dir / "lab.yaml")
+        validation = raw.get("hypothesis_validation", "popper")
+        if validation not in {"popper", "lightweight"}:
+            raise SubmissionError("hypothesis_validation must be lightweight or popper")
+        for field_name in ("research_goal", "approach"):
+            value = raw.get(field_name, "")
+            if not isinstance(value, str) or len(value) > 160:
+                raise SubmissionError(f"{field_name} must be text of at most 160 characters")
+        fm = _parse_hypothesis(submission_dir / "hypothesis.md", validation=validation)
+        if validation == "lightweight" and not raw.get("falsifiers"):
+            raise SubmissionError("lightweight labs require at least one measurable falsifier")
         return _build_labconfig(fm, raw, submission_dir, check_paths=check_paths)
 
 

@@ -171,3 +171,10 @@ def test_mutations_need_csrf_even_when_joined(cluster_server):
     hdrs.pop("X-Efferents-CSRF")
     status, resp, _ = _request(port, "/api/intake/sessions", method="POST", payload={}, headers=hdrs)
     assert status == 403 and "control token" in resp["error"]
+
+
+@pytest.mark.parametrize("path", ["/api/onboard", "/api/lab/trial", "/api/network/observe"])
+def test_single_user_mutations_unavailable_in_cluster(cluster_server, path):
+    port, *_ = cluster_server
+    _, headers = _join(port)
+    assert _request(port, path, method="POST", payload={"confirmed": True}, headers=headers)[0] == 404

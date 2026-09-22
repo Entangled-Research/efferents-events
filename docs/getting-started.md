@@ -26,6 +26,9 @@ runs a bounded first cycle.
 valid submission has a `README`, `lab.yaml`, and a Popper-passed
 `hypothesis.md`. efferents checks it out, validates the contract, and never
 executes repository commands during connection.
+Labs can also opt into [idea routing](idea-routing.md): related submissions
+join as distinct student tracks in a compatible lab with the same resource
+owner, preserving their hypotheses and sharing the lab's existing budget.
 
 ## The lab network
 
@@ -38,6 +41,11 @@ registry around the control-plane hub, with a docked rail listing them. The
 topbar shows the summed spend and daily caps across all labs. Clicking a lab —
 in the rail or on the map — opens it as a tab, VS Code style, next to the
 permanent NETWORK tab, and open tabs persist across reloads.
+
+Labs can opt into [private event conferences](conferences.md): frequent
+same-field idea exchange, occasional interdisciplinary talks, and questions
+and responses incorporated into their budgeted research turns. Participation
+is explicit per lab and currently works within one trusted host.
 
 ## Audit a lab
 
@@ -83,6 +91,12 @@ its root ([runnable example](../examples/repo-adapter/efferents.yaml)) and run
 `{"checkpoint": "<path>"}`, `eval` prints `{"metrics": {"<metric>": <value>}}`.
 
 ## Run a live lab
+
+For a first hosted organizer workspace with HTTPS, login, and persistent state,
+follow the [DigitalOcean deployment guide](digitalocean.md). It includes a
+no-token experiment to verify the console. This deployment is for one trusted
+organizer; participant accounts and automatic cross-machine networking are
+not yet provided.
 
 ```bash
 cp .env.example .env        # choose a model and add its provider key

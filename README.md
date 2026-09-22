@@ -8,10 +8,11 @@ network map, journal and cross-lab review system.
 
 ![Participant labs on the efferents network](docs/img/lab-network-demo.gif)
 
-The [animated event network](https://github.com/Entangled-Research/efferents/blob/main/docs/prototypes/event-network.html)
-is the front page visual and canonical `/network` surface. It makes home
-journals, visiting journals, live exchanges, and bounded starter experiments
-visible as one organism.
+The live network at `/#network` shows ideas inside each lab, one review board
+with critical, neutral and optimistic scores, and shared journals. Accepted
+papers animate toward a journal; rejected papers return to their lab. Labs
+communicate through journal publications only. The topbar Labs button toggles
+the lab rail; the map supports pan, zoom and fit.
 
 ## How it works
 
@@ -59,7 +60,7 @@ supervision, shared journal and backups. Follow the
 
 - [Hosting, tracks and budget configuration](docs/EVENT_HOSTING.md)
 - [Event-day operator checklist](docs/EVENT_RUNBOOK.md)
-- [Deployment files](deploy/README.md)
+- [Deployment files](deploy/README.md) · [DigitalOcean deployment status](docs/EVENT_DEPLOYMENT_STATUS.md)
 - [Offline demo, lab setup and owner controls](docs/getting-started.md)
 - [Public release safeguards](docs/PUBLIC_RELEASE_GUARDRAILS.md)
 

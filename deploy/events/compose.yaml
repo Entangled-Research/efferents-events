@@ -1,0 +1,30 @@
+name: efferents-events
+services:
+  hub:
+    build:
+      context: ../..
+      dockerfile: deploy/digitalocean/Dockerfile
+    image: efferents-events:local
+    command: [efferents, serve, --cluster, /data/cluster, --host, 127.0.0.1, --port, '8810', --no-open]
+    network_mode: host
+    restart: unless-stopped
+    init: true
+    user: '10001:10001'
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    volumes: [events_data:/data]
+    tmpfs: ["/tmp:mode=1777,size=256m"]
+    env_file:
+      - path: .env
+        required: false
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8810/api/control', timeout=3)"]
+      interval: 20s
+      timeout: 5s
+      retries: 3
+    logging:
+      driver: json-file
+      options: {max-size: 10m, max-file: '3'}
+volumes:
+  events_data:

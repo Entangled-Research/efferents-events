@@ -18,6 +18,9 @@ add identity; here they are no-ops.
 from __future__ import annotations
 
 import json
+import base64
+import hashlib
+import os
 import logging
 import re
 import secrets
@@ -30,12 +33,15 @@ from pathlib import Path
 from efferents.dashboard.cache import TTLCache
 from efferents.dashboard.control import ConnectedLab, ControlContext, ControlError
 from efferents.dashboard import reader
+from efferents.dashboard.event_feed import dashboard_payload, read_remote_event
 
 STATIC_DIR = Path(__file__).parent / "static"
-REPO_ROOT = Path(__file__).resolve().parents[2]
-PROTOTYPE_PATH = REPO_ROOT / "docs" / "prototypes" / "event-network.html"
-if not PROTOTYPE_PATH.is_file():
-    PROTOTYPE_PATH = REPO_ROOT.parent / "efferents" / "docs" / "prototypes" / "event-network.html"
+_PROTOTYPE_CANDIDATES = (
+    Path(__file__).resolve().parents[2] / "docs" / "prototypes" / "event-network.html",
+    Path.cwd() / "docs" / "prototypes" / "event-network.html",
+    Path("/opt/efferents/docs/prototypes/event-network.html"),
+)
+PROTOTYPE_PATH = next((path for path in _PROTOTYPE_CANDIDATES if path.is_file()), _PROTOTYPE_CANDIDATES[0])
 _MAX_BODY_BYTES = 32_768
 
 _log = logging.getLogger(__name__)
@@ -118,8 +124,16 @@ class DashboardHandler(BaseHTTPRequestHandler):
     # --- request handling ------------------------------------------------------
 
     def do_GET(self):  # noqa: N802 (stdlib naming)
+        if not self._authenticate():
+            return
         try:
             path = self.path.split("?", 1)[0]
+            if path in {"/network", "/join"}:
+                self.send_response(302)
+                self.send_header("Location", "/#network" if path == "/network" else "/#connect")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
             if path in ("/", "/index.html"):
                 return self._send_file(STATIC_DIR / "dashboard.html")
             if path == "/prototypes/event-network.html":
@@ -130,7 +144,9 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 return None
             if path == "/api/labs":
                 self._require_viewer()
-                return self._send_json(self.control.portfolio())
+                payload = self.control.portfolio()
+                payload["event_network"] = dashboard_payload(read_remote_event())
+                return self._send_json(payload)
 
             match = _LAB_ROUTE.match(path)
             if match:
@@ -206,6 +222,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
         return self._send_file(artifact)
 
     def do_POST(self):  # noqa: N802 (stdlib naming)
+        if not self._authenticate():
+            return
         path = self.path.split("?", 1)[0]
         try:
             if self._extra_post_precsrf(path):
@@ -214,6 +232,12 @@ class DashboardHandler(BaseHTTPRequestHandler):
             payload = self._read_json()
             if self._extra_post(path, payload):
                 return None
+            if path == "/api/onboard":
+                return self._send_json(self.control.onboard(payload))
+            if path == "/api/lab/trial":
+                return self._send_json(self.control.run_trial(payload.get("runs", 3)))
+            if path == "/api/network/observe":
+                return self._send_json(self.control.observe_peers())
             if path == "/api/connect":
                 return self._send_json(
                     self.control.connect(str(payload.get("source") or "")),
@@ -246,11 +270,34 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self.send_error(404)
         except ControlError as exc:
             self._send_json({"error": str(exc)}, status=exc.status)
-        except (json.JSONDecodeError, UnicodeDecodeError, TypeError, ValueError):
+        except (json.JSONDecodeError, UnicodeDecodeError, TypeError):
             self._send_json({"error": "Request body must be valid JSON."}, status=400)
+        except ValueError as exc:
+            self._send_json({"error": str(exc)}, status=400)
         except Exception:
             _log.exception("dashboard mutation failed: %s", path)
             self._send_json({"error": "Local control request failed."}, status=500)
+
+    def _authenticate(self) -> bool:
+        expected = os.environ.get("EFFERENTS_DASHBOARD_PASSWORD_HASH", "")
+        if not expected:
+            return True
+        try:
+            scheme, value = self.headers.get("Authorization", "").split(" ", 1)
+            user, password = base64.b64decode(value, validate=True).decode().split(":", 1)
+            valid = (scheme == "Basic"
+                     and secrets.compare_digest(user, os.environ.get("EFFERENTS_DASHBOARD_USER", "organizer"))
+                     and secrets.compare_digest(hashlib.sha256(password.encode()).hexdigest(), expected))
+        except (ValueError, UnicodeError):
+            valid = False
+        if valid:
+            return True
+        self.send_response(401)
+        self.send_header("WWW-Authenticate", 'Basic realm="Efferents private event"')
+        self.send_header("Content-Length", "0")
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        return False
 
     def _extra_post_precsrf(self, path: str) -> bool:
         """Hook for a subclass POST that legitimately has no CSRF token yet
@@ -353,6 +400,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
                          _CONTENT_TYPES.get(path.suffix, "application/octet-stream"))
         self.send_header("Content-Length", str(len(data)))
         self._security_headers(frameable=frameable)
+        if path.suffix == ".svg":
+            self.send_header("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; sandbox")
         self._extra_headers()
         self.end_headers()
         self.wfile.write(data)

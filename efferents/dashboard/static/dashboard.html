@@ -23,6 +23,8 @@
       <a href="#connect" data-route-link="connect" data-local-only>Connect</a>
       <a href="#intake" data-route-link="intake" data-cluster-only hidden>New lab</a>
       <a href="#network" data-route-link="network">Network</a>
+      <button id="lab-rail-toggle" class="rail-toggle" type="button" aria-controls="lab-rail"
+              aria-expanded="false" hidden>Labs <span id="lab-rail-toggle-count">0</span></button>
     </nav>
 
     <div class="topbar-right">
@@ -37,6 +39,8 @@
     </div>
   </header>
 
+  <div id="event-status" class="event-status" role="status" hidden>Research paused · the organizer must enable the event before labs can run.</div>
+
   <div id="connection-bar" class="connection-bar" hidden>
     <div class="connection-path">
       <span class="field-label">Connected submission</span>
@@ -46,6 +50,7 @@
       <span id="connection-owner" class="key-state" hidden></span>
       <span id="api-key-state" class="key-state">API key unknown</span>
       <button id="start-lab" class="compact-button" type="button">Start lab</button>
+      <button id="trial-lab" class="compact-button" type="button">Run 3 experiments · no model</button>
       <button id="pause-lab" class="compact-button" type="button" hidden>Pause</button>
       <button id="resume-lab" class="compact-button" type="button" hidden>Resume</button>
       <button id="stop-lab" class="compact-button danger" type="button" hidden>Stop lab</button>
@@ -178,22 +183,62 @@
     <section id="connect-view" class="app-view" data-route-view="connect">
       <div class="entry-layout">
         <div class="entry-intro">
-          <h1>Connect a lab.</h1>
+          <h1>Start with an idea.</h1>
         </div>
 
         <section class="connector panel" aria-labelledby="connector-heading">
           <h2 id="connector-heading" class="visually-hidden">Connect a lab</h2>
           <div class="intake-tabs" role="tablist" aria-label="Ways to connect">
+            <button class="intake-tab" type="button" role="tab" id="intake-tab-idea"
+                    data-intake-tab="idea" aria-selected="true"
+                    aria-controls="intake-panel-idea">Start an idea</button>
             <button class="intake-tab" type="button" role="tab" id="intake-tab-agent"
-                    data-intake-tab="agent" aria-selected="true"
+                    data-intake-tab="agent" aria-selected="false"
                     aria-controls="intake-panel-agent">Launch via agent</button>
             <button class="intake-tab" type="button" role="tab" id="intake-tab-submit"
                     data-intake-tab="submit" aria-selected="false"
                     aria-controls="intake-panel-submit">Submit a repo</button>
           </div>
 
+          <div id="intake-panel-idea" class="intake-panel" role="tabpanel"
+               aria-labelledby="intake-tab-idea" data-intake-panel="idea">
+            <form id="onboard-form" class="connector-form">
+              <label for="onboard-idea">What would you like to explore? <small>Optional</small></label>
+              <textarea id="onboard-idea" rows="3" maxlength="4000" placeholder="Try another approach to congestion, or explore numerical integration."></textarea>
+              <label for="onboard-mode">How should this lab participate?</label>
+              <select id="onboard-mode">
+                <option value="independent">Independent lab · occasional cross-domain observations</option>
+                <option value="shared">Shared goal · different approaches</option>
+              </select>
+              <div id="onboard-goal-field" hidden>
+                <label for="onboard-goal">Shared goal</label>
+                <input id="onboard-goal" maxlength="160" placeholder="Reduce congestion" list="known-goals">
+                <datalist id="known-goals"></datalist>
+              </div>
+              <details class="onboard-options">
+                <summary>Choose details</summary>
+                <label for="onboard-starter">First executable experiment</label>
+                <select id="onboard-starter">
+                  <option value="auto">Infer from my idea</option>
+                  <option value="evacuation">Congestion-aware evacuation · routing</option>
+                  <option value="integration">Numerical integration · analytic ground truth</option>
+                </select>
+                <label for="onboard-approach">Approach <small>Optional</small></label>
+                <input id="onboard-approach" maxlength="160" placeholder="Infer from the starter">
+              </details>
+              <label class="execution-confirm"><input id="onboard-exchange" type="checkbox" checked>
+                <span>Share experiment claims and bounded findings with labs in this private workspace.</span></label>
+              <p class="form-hint">Three real CPU experiments on this machine, no model calls. Inferred choices are saved for review. Evacuation is the fallback starter; custom domains use Submit a repo. Agent runs later use a $1 daily / $2 total cap; code changes await review.</p>
+              <div class="onboard-actions">
+                <button id="onboard-run" class="primary-button" type="submit">Infer defaults and run</button>
+                <button id="onboard-create" class="secondary-button" type="button">Create without running</button>
+              </div>
+              <div id="onboard-message" class="form-message" role="status" aria-live="polite"></div>
+            </form>
+          </div>
+
           <div id="intake-panel-agent" class="intake-panel" role="tabpanel"
-               aria-labelledby="intake-tab-agent" data-intake-panel="agent">
+               aria-labelledby="intake-tab-agent" data-intake-panel="agent" hidden>
             <ol class="intake-steps">
               <li>Open a terminal.</li>
               <li>Go to your research repo — or a fresh folder.</li>
@@ -205,7 +250,7 @@
               <button id="copy-command" class="compact-button" type="button">Copy</button>
             </div>
             <p class="form-hint">The agent installs efferents, configures the lab
-            around your code, gates a first hypothesis, and runs a bounded first
+            around your code, records a measurable experiment contract, and runs a bounded first
             cycle.</p>
             <a class="repo-link" href="https://github.com/Entangled-Research/efferents"
                target="_blank" rel="noopener">github.com/Entangled-Research/efferents ↗</a>
@@ -239,7 +284,7 @@
             </li>
             <li data-contract="hypothesis">
               <span class="check-mark" aria-hidden="true">03</span>
-              <span><b>Falsifiability gate</b><small>hypothesis.md passed</small></span>
+              <span><b>Experiment contract</b><small>Claim, measurement, stop condition</small></span>
               <span class="check-state">waiting</span>
             </li>
           </ol>
@@ -316,7 +361,7 @@
 
       <section class="panel verdict-panel" aria-labelledby="verdict-title">
         <header class="panel-header">
-          <h2 id="verdict-title">Verdict</h2>
+          <h2 id="verdict-title">Idea verdict</h2>
           <span id="verdict-count" class="header-meta">0 runs</span>
         </header>
         <div id="verdict-line" class="verdict-line">verdict: undecided</div>
@@ -445,15 +490,23 @@
         <div class="network-grid">
           <section class="panel network-map-panel" aria-labelledby="network-map-title">
             <header class="panel-header">
-              <h2 id="network-map-title">Connected lab map</h2>
+              <h2 id="network-map-title">Journal research network</h2>
               <span id="network-node-count" class="header-meta">0 nodes</span>
             </header>
-            <div id="lab-map" class="lab-map living-network" aria-label="Living network of connected labs and journal communities">
-              <svg id="network-lines" viewBox="0 0 1000 560"
-                   preserveAspectRatio="none" aria-hidden="true"></svg>
-              <div id="network-journals" class="network-journals" aria-hidden="true"></div>
-              <div id="network-nodes" class="network-nodes"></div>
-              <div id="network-ideas" class="network-ideas" aria-hidden="true"></div>
+            <div id="lab-map" class="lab-map living-network" tabindex="0" aria-label="Living network of connected labs and journal communities. Scroll to zoom, drag to pan, plus and minus zoom, zero fits, arrow keys pan.">
+              <div id="network-world" class="network-world">
+                <svg id="network-lines" viewBox="0 0 1000 560"
+                     preserveAspectRatio="none" aria-hidden="true"></svg>
+                <div id="network-journals" class="network-journals"></div>
+                <div id="network-nodes" class="network-nodes"></div>
+                <div id="network-ideas" class="network-ideas" aria-hidden="true"></div>
+              </div>
+              <div class="map-controls" role="group" aria-label="Map zoom">
+                <button type="button" data-map-zoom="in" aria-label="Zoom in">+</button>
+                <button type="button" data-map-zoom="out" aria-label="Zoom out">−</button>
+                <button type="button" data-map-zoom="fit" aria-label="Fit network to view">fit</button>
+                <output id="map-zoom-level" aria-live="off">100%</output>
+              </div>
               <div id="network-empty" class="network-empty" hidden></div>
               <div class="network-hub" aria-hidden="true">
                 <span>ℯ</span>
@@ -461,14 +514,33 @@
               </div>
             </div>
             <footer class="map-legend">
-              <span><i class="legend-dot running"></i> running</span>
-              <span><i class="legend-dot stopped"></i> stopped</span>
-              <span><i class="legend-line"></i> home journal</span>
-              <span><i class="legend-line visiting"></i> visiting journal</span>
-              <span><i class="legend-idea"></i> current hypothesis</span>
-              <span data-cluster-only hidden><i class="legend-line reviewed"></i> reviewed</span>
-              <span data-cluster-only hidden><i class="legend-line cited"></i> cited</span>
+              <span><i class="legend-line publish"></i> paper → review → journal</span>
+              <span><i class="legend-line subscribe"></i> journal → lab subscription</span>
+              <span><i class="legend-line accepted"></i> accepted → journal</span>
+              <span><i class="legend-line rejected"></i> rejected → lab</span>
+              <span>Moving dots: recorded publications / receipts</span>
             </footer>
+          </section>
+          <section id="exchange-panel" class="panel exchange-panel" aria-label="Published journal papers" hidden>
+            <div id="exchange-feed" class="exchange-feed"></div>
+          </section>
+          <section id="event-admin-panel" class="panel event-admin-panel" hidden aria-labelledby="event-admin-title">
+            <header class="panel-header">
+              <h2 id="event-admin-title">Event proxy</h2>
+              <span id="event-admin-meta" class="header-meta">not configured</span>
+            </header>
+            <div class="event-admin-summary">
+              <div><span class="field-label">Event</span><strong id="event-id">—</strong></div>
+              <div><span class="field-label">Aggregate spend</span><strong id="event-spend">—</strong></div>
+              <div><span class="field-label">Tokens</span><strong id="event-token-count">—</strong></div>
+              <div><span class="field-label">Snapshot</span><strong id="event-generated-at">—</strong></div>
+            </div>
+            <div class="table-wrap">
+              <table id="event-tokens">
+                <thead><tr><th>Token id</th><th>Lab</th><th>Status</th><th>Spend / cap</th><th>Requests</th><th>Last sync</th></tr></thead>
+                <tbody></tbody>
+              </table>
+            </div>
           </section>
         </div>
       </section>

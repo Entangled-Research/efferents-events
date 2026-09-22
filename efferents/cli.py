@@ -62,6 +62,8 @@ def _orchestrator_loop(
     cfg = lab_mod.get_config()
     # lab.yaml cadence, then EFFERENTS_CADENCE_* overrides from the daemon env.
     cadence = lab_mod.cadence_with_env(cfg.cadence)
+    if submission_dir is None:
+        submission_dir = context_dir.parent
     o = orchestrator.Orchestrator(
         lab_dir=lab_root,
         context_dir=context_dir,
@@ -72,14 +74,34 @@ def _orchestrator_loop(
             f"efferents daemon for lab_id={cfg.lab_id}\n\n"
             f"cadence: {cadence.as_kwargs()}"
         ),
-        submission_dir=submission_dir if submission_dir is not None else context_dir.parent,
+        submission_dir=submission_dir,
         **cadence.as_kwargs(),
     )
-    o.run(max_iterations=max_iterations)
-    # Always leave a current static artifact, including bounded/offline runs
-    # that stop before the Analyst cadence fires.
-    from efferents.agents.progress import write_progress  # noqa: PLC0415
-    write_progress(o.paths, context_dir=context_dir)
+
+    def event_heartbeat(telemetry: dict | None = None) -> None:
+        # Event sharing is opt-in and best-effort.  An event outage must never
+        # discard or block the participant's local evidence.
+        from efferents import event as event_mod  # noqa: PLC0415
+
+        status = "paused" if (telemetry or {}).get("event") == "owner_paused" else None
+        event_mod.sync(
+            submission_dir, lab_root=lab_root, runtime_status=status, quiet=True
+        )
+
+    o.on_step_callback = event_heartbeat
+    try:
+        event_heartbeat()
+        o.run(max_iterations=max_iterations)
+    finally:
+        # Always leave a current static artifact, including bounded/offline
+        # runs that stop before the Analyst cadence fires, and mark the event
+        # node stopped without making local shutdown depend on the network.
+        from efferents.agents.progress import write_progress  # noqa: PLC0415
+        write_progress(o.paths, context_dir=context_dir)
+        from efferents import event as event_mod  # noqa: PLC0415
+        event_mod.sync(
+            submission_dir, lab_root=lab_root, runtime_status="stopped", quiet=True
+        )
 
 
 def _init_lab_root(
@@ -184,6 +206,15 @@ def _cmd_start(args: argparse.Namespace) -> int:
     # child, which inherits this process's os.environ — can resolve
     # ANTHROPIC_API_KEY without it being exported in the launching shell.
     load_dotenv(sub / ".env")
+    # A joined event reuses the generic OpenAI-compatible client settings. The
+    # opaque event token stays in the daemon environment and the executor's
+    # allow-list continues to keep it out of experiment commands.
+    from efferents import event as event_mod  # noqa: PLC0415
+    try:
+        event_mod.configure_model_environment(sub)
+    except event_mod.EventClientError as exc:
+        print(f"event credential failed: {exc}", file=sys.stderr)
+        return 1
 
     lab_mod.set_config(cfg)
     _init_lab_root(sub, lab_root, cfg=cfg)
@@ -456,6 +487,16 @@ def _cmd_stop(args: argparse.Namespace) -> int:
         Registry().update_status(rec.lab_id, "stopped")
     if lab_root is not None and pidfile_pid is not None and not daemon.is_pid_alive(pidfile_pid):
         daemon.clear_pidfile(lab_root / "daemon.pid")
+    submission_dir = (
+        Path(args.submission).resolve()
+        if args.submission
+        else Path(rec.submission_dir).resolve() if rec is not None else None
+    )
+    if submission_dir is not None:
+        from efferents import event as event_mod  # noqa: PLC0415
+        event_mod.sync(
+            submission_dir, lab_root=lab_root, runtime_status="stopped", quiet=True
+        )
     print(f"stopped lab_id={lab_id}" if lab_id else f"stopped lab at {lab_root}")
     return 0
 
@@ -700,6 +741,17 @@ def _cmd_place(args: argparse.Namespace) -> int:
         )
         print(f"hired {args.student_id} into {decision.target.lab_id} ({cfg})")
     return 0
+
+
+def _cmd_route(args: argparse.Namespace) -> int:
+    command = [sys.executable, "-I", "-m", "efferents.agents.routing", args.submission]
+    if args.apply:
+        command.append("--apply")
+    if args.offline:
+        command.append("--offline")
+    if args.student_id:
+        command.extend(["--student-id", args.student_id])
+    return subprocess.call(command)
 
 
 def _cmd_run(args: argparse.Namespace) -> int:
@@ -972,6 +1024,99 @@ def _cmd_public_check(args: argparse.Namespace) -> int:
     return 0 if report.is_ready else 1
 
 
+def _cmd_event(args: argparse.Namespace) -> int:
+    from getpass import getpass
+    from efferents import event as event_mod
+
+    try:
+        if args.event_action == "join":
+            code = args.enrollment_code or getpass("Event enrollment code: ").strip()
+            if not code:
+                print("event join: enrollment code is required", file=sys.stderr)
+                return 2
+            result = event_mod.join(
+                args.submission,
+                event_url=args.url,
+                event_id=args.event_id,
+                enrollment_code=code,
+                share_findings=args.share_findings,
+            )
+            print(f"joined event_id={result['event_id']} lab_id={result['lab_id']}")
+            print(f"credential={event_mod.credential_path(args.submission)} (mode 600)")
+            print(f"proxy_model={result['model']} expires_at={result['expires_at']}")
+            return 0
+        if args.event_action == "sync":
+            result = event_mod.sync(args.submission, lab_root=args.lab_root)
+            event_mod.exchange(args.submission, lab_root=args.lab_root, force=True)
+            print(
+                f"synced event_id={result.get('event_id')} lab_id={result.get('lab_id')} "
+                f"status={result.get('runtime_status')} sequence={result.get('sequence')}"
+            )
+            return 0
+        if args.event_action == "status":
+            result = event_mod.status(args.submission)
+            for key in (
+                "event_id", "lab_id", "status", "expires_at", "spend_usd",
+                "cap_usd", "requests", "last_sync_at",
+            ):
+                if key in result:
+                    print(f"{key}={result[key]}")
+            if event_mod.pending_path(args.submission).exists():
+                print("pending_sync=true")
+            return 0
+        if args.event_action == "leave":
+            result = event_mod.leave(args.submission, lab_root=args.lab_root)
+            print(
+                f"left event_id={result.get('event_id')} lab_id={result.get('lab_id')}; "
+                "future sharing stopped and local evidence retained"
+            )
+            return 0
+        if args.event_action == "doctor":
+            checks = event_mod.doctor(args.submission, run_smoke=not args.no_smoke)
+            for check in checks:
+                print(f"{'PASS' if check['ok'] else 'FAIL'} {check['name']}: {check['detail']}")
+            return 0 if all(check["ok"] for check in checks) else 1
+    except (event_mod.EventClientError, SubmissionError, KeyError) as exc:
+        print(f"event {args.event_action} failed: {exc}", file=sys.stderr)
+        return 1
+    raise AssertionError(f"unknown event action: {args.event_action}")
+
+
+def _cmd_starter(args: argparse.Namespace) -> int:
+    from efferents.onboarding import create_lab, suggest_lab_id
+    idea, goal = getattr(args, "idea", ""), getattr(args, "goal", "")
+    approach, name = getattr(args, "approach", ""), getattr(args, "name", "")
+    try:
+        out = Path(args.out).expanduser().resolve() if args.out else None
+        if out is not None and not (name or idea or approach or goal):
+            name = out.name  # an explicit directory name is what the owner typed
+        # Sibling starter directories count as taken so repeated runs stay distinct.
+        siblings = {p.name for p in (out.parent if out else Path.cwd()).glob("*") if p != out}
+        from efferents.registry import Registry
+        lab_id = suggest_lab_id(idea=idea, goal=goal, approach=approach, starter=args.starter_name,
+                                name=name, taken=siblings | {r.lab_id for r in Registry().list()})
+        target = out or (Path.cwd() / lab_id)
+        result = create_lab(target, starter=args.starter_name, idea=idea, goal=goal,
+                            approach=approach, exchange=getattr(args, "exchange", False), name=lab_id)
+    except (OSError, ValueError) as exc:
+        print(f"starter: could not create {target}: {exc}", file=sys.stderr)
+        return 1
+    print(f"created {result['starter']} lab_id={result['lab_id']} at {target}")
+    print(f"next: efferents trial --submission {target} --runs 3")
+    return 0
+
+
+def _cmd_trial(args: argparse.Namespace) -> int:
+    from efferents.onboarding import trial
+    try:
+        result = trial(Path(args.submission).expanduser().resolve(), runs=args.runs, student_id=getattr(args, "student_id", None))
+    except (OSError, ValueError) as exc:
+        print(f"trial failed: {exc}", file=sys.stderr)
+        return 1
+    print(json.dumps(result))
+    return 0 if result["ok"] else 1
+
+
 def _add_lab_selector(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--lab-id", default=None)
     parser.add_argument("--submission", default=None,
@@ -1021,6 +1166,49 @@ def build_parser() -> argparse.ArgumentParser:
     p_list = sub.add_parser("list", help="List all registered labs")
     p_list.set_defaults(func=_cmd_list)
 
+    p_event = sub.add_parser(
+        "event", help="Join and synchronize a private, event-scoped lab summary"
+    )
+    event_sub = p_event.add_subparsers(dest="event_action", required=True)
+    p_event_join = event_sub.add_parser("join", help="Exchange an enrollment code for a lab token")
+    p_event_join.add_argument("--submission", default=".")
+    p_event_join.add_argument("--url", required=True, help="Event HTTPS origin")
+    p_event_join.add_argument("--event-id", required=True)
+    p_event_join.add_argument("--share-findings", action="store_true",
+                             help="Opt in to accepted journal publications within this private event")
+    p_event_join.add_argument(
+        "--enrollment-code", default=None,
+        help="Enrollment code (omit to enter it without shell-history exposure)",
+    )
+    p_event_join.set_defaults(func=_cmd_event)
+    for action in ("sync", "status", "leave"):
+        p_action = event_sub.add_parser(action)
+        p_action.add_argument("--submission", default=".")
+        if action in {"sync", "leave"}:
+            p_action.add_argument("--lab-root", default=None)
+        p_action.set_defaults(func=_cmd_event)
+    p_event_doctor = event_sub.add_parser(
+        "doctor", help="Check tools, event access, writable paths, and the offline smoke command"
+    )
+    p_event_doctor.add_argument("--submission", default=".")
+    p_event_doctor.add_argument("--no-smoke", action="store_true")
+    p_event_doctor.set_defaults(func=_cmd_event)
+
+    p_starter = sub.add_parser("starter", help="Create a versioned starter lab")
+    p_starter.add_argument("starter_name", choices=("coloring", "active-learning", "orbit", "vehicle", "evacuation", "integration", "auto"), nargs="?", default="auto")
+    p_starter.add_argument("--out", default=None, help="Destination directory (default: ./<lab id>)")
+    p_starter.add_argument("--name", default="", help="Lab id (default: derived from --idea)")
+    p_starter.add_argument("--idea", default="")
+    p_starter.add_argument("--goal", default="")
+    p_starter.add_argument("--approach", default="")
+    p_starter.add_argument("--exchange", action="store_true", help="Share accepted journal publications with local event labs")
+    p_starter.set_defaults(func=_cmd_starter)
+
+    p_trial = sub.add_parser("trial", help="Run a bounded sequence of real experiments without model calls")
+    p_trial.add_argument("--submission", default=".")
+    p_trial.add_argument("--runs", type=int, default=3)
+    p_trial.add_argument("--student-id", help="Attribute the trial to an existing idea/student track")
+    p_trial.set_defaults(func=_cmd_trial)
     p_migrate = sub.add_parser(
         "migrate-paper-dir",
         help="Move Writer output from the legacy lab/paper/ to <submission>/paper/",
@@ -1085,6 +1273,13 @@ def build_parser() -> argparse.ArgumentParser:
     p_demo.add_argument("--out", default="efferents-demo",
                         help="Output directory for demo artifacts (default: ./efferents-demo)")
     p_demo.set_defaults(func=_cmd_demo)
+
+    p_route = sub.add_parser("route", help="Route an idea to a new student in a compatible registered lab")
+    p_route.add_argument("submission")
+    p_route.add_argument("--apply", action="store_true", help="Apply a join decision; never starts research")
+    p_route.add_argument("--student-id", default=None)
+    p_route.add_argument("--offline", action="store_true", help="Use declared-topic matching without model calls")
+    p_route.set_defaults(func=_cmd_route)
 
     p_place = sub.add_parser(
         "place",
