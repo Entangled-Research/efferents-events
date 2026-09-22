@@ -182,3 +182,60 @@ def test_single_user_mutations_unavailable_in_cluster(cluster_server, path):
     port, *_ = cluster_server
     _, headers = _join(port)
     assert _request(port, path, method="POST", payload={"confirmed": True}, headers=headers)[0] == 404
+
+
+@pytest.fixture
+def laptop_only_server(tmp_path, monkeypatch):
+    """A hub with labs.hosted: false — nothing may run on the host."""
+    make_popper_repo(monkeypatch, tmp_path)
+    cfg = make_cluster(tmp_path, monkeypatch, labs={"auto_start": True, "hosted": False})
+    scripts: dict = {"replies": []}
+    ctx = ClusterContext(
+        cfg, tracks=load_tracks(cfg.tracks_path),
+        client_factory=lambda budget: ScriptedClient(scripts["replies"], budget=budget),
+    )
+    httpd, ctx = make_cluster_server(cfg, port=0, context=ctx, read_ttl_s=0)
+    port = httpd.server_address[1]
+    thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+    thread.start()
+    yield port, ctx, scripts, cfg
+    httpd.shutdown()
+    httpd.server_close()
+
+
+def test_hosted_off_never_creates_a_lab_on_the_host(laptop_only_server):
+    port, ctx, scripts, cfg = laptop_only_server
+    body, ada = _join(port, "Ada")
+    assert body["cluster"]["hosted_labs"] is False
+    status, control, _ = _request(port, "/api/control", headers=ada)
+    assert control["cluster"]["hosted_labs"] is False
+
+    status, payload, _ = _request(port, "/api/intake/sessions", method="POST", payload={}, headers=ada)
+    sid = payload["session"]["session_id"]
+    scripts["replies"].extend([hypothesis_block()])
+    _request(port, f"/api/intake/sessions/{sid}/messages", method="POST",
+             payload={"text": "bigger coefficient, lower loss"}, headers=ada)
+    _request(port, f"/api/intake/sessions/{sid}/approve", method="POST", payload={}, headers=ada)
+    scripts["replies"].extend([
+        json.dumps({"action": "existing", "track_id": "coefficient-sweep",
+                    "confidence": 0.98, "reason": "compatible"}),
+        json.dumps({
+            "falsifiers": [{"id": "F1", "description": "Median loss stays >= 0.1",
+                            "when": {"column": "synthetic_loss", "agg": "median", "op": ">=",
+                                     "value": 0.1, "min_n": 4}}],
+            "rationale": "r", "lab_id": "ada-coef",
+        }),
+    ])
+    status, payload, _ = _request(port, f"/api/intake/sessions/{sid}/route", method="POST",
+                                  payload={}, headers=ada)
+    assert status == 200 and payload["session"]["state"] == "bound"
+    # The harness handoff still works; the hosted create path is closed even
+    # when the request asks to start the daemon explicitly.
+    status, result, _ = _request(port, f"/api/intake/sessions/{sid}/create", method="POST",
+                                 payload={"lab_id": "ada-coef", "falsifiers": ["F1"], "start": True},
+                                 headers=ada)
+    assert status == 409 and "laptop" in result["error"]
+    assert not (cfg.paths.labs / "ada-coef").exists()
+    assert list(cfg.paths.labs.iterdir()) == []
+    status, sessions, _ = _request(port, "/api/intake/sessions", headers=ada)
+    assert sessions[0]["state"] == "bound" and not sessions[0].get("lab_id")

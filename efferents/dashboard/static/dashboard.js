@@ -1590,6 +1590,8 @@ function renderSession(session) {
   document.getElementById("event-status").hidden = !cluster || !controlState.session?.frozen;
   document.querySelectorAll("[data-cluster-only]").forEach((el) => { el.hidden = !joined; });
   document.querySelectorAll("[data-local-only]").forEach((el) => { el.hidden = cluster; });
+  const hosted = joined && hostedLabsEnabled();
+  document.querySelectorAll("[data-hosted-only]").forEach((el) => { el.hidden = !hosted; });
   if (cluster) {
     const info = controlState.session || {};
     text("network-hub-label", info.name || "lab network");
@@ -1597,6 +1599,11 @@ function renderSession(session) {
       text("status-text", info.owner.name);
     }
   }
+}
+
+function hostedLabsEnabled() {
+  // The hub only creates labs on the host when cluster.yaml says labs.hosted: true.
+  return Boolean(controlState.session && controlState.session.hosted_labs);
 }
 
 function markMine() {
@@ -1960,7 +1967,7 @@ function renderIntake(payload) {
   if (!trackPanel.hidden) renderRouting(session, payload.tracks || []);
 
   const bindingPanel = document.getElementById("binding-panel");
-  bindingPanel.hidden = !(["bound", "created"].includes(state) && payload.binding);
+  bindingPanel.hidden = !(["bound", "created"].includes(state) && payload.binding && hostedLabsEnabled());
   if (!bindingPanel.hidden) renderBinding(payload.binding, session);
 
   const harnessPanel = document.getElementById("harness-panel");

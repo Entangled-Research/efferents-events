@@ -28,6 +28,16 @@ def test_load_defaults_and_cadence(tmp_path):
     assert cfg.cadence.runs_per_digest == 3 and cfg.cadence_raw["runs_per_paper"] == 5
     assert cfg.tracks_path == root / "tracks"
     assert cfg.supervision.tick_s == 30.0 and cfg.session.secure_cookies is True
+    assert cfg.labs.hosted is True
+
+
+def test_hosted_labs_can_be_switched_off(tmp_path):
+    root = tmp_path / "c"
+    cc.init_cluster(root)
+    raw = yaml.safe_load((root / "cluster.yaml").read_text())
+    raw["labs"]["hosted"] = False
+    (root / "cluster.yaml").write_text(yaml.safe_dump(raw))
+    assert cc.load_cluster_config(root).labs.hosted is False
 
 
 @pytest.mark.parametrize("patch, needle", [
@@ -35,6 +45,7 @@ def test_load_defaults_and_cadence(tmp_path):
     ({"labs": {"total_cap_usd": -1}}, "non-negative"),
     ({"labs": {"bogus": 1}}, "unknown keys"),
     ({"intake": {"max_turns": 2.5}}, "wrong type"),
+    ({"labs": {"hosted": "no"}}, "wrong type"),
     ({"caps": {"warn_at_fraction": 2}}, "warn_at_fraction"),
     ({"cadence": {"runs_per_digest": 0}}, "cadence.runs_per_digest"),
     ({"name": ""}, "name is required"),

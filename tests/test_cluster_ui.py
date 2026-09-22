@@ -48,6 +48,18 @@ def test_intake_routes_automatically_and_offers_local_harness():
     assert "Use my approved browser intake session" in js
 
 
+def test_hosted_lab_creation_is_gated_by_cluster_policy():
+    html = (STATIC / "dashboard.html").read_text()
+    js = (STATIC / "dashboard.js").read_text()
+    # The create panel is driven by intake state, not by the refresh loop.
+    assert 'id="binding-panel" aria-labelledby="binding-title" hidden' in html
+    assert 'id="binding-panel" aria-labelledby="binding-title" data-hosted-only' not in html
+    assert '<span data-hosted-only hidden>No laptop?' in html
+    assert "function hostedLabsEnabled()" in js
+    assert 'document.querySelectorAll("[data-hosted-only]").forEach((el) => { el.hidden = !hosted; });' in js
+    assert "payload.binding && hostedLabsEnabled()" in js
+
+
 def test_css_covers_cluster_marks():
     css = (STATIC / "dashboard.css").read_text()
     for needle in (".map-node.mine", ".edge-reviewed", ".chat-turn", ".track-option"):

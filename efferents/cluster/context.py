@@ -126,6 +126,7 @@ class ClusterContext:
                     "intake_cap_usd": self.cfg.intake.cap_per_owner_usd,
                 },
                 "auto_start": self.cfg.labs.auto_start,
+                "hosted_labs": self.cfg.labs.hosted,
             })
         return payload
 
@@ -135,6 +136,12 @@ class ClusterContext:
         self, owner: Owner, session_id: str, *, lab_id: str | None,
         falsifiers: list[dict] | None, start: bool | None,
     ) -> dict:
+        if not self.cfg.labs.hosted:
+            raise ControlError(
+                "This event runs every lab on its owner's laptop; the hub does not "
+                "host labs. Use the harness instruction from your intake session.",
+                status=409,
+            )
         if self.frozen():
             raise ControlError("The event budget is frozen; no new labs.", status=409)
         session_payload = self.intake.get(owner, session_id)

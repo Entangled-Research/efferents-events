@@ -5,7 +5,9 @@ The Events repository includes the framework network through upstream commit
 proxy and remote-lab transport. The production deployment is independent of the
 older framework dashboard.
 
-- Droplet: `161.35.164.202`, existing DigitalOcean LON1 Ubuntu host.
+- Droplet: `161.35.164.202`, existing DigitalOcean LON1 Ubuntu host on the
+  Basic 2 vCPU / 2 GB plan (storage kept at 50 GB so it can be downsized), with
+  a 4 GB swap file. Nothing runs on it but the hub, the legacy gateway and Caddy.
 - Events source: `/opt/efferents-events`.
 - Compose: `deploy/events/compose.yaml`; loopback port **8810**.
 - State: Docker volume `efferents-events_events_data`, under `/data/cluster`.
@@ -16,6 +18,10 @@ older framework dashboard.
 
 As of 2026-09-22, **intake and participant API testing are enabled**. The owner
 authorized clearing the initial freeze; automatic hosted lab starts remain off.
+The owner decided on 2026-09-22 that nothing runs on the droplet:
+`labs.hosted: false` is set in `/data/cluster/cluster.yaml`, so the hub never
+creates a lab on the host and every lab runs on a participant's laptop or web
+harness.
 Azure credentials and the Azure OpenAI v1 endpoint are configured in
 `deploy/events/.env` (0600), outside Git. Both `EFFERENTS_API_BASE` (host calls)
 and `EFFERENTS_AZURE_OPENAI_ENDPOINT` (participant proxy) point to Azure.
@@ -32,8 +38,10 @@ The external Popper checkout is installed at `/data/popper-probe`. The old
 evacuation placeholder has been removed from the event catalogue; an empty
 hosted-track catalogue is valid because new executors are built on participant
 laptops. `efferents cluster check /data/cluster` passes.
-Configured caps are $20 for the cluster, $5 intake ($1 per owner), $20 proxy
-($10 per owner), $3 reviews and $10 per lab. These are separate from Azure credits.
+Configured caps (set 2026-09-22 for the event): $1,500 for the cluster and
+$1,500 proxy total; $50 per person through the proxy and $50 per lab, so one
+person can spend their allowance on one lab or spread it across two; $50 intake
+total ($1 per person); $3 reviews. These are separate from Azure credits.
 The join code is retained in private access notes outside the repository.
 
 Local testing uses `http://localhost:8843`; the legacy preview at port 8840

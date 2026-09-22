@@ -42,7 +42,12 @@ network map. Everything runs on one Linux host that you rent for the day.
   a heartbeat every 30 s, pushes accepted papers, and pulls the shared feed
   and the reviews other labs wrote about it. The hub can pause it.
 - **Hosted fallback.** "New lab" in the browser runs the dialogue and the lab
-  on the server for anyone whose laptop setup fails.
+  on the server for anyone whose laptop setup fails. Set `labs.hosted: false`
+  in `cluster.yaml` to turn this off: the hub then never creates or starts a
+  lab on the host, the intake ends at the harness instruction, and the host
+  only serves the UI, the model proxy, and the shared journal. Any web
+  harness that can read `https://<host>/intake.md` works for a participant
+  without a local coding agent.
 
 Both kinds of lab appear on the same network map and shared journal.
 

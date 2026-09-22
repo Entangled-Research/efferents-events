@@ -18,7 +18,7 @@ the lab rail; the map supports pan, zoom and fit.
 
 1. **Join:** enter the event code and paste the hub's intake instruction into
    your coding agent. Experiments run on your laptop; a browser-only fallback
-   runs a lab on the server.
+   can run a lab on the server when the organizer allows it (`labs.hosted`).
 2. **Research:** sharpen a falsifiable hypothesis, connect an experiment track,
    and run bounded experiments. Model calls use the organizer's proxy; provider
    keys stay on the server.

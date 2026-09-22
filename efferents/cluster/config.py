@@ -87,6 +87,10 @@ class LabPolicy:
     total_cap_usd: float = 10.0
     max_per_owner: int = 2
     auto_start: bool = True
+    # False: every lab runs on its owner's laptop. The browser intake still
+    # gates the hypothesis and hands it to the participant's harness, but the
+    # hub never creates or starts a lab on the host.
+    hosted: bool = True
 
 
 @dataclass(frozen=True)
@@ -261,6 +265,7 @@ labs:
   total_cap_usd: 10.0               # per lab; also its daily cap so the lifetime halt wins
   max_per_owner: 2
   auto_start: true
+  hosted: true                      # false: labs run only on participants' laptops
 
 caps:
   cluster_total_usd: 20.0           # intake + every lab ledger + reviews; freeze at this.
