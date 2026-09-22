@@ -92,7 +92,7 @@ def test_gpt56_chat_completions_uses_tool_compatible_effort(monkeypatch):
     assert calls[0]["reasoning_effort"] == "none"
     client.create(model="openai/gpt-5.6-luna", max_tokens=128,
                   messages=[{"role": "user", "content": "hello"}])
-    assert calls[1]["reasoning_effort"] == "medium"
+    assert calls[1]["reasoning_effort"] == "high"
 
 
 def test_non_anthropic_model_uses_litellm_pricing():
