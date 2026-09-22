@@ -66,6 +66,8 @@ def test_intake_md_and_config(hub):
     status, body, headers = _request(port, "/intake.md")
     assert status == 200 and "Launch an efferents research lab" in body["raw"]
     assert f"Hub: http://127.0.0.1:{port}" in body["raw"]
+    assert 'curl -fsS -H "Authorization: Bearer $TOKEN"' in body["raw"]
+    assert "Do not ask for the event join code or try to join again." in body["raw"]
     joined, hdrs = _join(port, "Ada")
     assert joined["cluster"]["network_token"] == joined["owner_link"].split("=")[1]
     status, config, _ = _request(port, "/api/network/config", headers=_bearer(joined))
@@ -78,7 +80,14 @@ def test_intake_md_and_config(hub):
     assert config["tracks"][0]["id"] == "coefficient-sweep"
     assert "efferents-events" in config["install"]["pip_spec"]
     # Without a token the machine endpoints are closed.
-    assert _request(port, "/api/network/config")[0] == 401
+    status, missing, _ = _request(port, "/api/network/config")
+    assert status == 401 and missing["error"] == "Join the event with the code first."
+    status, invalid, _ = _request(
+        port, "/api/network/config", headers={"Authorization": "Bearer invalid"},
+    )
+    assert status == 401
+    assert "Network token invalid or expired" in invalid["error"]
+    assert "join code is different" in invalid["error"]
 
 
 def test_track_tarball(hub):
