@@ -126,7 +126,7 @@ class ModelProxy:
                 if any(field in request for field in ("temperature", "top_p", "logprobs")):
                     raise ProxyError(400, "sampling options are unsupported for GPT-5.6", "invalid_request_error")
                 request["max_completion_tokens"] = request.pop("max_completion_tokens", request.pop("max_tokens", 0))
-                request["reasoning_effort"] = "none" if request.get("tools") else "medium"
+                request["reasoning_effort"] = "none" if request.get("tools") else "high"
             max_tokens = (request.get("max_output_tokens") if responses_api else
                           request.get("max_completion_tokens") or request.get("max_tokens"))
             if not isinstance(max_tokens, int) or isinstance(max_tokens, bool) or not 1 <= max_tokens <= _OPENAI_MAX_OUTPUT:
