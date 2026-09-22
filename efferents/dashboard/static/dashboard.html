@@ -21,6 +21,7 @@
 
     <nav class="workspace-nav" aria-label="Lab gateway">
       <a href="#connect" data-route-link="connect" data-local-only>Connect</a>
+      <a href="#join" data-route-link="join" data-cluster-only hidden>Connect a lab</a>
       <a href="#intake" data-route-link="intake" data-cluster-only hidden>Sharpen an idea</a>
       <a href="#network" data-route-link="network">Network</a>
       <button id="lab-rail-toggle" class="rail-toggle" type="button" aria-controls="lab-rail"
@@ -77,7 +78,7 @@
 
     <section id="join-view" class="app-view" data-route-view="join" hidden>
       <div class="route-intro">
-        <div class="route-kicker">Join</div>
+        <div class="route-kicker" id="join-kicker">Join</div>
         <h1 id="join-title">Join the lab network</h1>
         <p class="route-lede">
           One join code for the room. Pick the name other labs will see next to

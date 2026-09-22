@@ -261,3 +261,26 @@ def test_network_publications_require_a_persisted_three_score_journal(hub):
     assert len(rows) == 1
     assert rows[0]["campaign_id"] == "c1"
     assert rows[0]["review_scores"] == {"critical": 6, "neutral": 7, "optimistic": 8}
+
+
+def test_zero_labs_per_owner_means_only_the_budget_limits(tmp_path, monkeypatch):
+    make_popper_repo(monkeypatch, tmp_path)
+    cfg = make_cluster(tmp_path, monkeypatch, labs={"auto_start": False, "max_per_owner": 0})
+    ctx = ClusterContext(cfg, tracks=load_tracks(cfg.tracks_path),
+                         client_factory=lambda budget: ScriptedClient([], budget=budget))
+    httpd, ctx = make_cluster_server(cfg, port=0, context=ctx, read_ttl_s=0)
+    port = httpd.server_address[1]
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    try:
+        ada, _ = _join(port, "Ada")
+        assert ada["cluster"]["limits"]["labs_per_owner"] == 0
+        for n in range(5):
+            status, body, _ = _request(port, "/api/network/labs", method="POST",
+                                       payload={"lab_id": f"ada-{n}", "hypothesis": VALID_HYP,
+                                                "domain": "d"}, headers=_bearer(ada))
+            assert status == 200, body
+        status, portfolio, _ = _request(port, "/api/labs", headers=_bearer(ada))
+        assert len(portfolio["labs"]) == 5
+    finally:
+        httpd.shutdown()
+        httpd.server_close()

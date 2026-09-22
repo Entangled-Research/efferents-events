@@ -174,7 +174,8 @@ class NetworkHub:
                 raise ControlError(f"Lab id {lab_id!r} is taken by another participant.", status=409)
             owned = [p.name for p in self.root.iterdir()
                      if p.is_dir() and _read_json(p / "registration.json").get("owner_id") == owner.owner_id]
-            if not existing and len(owned) >= self.cfg.labs.max_per_owner:
+            limit = self.cfg.labs.max_per_owner
+            if not existing and limit > 0 and len(owned) >= limit:
                 raise ControlError(f"You already registered {len(owned)} lab(s); the limit is "
                                    f"{self.cfg.labs.max_per_owner}.", status=409)
             reg = {

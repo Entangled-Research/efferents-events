@@ -87,7 +87,7 @@ def create_lab(
                 raise ControlError(f"Lab id {lab_id!r} is taken.", status=409)
         else:
             lab_id = derive_lab_id(slug, taken)
-        if len(owner.labs) >= cfg.labs.max_per_owner:
+        if cfg.labs.max_per_owner > 0 and len(owner.labs) >= cfg.labs.max_per_owner:
             raise ControlError(
                 f"You already own {len(owner.labs)} lab(s); the limit is "
                 f"{cfg.labs.max_per_owner}.", status=409,

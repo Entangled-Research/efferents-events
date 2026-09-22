@@ -68,7 +68,10 @@ def test_harness_is_the_default_way_onto_the_network():
     assert "Connect your lab from your harness" in html
     assert "Optional · before your harness" in html
     assert 'href="#join" data-cluster-only hidden>+ Connect from your harness</a>' in html
-    assert "connect one from your harness (see Join)" in js
+    assert 'data-route-link="join" data-cluster-only hidden>Connect a lab</a>' in html
+    assert 'id="join-kicker"' in html
+    assert '<a href="#join">connect one from your harness</a>' in js
+    assert 'return isJoined() && mine.length === 0 ? "join" : "network";' in js
     assert "start one under New lab" not in js
 
 

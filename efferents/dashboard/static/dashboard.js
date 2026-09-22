@@ -192,7 +192,13 @@ function currentRoute() {
   if (route === "steer") return "observe";
   const known = ["connect", "observe", "network", "join", "intake"];
   if (known.includes(route)) return route;
-  return isCluster() ? "network" : "connect";
+  if (isCluster()) {
+    // The harness is the way onto the network: until this person has a lab,
+    // the instruction and token are what they need first.
+    const mine = (controlState.session && controlState.session.my_labs) || [];
+    return isJoined() && mine.length === 0 ? "join" : "network";
+  }
+  return "connect";
 }
 
 function renderRoute() {
@@ -204,6 +210,7 @@ function renderRoute() {
     } else if (route === "join") {
       renderTerminalPanel(controlState.session);
       document.getElementById("join-form").hidden = true;
+      text("join-kicker", "Connect");
       text("join-title", `You are in, ${(controlState.session.owner || {}).name || "friend"}`);
     } else if (route === "connect") {
       route = "network";
@@ -631,7 +638,11 @@ function renderNetwork() {
   document.querySelector(".network-hub").hidden = true;
   const empty = document.getElementById("network-empty");
   empty.hidden = labs.length > 0;
-  empty.textContent = isCluster() ? "No labs on the network yet · connect one from your harness (see Join)" : "Connect a lab to build a reviewed journal.";
+  if (isCluster()) {
+    empty.innerHTML = 'No labs on the network yet · <a href="#join">connect one from your harness</a>';
+  } else {
+    empty.textContent = "Connect a lab to build a reviewed journal.";
+  }
   const selected = labs.find(lab => lab.lab_id === networkSelection) || labs[0];
   networkSelection = selected?.lab_id || null;
   const groups = new Map();

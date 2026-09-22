@@ -85,7 +85,7 @@ class LabPolicy:
     # Azure-backed event labs have enough headroom for a useful bounded run.
     # The cluster-wide cap remains the separate event-level stop mechanism.
     total_cap_usd: float = 10.0
-    max_per_owner: int = 2
+    max_per_owner: int = 2            # 0: no limit; only the budget bounds a person
     auto_start: bool = True
     # False: every lab runs on its owner's laptop. The browser intake still
     # gates the hypothesis and hands it to the participant's harness, but the
@@ -263,7 +263,7 @@ intake:
 
 labs:
   total_cap_usd: 10.0               # per lab; also its daily cap so the lifetime halt wins
-  max_per_owner: 2
+  max_per_owner: 2                  # 0: no limit, only the budget
   auto_start: true
   hosted: true                      # false: labs run only on participants' laptops
 
