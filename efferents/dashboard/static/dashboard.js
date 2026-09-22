@@ -218,7 +218,9 @@ function renderRoute() {
   } else if (controlState.hydrated && !controlState.connected && !["connect", "network"].includes(route)) {
     route = "connect";
   }
-  if (window.location.hash !== `#${route}`) {
+  // Before /api/control has answered, the mode is unknown; leave an empty hash
+  // alone so the hosted default (the connect page) applies once it is known.
+  if (window.location.hash !== `#${route}` && (controlState.hydrated || window.location.hash)) {
     history.replaceState(null, "", `#${route}`);
   }
   if (route === "intake") ensureIntakeLoaded();
