@@ -164,7 +164,7 @@ def test_azure_openai_proxy_rejects_unpriced_or_unbounded_calls(tmp_path, monkey
     base = {"model": "gpt-5.6-sol", "max_tokens": 100,
             "messages": [{"role": "user", "content": "hello"}]}
     for changed in ({"model": "gpt-4o"}, {"stream": True}, {"n": 2},
-                    {"max_tokens": 9000}, {"temperature": 0.5}):
+                    {"max_tokens": 32769}, {"temperature": 0.5}):
         with pytest.raises(ProxyError) as exc:
             px.forward(owner_id="o1", path="/v1/chat/completions",
                        body=json.dumps({**base, **changed}).encode(), headers={},

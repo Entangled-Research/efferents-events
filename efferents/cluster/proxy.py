@@ -1,5 +1,4 @@
-"""Model-call proxy: participants' daemons talk to the hub, the hub talks to
-Anthropic with the organizer's key.
+"""Model-call proxy: participants talk to the hub, which holds provider keys.
 
 A daemon sets ``ANTHROPIC_BASE_URL=https://hub/proxy/anthropic`` and
 ``ANTHROPIC_API_KEY=<its network token>``. The Anthropic SDK then sends
@@ -29,8 +28,8 @@ OPENAI_PROXY_PREFIX = "/proxy/openai"
 MAX_PROXY_BODY = 8 * 1024 * 1024
 _FORWARD_HEADERS = ("anthropic-version", "anthropic-beta", "content-type", "accept")
 _AZURE_MODELS = frozenset({"gpt-4.1-nano", "gpt-5.6-luna", "gpt-5.6-sol"})
-_OPENAI_MAX_BODY = 200_000  # short-context pricing and bounded input reservation
-_OPENAI_MAX_OUTPUT = 8192
+_OPENAI_MAX_BODY = 512_000  # bounded input with room for coding context
+_OPENAI_MAX_OUTPUT = 32768
 
 
 class ProxyError(Exception):
@@ -89,7 +88,7 @@ class ModelProxy:
     def forward(self, *, owner_id: str, path: str, body: bytes, headers: dict[str, str],
                 api_key: str, provider: str = "anthropic") -> tuple[int, bytes, dict[str, str]]:
         """Forward one SDK request. Returns (status, body, headers) for the client."""
-        if provider == "openai" and path != "/v1/chat/completions":
+        if provider == "openai" and path not in ("/v1/chat/completions", "/v1/responses"):
             raise ProxyError(404, "unknown proxy path", "not_found_error")
         if provider != "openai" and (provider != "anthropic" or not path.startswith("/v1/")):
             raise ProxyError(404, "unknown proxy path", "not_found_error")
@@ -101,7 +100,8 @@ class ModelProxy:
             raise ProxyError(400, f"request body is not JSON: {e}", "invalid_request_error") from e
         if not isinstance(request, dict):
             raise ProxyError(400, "request body must be an object", "invalid_request_error")
-        if request.get("stream"):
+        responses_api = provider == "openai" and path == "/v1/responses"
+        if request.get("stream") and not responses_api:
             raise ProxyError(400, "streaming is not supported through the event proxy",
                              "invalid_request_error")
         model = str(request.get("model") or "")
@@ -112,29 +112,36 @@ class ModelProxy:
                 raise ProxyError(400, "model is not an approved event deployment", "invalid_request_error")
             if request.get("n", 1) != 1 or request.get("best_of", 1) != 1:
                 raise ProxyError(400, "multiple completions are not supported", "invalid_request_error")
-            if request.get("messages") is None or not isinstance(request["messages"], list):
+            if responses_api:
+                if not isinstance(request.get("input"), (str, list)):
+                    raise ProxyError(400, "input must be text or an array", "invalid_request_error")
+                request.setdefault("max_output_tokens", _OPENAI_MAX_OUTPUT)
+                if model == "gpt-5.6-sol":
+                    request.setdefault("reasoning", {"effort": "high"})
+            elif request.get("messages") is None or not isinstance(request["messages"], list):
                 raise ProxyError(400, "messages must be an array", "invalid_request_error")
             if any(term in body.lower() for term in (b'"image_url"', b'"input_audio"', b'"file_id"')):
                 raise ProxyError(400, "only text and function tools are supported", "invalid_request_error")
-            if model.startswith("gpt-5.6-"):
+            if model.startswith("gpt-5.6-") and not responses_api:
                 if any(field in request for field in ("temperature", "top_p", "logprobs")):
                     raise ProxyError(400, "sampling options are unsupported for GPT-5.6", "invalid_request_error")
                 request["max_completion_tokens"] = request.pop("max_completion_tokens", request.pop("max_tokens", 0))
                 request["reasoning_effort"] = "none" if request.get("tools") else "medium"
-            max_tokens = request.get("max_completion_tokens") or request.get("max_tokens")
+            max_tokens = (request.get("max_output_tokens") if responses_api else
+                          request.get("max_completion_tokens") or request.get("max_tokens"))
             if not isinstance(max_tokens, int) or isinstance(max_tokens, bool) or not 1 <= max_tokens <= _OPENAI_MAX_OUTPUT:
-                raise ProxyError(400, "max output tokens must be 1–8192", "invalid_request_error")
+                raise ProxyError(400, "max output tokens must be 1–32768", "invalid_request_error")
             model = f"openai/{model}"
             body = json.dumps(request).encode("utf-8")
         else:
             max_tokens = int(request.get("max_tokens") or 0)
-        est_in = len(body) if provider == "openai" else _estimate_input_tokens(request)
+        est_in = max(1, len(body) // 3) if provider == "openai" else _estimate_input_tokens(request)
         if provider == "openai":
             upstream = os.environ.get("EFFERENTS_AZURE_OPENAI_ENDPOINT", "").rstrip("/")
             if not upstream.startswith("https://") or not upstream.endswith("/openai/v1"):
                 raise ProxyError(503, "Azure OpenAI endpoint is not configured", "api_error")
             out_headers = {"content-type": "application/json", "api-key": api_key}
-            upstream_path = "/chat/completions"
+            upstream_path = "/responses" if responses_api else "/chat/completions"
         else:
             upstream = self.upstream
             out_headers = {k: v for k, v in headers.items() if k.lower() in _FORWARD_HEADERS}
@@ -186,7 +193,8 @@ class ModelProxy:
             if 200 <= status < 300:
                 self._record(owner_id, model, payload, owner_tracker, cluster_tracker,
                              provider=provider, fallback_input=est_in,
-                             fallback_output=max_tokens)
+                             fallback_output=max_tokens, responses_api=responses_api,
+                             streaming=bool(request.get("stream")))
             return status, payload, resp_headers
         finally:
             with self._guard:
@@ -195,7 +203,20 @@ class ModelProxy:
 
     def _record(self, owner_id: str, model: str, payload: bytes, owner_tracker: BudgetTracker,
                 cluster_tracker: BudgetTracker, *, provider: str = "anthropic",
-                fallback_input: int = 0, fallback_output: int = 0) -> None:
+                fallback_input: int = 0, fallback_output: int = 0,
+                responses_api: bool = False, streaming: bool = False) -> None:
+        if responses_api and streaming:
+            completed = None
+            for line in payload.splitlines():
+                if not line.startswith(b"data: "):
+                    continue
+                try:
+                    event = json.loads(line[6:])
+                except ValueError:
+                    continue
+                if event.get("type") == "response.completed":
+                    completed = event.get("response")
+            payload = json.dumps(completed or {}).encode()
         try:
             data = json.loads(payload.decode("utf-8"))
         except ValueError:
@@ -207,13 +228,17 @@ class ModelProxy:
             usage_raw = {}
         if provider == "openai" and not usage_raw:
             # A successful response without usage must not become a free call.
-            usage_raw = {"prompt_tokens": fallback_input,
-                         "completion_tokens": fallback_output}
+            usage_raw = {("input_tokens" if responses_api else "prompt_tokens"): fallback_input,
+                         ("output_tokens" if responses_api else "completion_tokens"): fallback_output}
+        cached = 0
+        if responses_api:
+            cached = int((usage_raw.get("input_tokens_details") or {}).get("cached_tokens", 0) or 0)
+        input_tokens = int(usage_raw.get("input_tokens" if responses_api or provider != "openai" else "prompt_tokens", 0) or 0)
         usage = CallUsage(
-            input_tokens=int(usage_raw.get("prompt_tokens" if provider == "openai" else "input_tokens", 0) or 0),
-            output_tokens=int(usage_raw.get("completion_tokens" if provider == "openai" else "output_tokens", 0) or 0),
+            input_tokens=max(0, input_tokens - cached),
+            output_tokens=int(usage_raw.get("output_tokens" if responses_api or provider != "openai" else "completion_tokens", 0) or 0),
             cache_creation_input_tokens=int(usage_raw.get("cache_creation_input_tokens", 0) or 0),
-            cache_read_input_tokens=int(usage_raw.get("cache_read_input_tokens", 0) or 0),
+            cache_read_input_tokens=cached or int(usage_raw.get("cache_read_input_tokens", 0) or 0),
         )
         served = model if provider == "openai" else str(data.get("model") or model)
         with self._lock(owner_id):

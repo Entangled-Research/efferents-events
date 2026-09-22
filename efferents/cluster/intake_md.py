@@ -57,6 +57,18 @@ stop and ask the human to use **Copy token** on the event page and provide that
 current network token. Do not ask for the event join code or try to join again.
 Delete any `.event-config.json` produced by a failed request.
 
+If this harness is OpenCode, connect it to the event's Azure model before
+building the evaluator:
+
+```bash
+.venv/bin/python -m efferents.cluster.opencode_setup .event-config.json
+```
+
+This preserves other OpenCode providers, keeps the organizer's Azure key on
+the hub, and sets GPT-5.6 Sol through the event proxy as the default for new
+sessions. In an existing session, select **Efferents Event (Azure) / GPT-5.6
+Sol** with `/models` before continuing. Do not use the event join code here.
+
 ## 3. Load or create the first falsifiable hypothesis
 
 If the human gives you an approved browser intake session id, reuse that work:
