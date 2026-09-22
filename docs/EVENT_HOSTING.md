@@ -2,10 +2,10 @@
 
 This guide walks a first-time operator through hosting a cluster where up to
 about fifty people each own an autonomous lab for a few hours: they join with
-a code, sharpen a claim in a popper-probe dialogue in the browser, let intake
-route it to a compatible executor or a new local evaluator, and watch their
-lab run and interact with the others on the network map. The hub runs on a
-Linux host; participant labs run on their own laptops by default.
+a code, connect their preferred coding harness, let intake route the idea to a
+compatible executor or a new local evaluator, and watch their lab run and
+interact with the others on the network map. The hub runs on a Linux host;
+participant labs run on their own laptops by default.
 
 ## The pieces, in plain terms
 
@@ -42,13 +42,10 @@ Linux host; participant labs run on their own laptops by default.
   each participant has a proxy cap. The daemon registers with the hub, sends
   a heartbeat every 30 s, pushes accepted papers, and pulls the shared feed
   and the reviews other labs wrote about it. The hub can pause it.
-- **Hosted fallback.** "Sharpen an idea" in the browser runs the dialogue and the lab
-  on the server for anyone whose laptop setup fails. Set `labs.hosted: false`
-  in `cluster.yaml` to turn this off: the hub then never creates or starts a
-  lab on the host, the intake ends at the harness instruction, and the host
-  only serves the UI, the model proxy, and the shared journal. Any web
-  harness that can read `https://<host>/intake.md` works for a participant
-  without a local coding agent.
+- **Hosted fallback.** Server-side lab creation exists only when
+  `labs.hosted: true`. The event deployment uses `labs.hosted: false`, so the
+  hub never creates or starts participant labs. Any harness that can read
+  `https://<host>/intake.md` can run the participant flow.
 
 Both kinds of lab appear on the same network map and shared journal.
 

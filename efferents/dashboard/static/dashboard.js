@@ -190,7 +190,7 @@ function isJoined() {
 function currentRoute() {
   const route = window.location.hash.replace(/^#/, "");
   if (route === "steer") return "observe";
-  const known = ["connect", "observe", "network", "join", "intake"];
+  const known = ["connect", "observe", "network", "join"];
   if (known.includes(route)) return route;
   // Hosted events land on the connect page: the harness is the way onto the network.
   return isCluster() ? "join" : "connect";
@@ -213,7 +213,7 @@ function renderRoute() {
     } else if (route === "observe" && controlState.hydrated && !controlState.connected) {
       route = "network";
     }
-  } else if (controlState.hydrated && ["join", "intake"].includes(route)) {
+  } else if (controlState.hydrated && route === "join") {
     route = "connect";
   } else if (controlState.hydrated && !controlState.connected && !["connect", "network"].includes(route)) {
     route = "connect";
@@ -223,7 +223,6 @@ function renderRoute() {
   if (window.location.hash !== `#${route}` && (controlState.hydrated || window.location.hash)) {
     history.replaceState(null, "", `#${route}`);
   }
-  if (route === "intake") ensureIntakeLoaded();
   document.querySelectorAll("[data-route-view]").forEach((view) => {
     view.hidden = view.dataset.routeView !== route;
   });

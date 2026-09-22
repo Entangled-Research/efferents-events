@@ -87,9 +87,8 @@ class LabPolicy:
     total_cap_usd: float = 10.0
     max_per_owner: int = 2            # 0: no limit; only the budget bounds a person
     auto_start: bool = True
-    # False: every lab runs on its owner's laptop. The browser intake still
-    # gates the hypothesis and hands it to the participant's harness, but the
-    # hub never creates or starts a lab on the host.
+    # False: every lab runs on its owner's laptop; the hub never creates or
+    # starts a lab on the host.
     hosted: bool = True
 
 

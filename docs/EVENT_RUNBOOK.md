@@ -47,7 +47,7 @@ C=/srv/efferents/cluster
 | Participant lost their owner link or network token | Both are the same token, in `$C/owners.json` (server-only); hand them `https://<host>/?owner=<token>` privately. |
 | A laptop lab misbehaves | `touch $C/controls/halt_<lab_id>`: its next heartbeat carries `pause: true` and the daemon pauses itself. Remove the file to let it resume. `pause-all` reaches laptops the same way. |
 | A laptop lab shows "stale" | No heartbeat for 3 minutes: the laptop slept, lost Wi-Fi, or the daemon died. The owner runs `efferents status --submission .` locally; the hub keeps the last state. |
-| Someone's laptop cannot install anything | With `labs.hosted: true`, send them to "Sharpen an idea" in the browser: the hosted fallback can run the dialogue and compatible lab on the server. With `labs.hosted: false` (the deployed event setting), the hub serves the intake and proxy only; use a connected web harness or another participant laptop for local execution. |
+| Someone's laptop cannot install anything | The deployed hub does not run participant labs; use a connected web harness or another participant laptop for local execution. |
 | Proxy spend for one person looks wrong | `$C/proxy/<owner_id>/budget.jsonl` is the ledger; the cluster total is `$C/proxy/budget.jsonl`. |
 
 ## After

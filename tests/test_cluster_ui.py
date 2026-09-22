@@ -28,7 +28,7 @@ def test_cluster_endpoints():
 
 def test_harness_first():
     assert 'href="#join" data-route-link="join" data-cluster-only' in HTML
-    assert 'href="#intake" data-route-link="intake" data-cluster-only' in HTML
+    assert 'href="#intake"' not in HTML
     assert "New lab</a>" not in HTML
     for step in ("1 · Open your harness", "2 · Give it your network token", "3 · Sharpen and steer"):
         assert step in HTML, step
