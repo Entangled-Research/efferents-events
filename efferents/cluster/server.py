@@ -164,6 +164,12 @@ class ClusterHandler(DashboardHandler):
     def _require_joined(self) -> Owner:
         owner = self._session()
         if owner is None:
+            if self._bearer():
+                raise ControlError(
+                    "Network token invalid or expired. Copy the current network token "
+                    "from the event page; the event join code is different.",
+                    status=401,
+                )
             raise ControlError("Join the event with the code first.", status=401)
         return owner
 

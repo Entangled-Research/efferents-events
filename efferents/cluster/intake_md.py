@@ -17,6 +17,8 @@ token**. Ask for it now if they have not pasted it; every step below needs it.
 Never print the token back in full. Everything the lab spends on language
 models is paid by the organizer through the event hub; the token is the
 lab's credential for that.
+The event join code is only for the browser's Join form. Never ask for it or
+send the network token to `/api/join`.
 
 Hub: {hub_url}
 
@@ -45,11 +47,15 @@ your permission policy, ask the human to approve it or run the command.
 Fetch the event configuration (needs the token):
 
 ```bash
-curl -sS -H "Authorization: Bearer $TOKEN" {hub_url}/api/network/config > .event-config.json
+curl -fsS -H "Authorization: Bearer $TOKEN" {hub_url}/api/network/config -o .event-config.json
 ```
 
 It contains the `env` block for `.env`, the `lab_yaml` block (budget,
-cadence, autonomy) and the list of `tracks`. Keep it; step 5 uses it.
+cadence, autonomy) and the list of `tracks`. Check those keys before continuing;
+an error response is not event configuration. If this request returns HTTP 401,
+stop and ask the human to use **Copy token** on the event page and provide that
+current network token. Do not ask for the event join code or try to join again.
+Delete any `.event-config.json` produced by a failed request.
 
 ## 3. Load or create the first falsifiable hypothesis
 
