@@ -14,20 +14,37 @@ older framework dashboard.
 
 ## Operating state
 
-Initial deployment is **frozen**, with automatic lab starts disabled. The join
-screen and participant network are available; live research is not enabled.
-The external Popper checkout is installed at `/data/popper-probe` and the
-evacuation track passes validation. The readiness check reports one problem:
-missing model-provider credentials. No provider keys were found on the host. The random join code is stored on the
-host at `/root/efferents-events-access.txt` (0600), outside the repository.
+As of 2026-09-22, **intake and participant API testing are enabled**. The owner
+authorized clearing the initial freeze; automatic hosted lab starts remain off.
+Azure credentials and the Azure OpenAI v1 endpoint are configured in
+`deploy/events/.env` (0600), outside Git. Both `EFFERENTS_API_BASE` (host calls)
+and `EFFERENTS_AZURE_OPENAI_ENDPOINT` (participant proxy) point to Azure.
+Participant machines receive their own network token, never the provider key.
 
-Before opening an event, follow `EVENT_HOSTING.md` and `EVENT_RUNBOOK.md`: provision
-provider credentials in `deploy/events/.env` (0600), check Azure model/deployment pricing and caps,
-run `efferents cluster check /data/cluster`, and rehearse a complete owned lab
-with real review output. Only then clear the frozen control flag and explicitly
-enable automatic lab starts if desired. Keeper and journal-sync services also
-need to be enabled for continuous hosted research; this deployment starts only
-the web hub. Do not interpret a healthy HTTP endpoint as a ready research event.
+Azure Global Standard deployments match the configured names: `gpt-5.6-luna`
+for intake/librarian/review, `gpt-5.6-sol` for supervisor/analyst/coder, and
+`gpt-4.1-nano` for rebuttal. Small real requests passed for all three. A browser
+intake API conversation passed on the HTTPS hub and local preview; the remote
+participant proxy also returned a real model response. Verification intakes
+were abandoned after testing and did not create labs.
+
+The external Popper checkout is installed at `/data/popper-probe`, the
+evacuation track validates, and `efferents cluster check /data/cluster` passes.
+Configured caps remain $20 for the cluster, $5 intake ($1 per owner), $15 proxy
+($3 per owner), $3 reviews and $3 per lab. These are separate from Azure credits.
+The join code is retained in private access notes outside the repository.
+
+Local testing uses `http://localhost:8843`; the legacy preview at port 8840
+retains its Basic login. Local daemon credentials are in
+`~/.efferents-events-local/.env` (0600). Restart the preview process after changing
+that file. Recreate the Docker hub after changing its Compose environment file.
+
+This is not yet a fully rehearsed live research event. Follow `EVENT_HOSTING.md`
+and `EVENT_RUNBOOK.md` to enable keeper and journal-sync services and rehearse a
+complete owned lab with real review output. Only the web hub currently runs;
+the keeper's aggregate-cap enforcement and continuous hosted-lab supervision
+are not active. Intake and proxy retain their own configured caps. Enable
+automatic hosted lab starts only when that operational setup is ready.
 
 ## Update and rollback
 
