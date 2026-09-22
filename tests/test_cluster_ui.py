@@ -11,7 +11,7 @@ CSS = (STATIC / "dashboard.css").read_text()
 def test_cluster_views_exist():
     for needle in ('id="join-view"', 'id="intake-view"', 'id="intake-chat"',
                    'id="track-picker"', 'id="harness-panel"', 'id="harness-instruction"',
-                   'data-cluster-only', 'data-local-only', 'data-hosted-only'):
+                   'data-cluster-only', 'data-local-only'):
         assert needle in HTML, needle
     for banned in ("Private until authorized", "private by default", "data-network-scope",
                    "Public lab", "Make public"):
@@ -28,7 +28,7 @@ def test_cluster_endpoints():
 
 def test_harness_first():
     assert 'href="#join" data-route-link="join" data-cluster-only' in HTML
-    assert 'href="#intake" data-route-link="intake" data-hosted-only' in HTML
+    assert 'href="#intake" data-route-link="intake" data-cluster-only' in HTML
     assert "New lab</a>" not in HTML
     for step in ("1 · Open your harness", "2 · Give it your network token", "3 · Sharpen and steer"):
         assert step in HTML, step

@@ -75,12 +75,6 @@ if [ ! -f "$ROOT/cluster/cluster.yaml" ]; then
   install -m 644 -o "$USER_NAME" -g "$USER_NAME" "$HERE/cluster.yaml.example" "$ROOT/cluster/cluster.yaml"
   echo "!! edit $ROOT/cluster/cluster.yaml (name, join_code) and add tracks under $ROOT/cluster/tracks/"
 fi
-# Seed the branch's starter track once. Never overwrite an operator-edited
-# track in the persistent cluster directory during a release update.
-if [ ! -e "$ROOT/cluster/tracks/evacuation" ] && [ -d "$ROOT/current/tracks/evacuation" ]; then
-  cp -R "$ROOT/current/tracks/evacuation" "$ROOT/cluster/tracks/evacuation"
-  chown -R "$USER_NAME:$USER_NAME" "$ROOT/cluster/tracks/evacuation"
-fi
 # The cluster reads secrets from the systemd EnvironmentFile, not from its .env.
 rm -f "$ROOT/cluster/.env"
 

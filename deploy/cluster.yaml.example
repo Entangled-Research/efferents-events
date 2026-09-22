@@ -16,7 +16,7 @@ labs:
   total_cap_usd: 10.0               # per lab; also its daily cap so the lifetime halt wins
   max_per_owner: 2                  # 0: no limit, only the budget
   auto_start: true
-  hosted: true                      # false: labs run only on participants' laptops;
+  hosted: false                     # false: labs run only on participants' laptops;
                                     # the hub never creates or starts one on the host
 
 caps:
