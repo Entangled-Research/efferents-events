@@ -27,12 +27,13 @@ Azure credentials and the Azure OpenAI v1 endpoint are configured in
 and `EFFERENTS_AZURE_OPENAI_ENDPOINT` (participant proxy) point to Azure.
 Participant machines receive their own network token, never the provider key.
 
-Azure Global Standard deployments match the configured names: `gpt-5.6-luna`
-for intake/librarian/review, `gpt-5.6-sol` for supervisor/analyst/coder, and
-`gpt-4.1-nano` for rebuttal. Small real requests passed for all three. A browser
-intake API conversation passed on the HTTPS hub and local preview; the remote
-participant proxy also returned a real model response. Verification intakes
-were abandoned after testing and did not create labs.
+Azure Global Standard deployments are available for `gpt-5.6-luna`,
+`gpt-5.6-sol` and `gpt-4.1-nano`; small real requests passed for all three.
+The current participant connection config overrides all agent roles to
+`openai/gpt-5.6-sol` through `network.lab_model`. Treat that authenticated config
+as authoritative for participant cost and model selection; role-specific
+Luna/nano defaults do not describe this live override. Intake and the participant
+proxy have both returned real model responses over HTTPS.
 
 The external Popper checkout is installed at `/data/popper-probe`. The old
 evacuation placeholder has been removed from the event catalogue; an empty
