@@ -1,0 +1,54 @@
+lab_id: math-simpson-example
+starter_version: 1
+domain: numerical-analysis
+topic: composite-simpson-quadrature
+approach: composite-simpson
+hypothesis_validation: lightweight
+source:
+  dir: ./src
+  allowed_patterns:
+    - '**/*.py'
+executor:
+  run_command: python3 run_experiment.py --config {config_path}
+  smoke_command: python3 run_experiment.py --config {config_path}
+  config_template: ../configs/default.yaml
+  run_timeout_s: 20
+  smoke_timeout_s: 10
+metrics:
+  headline:
+    column: candidate_error
+    direction: min
+    comparator_column: baseline_error
+    aggregate: max
+  panels:
+    - column: baseline_error
+      label: Trapezoid error
+      direction: min
+    - column: improvement_pct
+      label: Error reduction percent
+      direction: max
+    - column: evaluations
+      label: Function evaluations
+      direction: min
+falsifiers:
+  - id: error-target
+    description: Candidate error exceeds 0.0001 after three function cases.
+    when:
+      column: candidate_error
+      agg: max
+      op: '>'
+      value: 0.0001
+      min_n: 3
+budget:
+  daily_cap_usd: 50.0
+  total_cap_usd: 50.0
+autonomy:
+  coder_enabled: false
+  coder_mode: review
+conference:
+  enabled: true
+  venue: private-event
+  interval_minutes: 2
+  interdisciplinary_every: 3
+peer_review:
+  enabled: true
