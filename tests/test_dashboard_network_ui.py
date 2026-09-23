@@ -21,14 +21,15 @@ def test_portfolio_and_map_present():
     assert '"/api/labs/select"' not in JS  # selection is per browser, never server-wide
     assert 'id="lab-rail-toggle"' not in HTML
     assert 'id="lab-tabs"' in HTML
-    assert 'getElementById("lab-tabs")' in JS and 'data-tab="${esc(labId)}"' in JS
+    assert 'getElementById("lab-tabs")' in JS and 'data-close-href="${esc(item.href)}"' in JS
 
 
-def test_network_tabs_show_visible_labs_without_opening_observers():
-    assert 'route === "network"' in JS
-    assert '? portfolioState.labs.map((lab) => lab.lab_id)' in JS
-    assert 'strip.hidden = !["network", "publication", "journal", "observe"].includes(route) || visibleTabIds.length === 0;' in JS
-    assert 'route === "observe" ? `<span class="tab-close"' in JS
+def test_workspace_tabs_have_accessible_close_controls():
+    assert 'aria-label="Workspace tabs"' in HTML
+    assert '<button type="button" class="tab-close"' in JS
+    assert 'aria-label="Close ${esc(item.label)}"' in JS
+    assert 'class="tab-link"' in JS
+    assert '.tab-close:focus-visible' in CSS
 
 
 def test_map_is_pan_zoom_viewport():
