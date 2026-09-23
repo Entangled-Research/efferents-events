@@ -126,6 +126,7 @@ def _init(self, url, token, opener):
     self._last_pull = 0.0
     self._pushed = set()
     self.last_error = None
+    self.liveness_supported = False
 
 
 def test_unconfigured_daemon_has_no_network(tmp_path, monkeypatch):
@@ -209,3 +210,81 @@ def test_lifting_hub_pause_preserves_the_owners_independent_pause(tmp_path, monk
     assert o.step()["event"] == "owner_paused"
     assert o._network_paused is False
     assert "owner's pause remains" in steer.read_steering(sub / "lab")[-1]["text"]
+
+
+def test_applied_steering_reports_actual_state_before_sleep_or_work(tmp_path, monkeypatch):
+    from efferents.agents import orchestrator as orch
+    from efferents import steer
+    sub = tmp_path / "sub"
+    shutil.copytree(SMOKE, sub, ignore=shutil.ignore_patterns("lab", "__pycache__"))
+    (sub / "lab").mkdir()
+    lab_mod.set_config(LabConfig.from_submission(sub))
+    hub = FakeHub()
+    monkeypatch.setenv("EFFERENTS_NETWORK_URL", "https://hub.test")
+    monkeypatch.setenv("EFFERENTS_NETWORK_TOKEN", "tok")
+    monkeypatch.setattr(nc.NetworkClient, "__init__",
+                        lambda self, url=None, token=None, opener=None: _init(self, url, token, hub.opener))
+    monkeypatch.setattr(orch, "notify_all", lambda **kw: None)
+    o = orch.Orchestrator(lab_dir=sub / "lab", context_dir=sub / "context", dry_run=True,
+                          submission_dir=sub)
+    sleeps = []
+    def paused_sleep(_):
+        beat = [call[2] for call in hub.calls if call[1].endswith('/heartbeat')][-1]
+        sleeps.append(beat)
+        assert beat['status'] == 'paused'
+        assert 'pause-id' in beat['command_acks']
+    monkeypatch.setattr(o, "_interruptible_sleep", paused_sleep)
+    steer.steer(sub, text="Pause safely", action="pause", extra={"remote_command_id": "pause-id"})
+    assert steer.step_hook(o) is True
+    assert sleeps
+    steer.steer(sub, text="Continue", action="resume", extra={"remote_command_id": "resume-id"})
+    assert steer.step_hook(o) is False
+    beat = [call[2] for call in hub.calls if call[1].endswith('/heartbeat')][-1]
+    assert beat['status'] == 'running' and 'resume-id' in beat['command_acks']
+    assert set(o._network_heartbeat_payload()['command_acks']) == {'pause-id', 'resume-id'}
+    assert all(record['ack'] for record in steer.read_steering(sub / 'lab'))
+
+
+def test_liveness_worker_never_applies_control_or_overwrites_snapshot(tmp_path):
+    import threading
+    hub = FakeHub()
+    received = threading.Event()
+    def opener(request, timeout=0):
+        result = hub.opener(request, timeout)
+        received.set()
+        return result
+    client = nc.NetworkClient('https://hub.test', 'tok', opener=opener)
+    # An old server must never receive the new partial-heartbeat format.
+    assert client.start_liveness('my-lab', interval_s=.01) is None
+    client.liveness_supported = True
+    worker = client.start_liveness('my-lab', interval_s=.01)
+    try:
+        assert received.wait(1)
+    finally:
+        worker.stop()
+    assert not worker.thread.is_alive()
+    assert worker.client is not client
+    assert all(call[2] == {'liveness_only': True} for call in hub.calls)
+    assert client._last_heartbeat == 0  # Main-thread scheduling stays independent.
+
+
+def test_run_reports_stopped_after_liveness_worker_shutdown(tmp_path, monkeypatch):
+    from efferents.agents import orchestrator as orch
+    sub = tmp_path / "sub"
+    shutil.copytree(SMOKE, sub, ignore=shutil.ignore_patterns("lab", "__pycache__"))
+    (sub / "lab").mkdir()
+    lab_mod.set_config(LabConfig.from_submission(sub))
+    monkeypatch.delenv('EFFERENTS_NETWORK_URL', raising=False)
+    monkeypatch.delenv('EFFERENTS_NETWORK_TOKEN', raising=False)
+    monkeypatch.setattr(orch, 'notify_all', lambda **kw: None)
+    o = orch.Orchestrator(lab_dir=sub / 'lab', context_dir=sub / 'context', dry_run=True,
+                          submission_dir=sub)
+    events = []
+    class Reporter:
+        def stop(self): events.append('worker stopped')
+    class Client:
+        def start_liveness(self, _): return Reporter()
+    o.network = Client()
+    monkeypatch.setattr(o, '_report_network_state', lambda *, status: events.append(status))
+    o.run(max_iterations=0)
+    assert events == ['worker stopped', 'stopped']

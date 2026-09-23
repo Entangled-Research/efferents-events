@@ -408,7 +408,11 @@ def apply_pending(orch: Any) -> list[dict[str, Any]]:
 def step_hook(orch: Any, *, idle_seconds: float = 60.0) -> bool:
     """Orchestrator step prologue. Applies pending steering; returns True when
     the lab is paused by its owner (the caller should skip the step)."""
-    apply_pending(orch)
+    applied = apply_pending(orch)
+    if applied and callable(getattr(orch, "_report_network_state", None)):
+        # Publish the applied state and acknowledgments before the idle sleep
+        # or the next potentially long model/experiment call.
+        orch._report_network_state()
     reason = owner_paused(orch.paths.root)
     if reason is None:
         return False

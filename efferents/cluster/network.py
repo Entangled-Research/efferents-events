@@ -216,11 +216,17 @@ class NetworkHub:
         write_event(self.paths, "network_register", owner_id=owner.owner_id, lab_id=lab_id,
                     track=reg["track"], renewed=bool(existing))
         return {"registered": True, "lab_id": lab_id, "heartbeat_s": self.cfg.network.heartbeat_s,
-                "pull_s": self.cfg.network.pull_s}
+                "pull_s": self.cfg.network.pull_s, "liveness_supported": True}
 
     def heartbeat(self, owner: Owner, lab_id: str, payload: dict) -> dict:
         self.require_owner(owner, lab_id)
         d = self.lab_dir(lab_id)
+        if payload.get("liveness_only") is True:
+            # A separate file prevents concurrent status/metric overwrites.
+            # No command is returned or acknowledged by this report-only path.
+            with self._lock:
+                _write_json(d / "liveness.json", {"ts": _now()})
+            return {"ok": True, "liveness_only": True}
         beat = {
             "ts": _now(),
             "status": str(payload.get("status") or "running")[:16],
@@ -387,9 +393,19 @@ class NetworkHub:
             reg = _read_json(d / "registration.json")
             if not reg:
                 continue
-            beat = _read_json(d / "heartbeat.json")
+            beat = self._heartbeat(d)
             out.append({"registration": reg, "heartbeat": beat, "dir": d})
         return out
+
+    @staticmethod
+    def _heartbeat(directory: Path) -> dict:
+        beat = _read_json(directory / "heartbeat.json")
+        live = _read_json(directory / "liveness.json")
+        # A ping alone never invents a status for a not-yet-synced lab.
+        if beat and str(live.get("ts") or "") > str(beat.get("ts") or ""):
+            beat["snapshot_ts"] = beat.get("ts")
+            beat["ts"] = live["ts"]
+        return beat
 
     def _status(self, beat: dict) -> str:
         if not beat:
@@ -535,7 +551,7 @@ class NetworkHub:
         """Read-only views of a remote lab for the observer panel."""
         reg = self.registration(lab_id)
         d = self.lab_dir(lab_id)
-        beat = _read_json(d / "heartbeat.json")
+        beat = self._heartbeat(d)
         if kind.startswith("ideas/"):
             student_id = kind.removeprefix("ideas/")
             idea = next((i for i in beat.get("ideas", []) if i.get("id") == student_id), None)

@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 import os
 import socket
+import threading
 import time
 import urllib.error
 import urllib.parse
@@ -45,10 +46,12 @@ class NetworkClient:
         self._last_pull = 0.0
         self._pushed: set[tuple[str, str]] = set()
         self.last_error: str | None = None
+        self.liveness_supported = False
 
     # --- transport -------------------------------------------------------------------
 
-    def _request(self, method: str, path: str, payload: dict | None = None) -> Any:
+    def _request(self, method: str, path: str, payload: dict | None = None,
+                 *, timeout_s: float = _TIMEOUT_S) -> Any:
         data = json.dumps(payload).encode() if payload is not None else None
         req = urllib.request.Request(
             self.url + path, data=data, method=method,
@@ -56,7 +59,7 @@ class NetworkClient:
                      "Authorization": f"Bearer {self.token}"},
         )
         try:
-            with self._open(req, timeout=_TIMEOUT_S) as resp:
+            with self._open(req, timeout=timeout_s) as resp:
                 raw = resp.read()
                 ctype = resp.headers.get("Content-Type", "")
         except urllib.error.HTTPError as e:
@@ -80,10 +83,23 @@ class NetworkClient:
         })
         self.heartbeat_s = float(result.get("heartbeat_s", self.heartbeat_s))
         self.pull_s = float(result.get("pull_s", self.pull_s))
+        self.liveness_supported = result.get("liveness_supported") is True
         return result
 
     def heartbeat(self, lab_id: str, payload: dict) -> dict:
         return self._request("POST", f"/api/network/labs/{lab_id}/heartbeat", payload)
+
+    def keepalive(self, lab_id: str) -> dict:
+        """Report process liveness without reading or changing research state."""
+        return self._request("POST", f"/api/network/labs/{lab_id}/heartbeat",
+                             {"liveness_only": True}, timeout_s=5)
+
+    def start_liveness(self, lab_id: str, *, interval_s: float | None = None):
+        if not self.liveness_supported:
+            return None  # Older hubs interpret partial heartbeats as full snapshots.
+        reporter = LivenessReporter(self, lab_id, interval_s=interval_s)
+        reporter.start()
+        return reporter
 
     def push_journal(self, lab_id: str, paper_dir: Path) -> dict | None:
         journal = paper_dir / "journal.md"
@@ -139,3 +155,33 @@ class NetworkClient:
 
     def mark_pull(self) -> None:
         self._last_pull = time.monotonic()
+
+
+class LivenessReporter:
+    """A report-only worker; commands and evidence stay on the main thread.
+
+    The hub stores these pings separately from full snapshots. Even an in-flight
+    ping arriving during shutdown cannot replace a stopped status or metrics.
+    """
+
+    def __init__(self, client: NetworkClient, lab_id: str, *, interval_s: float | None = None):
+        self.client = NetworkClient(client.url, client.token, opener=client._open)
+        self.lab_id = lab_id
+        self.interval_s = interval_s if interval_s is not None else max(1.0, min(30.0, client.heartbeat_s))
+        self.stopped = threading.Event()
+        self.thread = threading.Thread(target=self._run, name="efferents-liveness", daemon=True)
+
+    def start(self) -> None:
+        self.thread.start()
+
+    def stop(self) -> None:
+        self.stopped.set()
+        self.thread.join(timeout=6)
+
+    def _run(self) -> None:
+        while not self.stopped.wait(self.interval_s):
+            try:
+                # Replies contain no commands. Outages never fail local work.
+                self.client.keepalive(self.lab_id)
+            except Exception:
+                pass

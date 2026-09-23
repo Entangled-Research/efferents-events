@@ -73,6 +73,42 @@ def test_stopped_remote_lab_does_not_become_stale(hub):
     assert ctx.hub._status({"ts": old, "status": "running"}) == "stale"
 
 
+def test_liveness_ping_preserves_state_metrics_and_pending_commands(hub):
+    port, ctx, *_ = hub
+    joined, _ = _join(port, "Ada")
+    auth = _bearer(joined)
+    status, registration, _ = _request(port, '/api/network/labs', method='POST', headers=auth,
+        payload={'lab_id': 'ada-live', 'domain': 'chemistry', 'hypothesis': VALID_HYP})
+    assert status == 200 and registration['liveness_supported']
+    endpoint = '/api/network/labs/ada-live/heartbeat'
+    status, _, _ = _request(port, endpoint, method='POST', headers=auth,
+        payload={'status': 'running', 'runs': 9, 'spend_usd': 2.5,
+              'ideas': [{'id': 'alpha', 'verdict': 'falsified'}]})
+    assert status == 200
+    directory = ctx.hub.lab_dir('ada-live')
+    saved = json.loads((directory / 'heartbeat.json').read_text())
+    saved['ts'] = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
+    (directory / 'heartbeat.json').write_text(json.dumps(saved))
+    assert ctx.hub.portfolio_rows()[0]['status'] == 'stale'
+    owner = ctx.owners.by_token(joined['cluster']['network_token'])
+    from efferents.cluster.remote_control import queue_command
+    command = queue_command(ctx.hub, owner, 'ada-live', 'pause', {})
+    status, reply, _ = _request(port, endpoint, method='POST', headers=auth,
+        payload={'liveness_only': True, 'status': 'stopped', 'runs': 0,
+              'command_acks': [command['command_id']]})
+    assert status == 200 and reply == {'ok': True, 'liveness_only': True}
+    assert json.loads((directory / 'heartbeat.json').read_text()) == saved
+    row = ctx.hub.portfolio_rows()[0]
+    assert row['status'] == 'running' and row['budget']['spent'] == 2.5
+    assert row['ideas'] == saved['ideas']
+    assert ctx.hub.lab_view('ada-live', 'control')['status'] == 'running'
+    queued = json.loads((directory / 'commands.json').read_text())
+    assert queued[0]['delivered_at'] is None
+    _request(port, endpoint, method='POST', headers=auth, payload={'status': 'stopped', 'runs': 9})
+    _request(port, endpoint, method='POST', headers=auth, payload={'liveness_only': True})
+    assert ctx.hub.portfolio_rows()[0]['status'] == 'stopped'
+
+
 def test_intake_md_and_config(hub):
     port, ctx, scripts, cfg, _ = hub
     status, body, headers = _request(port, "/intake.md")

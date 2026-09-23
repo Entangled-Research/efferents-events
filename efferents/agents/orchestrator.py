@@ -282,6 +282,8 @@ class Orchestrator:
                 "reproduced": reproduction_edges_for(cfg.lab_id, self.submission_dir / "paper" / "reproductions.md"),
             },
         }
+        from efferents.cluster.remote_control import command_acks
+        payload["command_acks"] = command_acks(self.paths.root)
         if os.environ.get("EFFERENTS_OWNER_EVAL_SYNC") == "1":
             from efferents.cluster.eval_snapshot import build
             try:
@@ -298,9 +300,8 @@ class Orchestrator:
         if self.network.due_heartbeat():
             self.network.mark_heartbeat()
             try:
-                from efferents.cluster.remote_control import apply_commands, command_acks
+                from efferents.cluster.remote_control import apply_commands
                 payload = self._network_heartbeat_payload()
-                payload["command_acks"] = command_acks(self.paths.root)
                 reply = self.network.heartbeat(cfg.lab_id, payload)
                 apply_commands(self.submission_dir, self.paths.root, reply.get("commands") or [])
                 wants_pause = bool(reply.get("pause"))
@@ -348,6 +349,21 @@ class Orchestrator:
                 notebook_append(self.paths.notebook,
                                 f"## {now_iso()} — hub pull failed: {type(e).__name__}: "
                                 f"{self.network.last_error or e}\n")
+
+    def _report_network_state(self, *, status: str | None = None) -> None:
+        """Publish a main-thread state transition without applying new commands."""
+        if self.network is None:
+            return
+        try:
+            payload = self._network_heartbeat_payload()
+            if status is not None:
+                payload["status"] = status
+            # Unapplied commands remain durably queued on the hub until the
+            # next ordinary heartbeat; never process them recursively here.
+            self.network.heartbeat(_lab.get_config().lab_id, payload)
+        except Exception as exc:
+            notebook_append(self.paths.notebook,
+                            f"## {now_iso()} — status report pending: {type(exc).__name__}\n")
 
     def _enforce_network_pause(self) -> None:
         """Apply owner directions without letting a resume lift a hub pause.
@@ -529,6 +545,8 @@ class Orchestrator:
         save_state(self.paths.state, state)
         notebook_append(self.paths.notebook, f"## {now_iso()} — HALT ({kind}): {reason}\n")
         self._notify_event(f"halt:{kind}", f"halted ({kind})", reason, priority=5, sound=True)
+        if not getattr(self, "_steering_in_progress", False):
+            self._report_network_state()
 
     def _resume(self, note: str) -> None:
         halt = self.paths.root / "halt_reason.txt"
@@ -540,6 +558,8 @@ class Orchestrator:
         state["resumed_at"] = now_iso()
         save_state(self.paths.state, state)
         notebook_append(self.paths.notebook, f"## {now_iso()} — resumed: {note}\n")
+        if not getattr(self, "_steering_in_progress", False):
+            self._report_network_state()
 
     def _interruptible_sleep(self, secs: float) -> None:
         """Check stop requests every second, including during provider halts."""
@@ -751,7 +771,12 @@ class Orchestrator:
         """
         self._maybe_network()
         self._enforce_network_pause()
-        if _steer.step_hook(self):  # owner steering; True while paused by owner
+        self._steering_in_progress = True
+        try:
+            owner_paused = _steer.step_hook(self)
+        finally:
+            self._steering_in_progress = False
+        if owner_paused:
             return {"event": "owner_paused", "added": 0}
         from efferents.agents.routing import refresh_students
         refresh_students(self.paths.root)
@@ -830,6 +855,8 @@ class Orchestrator:
         self._bounded_run = max_iterations is not None
         i = 0
         backoff = GENERIC_BACKOFF_START_S
+        reporter = self.network.start_liveness(_lab.get_config().lab_id) if self.network else None
+        terminal_status = "stopped"
         try:
             while not self._stop:
                 if max_iterations is not None and i >= max_iterations:
@@ -883,6 +910,7 @@ class Orchestrator:
                         backoff = min(backoff * 2, self.backoff_cap_s)
                 i += 1
         except Exception as e:
+            terminal_status = "crashed"
             notebook_append(
                 self.paths.notebook,
                 f"## {now_iso()} — orchestrator CRASHED: {type(e).__name__}: {e}\n",
@@ -891,6 +919,10 @@ class Orchestrator:
                 "crash", "crashed", f"{type(e).__name__}: {e}", priority=5, sound=True,
             )
             raise
+        finally:
+            if reporter is not None:
+                reporter.stop()
+            self._report_network_state(status=terminal_status)
         notebook_append(self.paths.notebook, f"## {now_iso()} — orchestrator stopped after {i} iters\n")
         # Don't push "stopped" if we're just restarting for a Coder commit —
         # the user already got "code committed; restarting" 2s ago.
