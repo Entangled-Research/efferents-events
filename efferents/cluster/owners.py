@@ -33,6 +33,12 @@ class Owner:
     ip: str | None = None
     recovery_hash: str | None = None
     renewed_at: str | None = None
+    merged_into: str | None = None
+    merged_ids: list[str] = field(default_factory=list)
+
+    @property
+    def identity_ids(self) -> list[str]:
+        return [self.owner_id, *self.merged_ids]
 
     def public(self) -> dict:
         return {"id": self.owner_id, "name": self.name, "labs": list(self.labs)}
@@ -72,6 +78,8 @@ class OwnerStore:
                     ip=raw.get("ip"),
                     recovery_hash=raw.get("recovery_hash"),
                     renewed_at=raw.get("renewed_at"),
+                    merged_into=raw.get("merged_into"),
+                    merged_ids=list(raw.get("merged_ids") or []),
                 )
             except (KeyError, TypeError):
                 continue
@@ -91,11 +99,16 @@ class OwnerStore:
 
     def all(self) -> list[Owner]:
         with self._lock:
-            return list(self._owners.values())
+            return [owner for owner in self._owners.values() if not owner.merged_into]
 
     def by_id(self, owner_id: str) -> Owner | None:
         with self._lock:
-            return self._owners.get(owner_id)
+            owner = self._owners.get(owner_id)
+            seen = set()
+            while owner and owner.merged_into and owner.owner_id not in seen:
+                seen.add(owner.owner_id)
+                owner = self._owners.get(owner.merged_into)
+            return owner
 
     def by_token(self, token: str | None) -> Owner | None:
         if not token:
@@ -103,7 +116,8 @@ class OwnerStore:
         with self._lock:
             for owner in self._owners.values():
                 if secrets.compare_digest(owner.token, token):
-                    return owner if not self._expired(owner) else None
+                    canonical = self.by_id(owner.owner_id)
+                    return canonical if canonical and not self._expired(canonical) else None
         return None
 
     def _expired(self, owner: Owner) -> bool:
@@ -139,8 +153,10 @@ class OwnerStore:
     def create_recovery_key(self, owner_id: str) -> str:
         """Issue a durable high-entropy credential; only its hash is persisted."""
         with self._lock:
-            owner = self._owners[owner_id]
+            owner = self.by_id(owner_id)
             key = "er_" + secrets.token_urlsafe(32)
+            for identity_id in owner.identity_ids:
+                self._owners[identity_id].recovery_hash = None
             owner.recovery_hash = hashlib.sha256(key.encode()).hexdigest()
             self._save()
             return key
@@ -154,6 +170,7 @@ class OwnerStore:
             for owner in self._owners.values():
                 if owner.recovery_hash and secrets.compare_digest(owner.recovery_hash, digest):
                     # Keep identity, ownership, spend and the lab's configured token.
+                    owner = self.by_id(owner.owner_id)
                     owner.renewed_at = datetime.now(timezone.utc).isoformat()
                     self._save()
                     return owner
@@ -164,14 +181,39 @@ class OwnerStore:
 
     def add_lab(self, owner_id: str, lab_id: str) -> None:
         with self._lock:
-            owner = self._owners[owner_id]
+            owner = self.by_id(owner_id)
             if lab_id not in owner.labs:
                 owner.labs.append(lab_id)
                 self._save()
 
+    def merge(self, target_id: str, source_ids: list[str]) -> Owner:
+        """Consolidate organizer-verified identities, preserving running lab tokens."""
+        with self._lock:
+            target = self.by_id(target_id)
+            if target is None or target.owner_id != target_id:
+                raise ControlError("Unknown destination account.", status=404)
+            sources = []
+            for source_id in source_ids:
+                source = self._owners.get(source_id)
+                if source is None:
+                    raise ControlError("Unknown source account.", status=404)
+                if source.merged_into and self.by_id(source_id) is not target:
+                    raise ControlError("Source account already belongs to another identity.", status=409)
+                if source.owner_id != target_id:
+                    sources.append(source)
+            for source in sources:
+                for identity_id in source.identity_ids:
+                    if identity_id != target_id and identity_id not in target.merged_ids:
+                        target.merged_ids.append(identity_id)
+                target.labs = list(dict.fromkeys([*target.labs, *source.labs]))
+                source.merged_into = target.owner_id
+            target.renewed_at = datetime.now(timezone.utc).isoformat()
+            self._save()
+            return target
+
     def owner_of(self, lab_id: str) -> Owner | None:
         with self._lock:
-            for owner in self._owners.values():
+            for owner in self.all():
                 if lab_id in owner.labs:
                     return owner
         return None

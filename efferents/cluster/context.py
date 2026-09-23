@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import json
 
 import secrets
 import threading
@@ -10,7 +11,7 @@ from functools import partial
 from typing import Any
 
 from efferents.agents.model_client import make_client
-from efferents.cluster.budget import cluster_spend
+from efferents.cluster.budget import cluster_spend, owner_spend
 from efferents.cluster.config import (
     ClusterConfig,
     daemon_env,
@@ -84,7 +85,7 @@ class ClusterContext:
         if owner is None:
             return False
         if lab.owner_id is not None:
-            return lab.owner_id == owner.owner_id
+            return lab.owner_id in owner.identity_ids
         return lab.cfg.lab_id in owner.labs
 
     # --- summary payloads ----------------------------------------------------------
@@ -117,10 +118,13 @@ class ClusterContext:
                 "owner_link": f"/?owner={owner.token}",
                 "network_token": owner.token,
                 "has_recovery_key": bool(owner.recovery_hash),
+                "owner_budget": owner_spend(self.cfg, owner.owner_id),
                 "proxy_spend_usd": round(self.proxy.spend(owner.owner_id), 4),
                 "proxy_cap_usd": self.cfg.proxy.cap_per_owner_usd,
                 "install_ref": self.cfg.network.install_ref,
-                "my_labs": list(owner.labs),
+                "my_labs": sorted(set(owner.labs) | {item["registration"]["lab_id"]
+                    for item in self.hub.list_labs()
+                    if item["registration"].get("owner_id") in owner.identity_ids}),
                 "spend": self.spend(),
                 "limits": {
                     "labs_per_owner": self.cfg.labs.max_per_owner,
@@ -131,6 +135,35 @@ class ClusterContext:
                 "hosted_labs": self.cfg.labs.hosted,
             })
         return payload
+
+    def merge_accounts(self, target_id: str, source_ids: list[str], *, reason: str) -> dict:
+        """Operator-only recovery, retaining original ledgers, sessions and tokens."""
+        if not reason.strip():
+            raise ControlError("Record the reason and identity verification for this merge.")
+        with self.owners._lock, self.hub._lock:
+            target = self.owners.merge(target_id, source_ids)
+            updated = []
+            for parent, metadata in ((self.paths.labs, "owner.json"),
+                                     (self.hub.root, "registration.json")):
+                for path in parent.glob(f"*/{metadata}"):
+                    data = json.loads(path.read_text())
+                    if data.get("owner_id") not in target.identity_ids:
+                        continue
+                    data.setdefault("original_owner_id", data.get("owner_id"))
+                    data["owner_id"], data["owner_name"] = target.owner_id, target.name
+                    tmp = path.with_suffix(".merge.tmp")
+                    tmp.write_text(json.dumps(data, indent=2))
+                    tmp.replace(path)
+                    lab_id = data.get("lab_id") or path.parent.name
+                    self.owners.add_lab(target.owner_id, lab_id)
+                    updated.append(lab_id)
+            self.control._portfolio_cache.invalidate()
+            for lab_id in updated:
+                self.control.labs.invalidate(lab_id)
+            write_event(self.paths, "accounts_merged", owner_id=target.owner_id,
+                        source_ids=source_ids, labs=sorted(set(updated)), reason=reason)
+            return {"owner": target.public(), "labs": sorted(set(updated)),
+                    "owner_budget": owner_spend(self.cfg, target.owner_id)}
 
     # --- lab creation from an intake session -----------------------------------
 

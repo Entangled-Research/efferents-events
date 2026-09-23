@@ -99,7 +99,7 @@ def test_owner_link_redirect_sets_cookie(cluster_server):
     assert status == 302 and headers["location"] == "/#join"
     assert "efferents_owner=" in headers.get("set-cookie", "")
     status, _, headers = _request(port, "/?owner=bogus")
-    assert status == 302 and headers["location"] == "/#join"
+    assert status == 302 and headers["location"] == "/?signin=expired#join"
 
 
 def test_connect_and_select_are_disabled_in_cluster_mode(cluster_server):
@@ -242,3 +242,29 @@ def test_hosted_off_refuses_lab_creation(laptop_only_server):
     assert list(cfg.paths.labs.iterdir()) == []
     status, sessions, _ = _request(port, "/api/intake/sessions", headers=ada)
     assert sessions[0]["state"] == "bound" and not sessions[0].get("lab_id")
+
+
+def test_diagnostics_are_private_and_contain_no_credentials(cluster_server, monkeypatch):
+    port, ctx, _, cfg = cluster_server
+    ada, headers = _join(port, "Ada")
+    bob = ctx.owners.join("Bob")
+    ctx.intake.create_session(bob)
+    ctx.intake.create_session(ctx.owners.by_id(ada["owner"]["id"]))
+    assert _request(port, "/api/diagnostics")[0] == 401
+    status, report, _ = _request(port, "/api/diagnostics", headers=headers)
+    assert status == 200 and len(report["sessions"]) == 1
+    assert report["owner"]["name"] == "Ada"
+    assert ctx.owners.by_id(ada["owner"]["id"]).token not in json.dumps(report)
+    assert bob.token not in json.dumps(report)
+    assert _request(port, "/api/admin/diagnostics", headers=headers)[0] == 403
+    monkeypatch.setenv("EFFERENTS_ADMIN_TOKEN", "organizer-secret")
+    status, report, _ = _request(port, "/api/admin/diagnostics", headers={"Authorization": "Bearer organizer-secret"})
+    assert status == 200 and len(report["owners"]) == 2
+    assert "organizer-secret" not in json.dumps(report)
+    assert _request(port, "/api/admin/accounts/merge", method="POST",
+                    payload={"target_id": ada["owner"]["id"], "source_ids": [bob.owner_id], "reason": "verified"},
+                    headers=headers)[0] == 403
+    status, result, _ = _request(port, "/api/admin/accounts/merge", method="POST",
+                    payload={"target_id": ada["owner"]["id"], "source_ids": [bob.owner_id], "reason": "verified"},
+                    headers={"Authorization": "Bearer organizer-secret"})
+    assert status == 200 and result["owner"]["name"] == "Ada"

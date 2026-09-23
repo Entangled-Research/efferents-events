@@ -118,7 +118,10 @@ class IntakeStore:
     def _load(self, owner: Owner, session_id: str) -> Session:
         if not session_id or "/" in session_id or session_id.startswith("."):
             raise ControlError("Unknown intake session.", status=404)
-        path = self._session_dir(owner.owner_id, session_id) / "session.json"
+        path = next((self._session_dir(oid, session_id) / "session.json"
+                     for oid in owner.identity_ids
+                     if (self._session_dir(oid, session_id) / "session.json").is_file()),
+                    self._session_dir(owner.owner_id, session_id) / "session.json")
         if not path.is_file():
             raise ControlError("Unknown intake session.", status=404)
         data = json.loads(path.read_text())
@@ -159,11 +162,10 @@ class IntakeStore:
     # --- queries -----------------------------------------------------------------
 
     def list_sessions(self, owner: Owner) -> list[dict]:
-        root = self._owner_dir(owner.owner_id)
-        if not root.is_dir():
-            return []
+        roots = [self._owner_dir(oid) for oid in owner.identity_ids]
         out = []
-        for d in sorted(p for p in root.iterdir() if p.is_dir()):
+        for d in sorted(p for root in roots if root.is_dir()
+                        for p in root.iterdir() if p.is_dir()):
             path = d / "session.json"
             if not path.is_file():
                 continue
@@ -302,6 +304,8 @@ class IntakeStore:
             self._save(session)
             return self.payload(session)
         finally:
+            if "budget" in locals():
+                budget.release()
             lock.release()
 
     def _model_turn(self, session: Session, client: Any, budget: DualBudget,
@@ -443,6 +447,8 @@ class IntakeStore:
                         n_rules=len(binding.falsifiers))
             return self.payload(session)
         finally:
+            if "budget" in locals():
+                budget.release()
             lock.release()
 
     def route(self, owner: Owner, session_id: str) -> dict:
@@ -494,6 +500,8 @@ class IntakeStore:
             )
             return self.payload(session)
         finally:
+            if "budget" in locals():
+                budget.release()
             lock.release()
 
     def mark_created(self, owner: Owner, session_id: str, lab_id: str) -> Session:

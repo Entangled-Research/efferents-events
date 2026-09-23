@@ -20,6 +20,7 @@ import urllib.request
 from pathlib import Path
 
 from efferents.agents.budget import BudgetExhausted, BudgetTracker, CallUsage, estimate_call_cost_usd
+from efferents.cluster.budget import coordinator
 from efferents.cluster.config import ClusterConfig, is_frozen, write_event
 
 UPSTREAM_DEFAULT = "https://api.anthropic.com"
@@ -172,6 +173,11 @@ class ModelProxy:
                     402, f"your event model budget is used up ({e.scope} cap ${e.cap:.2f})",
                     "budget_exhausted",
                 ) from e
+            try:
+                reservation = coordinator(self.cfg).reserve(owner_id, estimate, family="proxy")
+            except BudgetExhausted as e:
+                raise ProxyError(402, f"Your shared event allocation is used up ({e.scope} cap ${e.cap:.2f}).",
+                                 "budget_exhausted") from e
             self._pending_owner[owner_id] = self._pending_owner.get(owner_id, 0.0) + estimate
             self._pending_total += estimate
         req = urllib.request.Request(upstream + upstream_path, data=body, headers=out_headers, method="POST")
@@ -197,6 +203,7 @@ class ModelProxy:
                              streaming=bool(request.get("stream")))
             return status, payload, resp_headers
         finally:
+            coordinator(self.cfg).release(reservation)
             with self._guard:
                 self._pending_owner[owner_id] -= estimate
                 self._pending_total -= estimate

@@ -80,3 +80,40 @@ proof of identity or claim that email-based signup abuse prevention is active.
 Join-code gating and rate limits remain in force; returning users must not create
 extra identities to reset budgets. Lost-key cases require organizer-assisted
 identity verification before issuing a replacement recovery key.
+
+
+### Event-day diagnostics and safe account consolidation
+
+Signed-in participants can open **Diagnostics** in the event header and copy a
+credential-free report of their labs, last heartbeat, pause reason, intake
+sessions and shared account spend. The same report is available at
+`GET /api/diagnostics`. Reading it changes no lab state. Keep the original lab
+folder when fixing a bug: updating the hub and refreshing the page preserves
+intakes, runs, campaigns, papers and pending steering.
+
+The event allocation is per participant across every lab and browser intake.
+`proxy.cap_per_owner_usd` is that shared allocation (set it to **50** for the
+event); intake and event-wide caps remain additional safeguards. Lab spend is an
+absolute expense for comparison, never an independent allocation. Remote
+heartbeat spend mirrors proxy charges and is not charged twice. Merged accounts
+retain their historical ledger directories, all counted toward the same cap.
+
+Owners can steer, pause and resume a connected remote lab from its lab panel.
+The hub durably queues the request; the participant daemon records it verbatim
+in its existing charter and steering ledger on the next heartbeat. A later
+heartbeat acknowledges delivery. Repeated delivery is idempotent. A stopped or
+offline laptop must reconnect before a queued instruction arrives; the hub never
+pretends to start a laptop process. Updated daemons are required for this command
+protocol. Restart a daemon from its existing submission folder after upgrading;
+never create a replacement lab to apply a fix.
+
+Set a random `EFFERENTS_ADMIN_TOKEN` in the hub's server environment to enable
+operator-only `GET /api/admin/diagnostics` and `POST /api/admin/accounts/merge`.
+Authenticate with `Authorization: Bearer <admin token>`; never put this token in
+a participant `.env`, browser URL, screenshot or copied diagnostic report. The
+merge body is `{"target_id":"destination owner id","source_ids":["verified duplicate id"],"reason":"identity verification and operator reason"}`.
+Only merge organizer-verified identities. The operation renews the destination
+session, preserves old lab tokens as aliases, reassigns existing hosted/remote
+lab metadata, preserves intake sessions and spend, and writes an audit event.
+The operation is idempotent; source accounts remain archived as identity aliases.
+Use this live API instead of editing `owners.json` while the server is running.

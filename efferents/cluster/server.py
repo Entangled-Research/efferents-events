@@ -4,6 +4,8 @@ lab-scoped dashboard server."""
 from __future__ import annotations
 
 import json
+import os
+import secrets
 import re
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
@@ -128,7 +130,22 @@ class ClusterHandler(DashboardHandler):
             return self._redirect("/?signin=expired#join")
         return super().do_GET()
 
+    def _require_admin(self) -> None:
+        expected = os.environ.get("EFFERENTS_ADMIN_TOKEN", "")
+        supplied = self._bearer() or ""
+        if not expected or not supplied or not secrets.compare_digest(expected, supplied):
+            raise ControlError("Organizer authentication required.", status=403)
+
     def _extra_get(self, path: str) -> bool:
+        if path in ("/api/diagnostics", "/api/admin/diagnostics"):
+            from efferents.cluster.diagnostics import diagnostics
+            if path.startswith("/api/admin/"):
+                self._require_admin()
+                owner = None
+            else:
+                owner = self._require_joined()
+            self._send_json(diagnostics(self.cluster, owner))
+            return True
         if path == "/intake.md":
             body = render_intake_md(self.cluster.cfg, self._base_url()).encode()
             self._send_bytes(body, "text/markdown; charset=utf-8")
@@ -211,6 +228,16 @@ class ClusterHandler(DashboardHandler):
     # --- POST ------------------------------------------------------------------------
 
     def _extra_post_precsrf(self, path: str) -> bool:
+        if path == "/api/admin/accounts/merge":
+            self._require_admin()
+            payload = self._read_json(8192)
+            sources = payload.get("source_ids")
+            if not isinstance(sources, list) or not all(isinstance(item, str) for item in sources):
+                raise ControlError("source_ids must be a list of account ids.")
+            self._send_json(self.cluster.merge_accounts(
+                str(payload.get("target_id") or ""), sources,
+                reason=str(payload.get("reason") or "")))
+            return True
         # Machine clients (daemons, agents) authenticate with a bearer token,
         # which browsers never attach on their own, so CSRF does not apply.
         if path.startswith(PROXY_PREFIX + "/"):
@@ -261,7 +288,9 @@ class ClusterHandler(DashboardHandler):
     def _network_post(self, owner: Owner, path: str, payload: dict) -> None:
         hub = self.cluster.hub
         if path == "/api/network/labs":
-            return self._send_json(hub.register(owner, payload))
+            result = hub.register(owner, payload)
+            self.cluster.owners.add_lab(owner.owner_id, result["lab_id"])
+            return self._send_json(result)
         if path == "/api/network/bind":
             track = self.cluster.tracks.get(str(payload.get("track_id") or ""))
             if track is None:
@@ -271,12 +300,17 @@ class ClusterHandler(DashboardHandler):
                 raise ControlError("Send the hypothesis text.")
             budget = owner_intake_budget(self.cluster.cfg, owner.owner_id)
             client = self.cluster.intake._client_factory(budget)
-            binding = propose_falsifiers(hypothesis, track, client=client,
-                                         model=self.cluster.cfg.model, budget=budget)
+            try:
+                binding = propose_falsifiers(hypothesis, track, client=client,
+                                             model=self.cluster.cfg.model, budget=budget)
+            finally:
+                budget.release()
             return self._send_json(binding.to_dict())
         m = _NET_LAB_ROUTE.match(path)
         if m:
             lab_id, verb = m.group("lab_id"), m.group("verb")
+            if verb == "receipts":
+                return self._send_json(hub.acknowledge_feed(owner, lab_id, payload))
             if verb == "heartbeat":
                 return self._send_json(hub.heartbeat(owner, lab_id, payload))
             if verb == "journal":
@@ -322,13 +356,14 @@ class ClusterHandler(DashboardHandler):
             # Cluster mode has no default lab and no repository connect.
             self.send_error(404)
             return True
-        if path.startswith("/api/labs/") and (self.cluster.hub.root / path.split("/")[3] / "registration.json").is_file():
+        if re.fullmatch(r"/api/labs/[A-Za-z0-9._-]+/[a-z]+", path) and (self.cluster.hub.root / path.split("/")[3] / "registration.json").is_file():
             owner = self._require_joined()
-            self.cluster.hub.require_owner(owner, path.split("/")[3])
-            raise ControlError(
-                "This lab runs on its owner's machine; steer it there "
-                "(efferents steer / the local workspace).", status=409,
-            )
+            from efferents.cluster.remote_control import queue_command
+            lab_id, action = path.split("/")[3:5]
+            if not self.cluster.mutation_limiter.allow(owner.owner_id):
+                raise ControlError("Too many control requests; slow down.", status=429)
+            self._send_json(queue_command(self.cluster.hub, owner, lab_id, action, payload))
+            return True
         if not path.startswith("/api/intake/"):
             return False
         owner = self._require_joined()
