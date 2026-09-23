@@ -153,3 +153,28 @@ closeWorkspaceTab('#publication/a/paper');
 assert.equal(window.location.hash, '#observe/b');
 assert.deepEqual(workspaceTabs, ['#observe/a','#observe/b']);
 ''')
+
+
+def test_journal_tabs_survive_temporary_feed_gaps_and_remain_closable(run_js):
+    run_js('''
+workspaceTabs = [journalHref('Persistent journal')];
+portfolioState.labs = [];
+renderLabTabs();
+assert(workspaceTabs.includes(journalHref('Persistent journal')));
+assert(strip.innerHTML.includes('Close Persistent journal'));
+portfolioState.journals = [{name: 'Persistent journal'}];
+closeWorkspaceTab(journalHref('Persistent journal'));
+assert.equal(workspaceTabs.length, 0);
+assert(journalNames().includes('Persistent journal'));
+''')
+
+
+def test_dynamic_graphs_use_real_points_and_explain_axes(run_js):
+    run_js('''
+const markup = ideaEvalGraph({title:'Measured gap', run_ids:['one','two'], series:[
+  {column:'gap',points:[{run_id:'one',value:0.1},{run_id:'two',value:0.3}]}]});
+assert(markup.includes('Eligible runs · oldest → newest'));
+assert(markup.includes('gap (2)'));
+assert.equal((markup.match(/<circle /g) || []).length, 2);
+assert(!ideaEvalGraph({title:'Pending',series:[]}).includes('<svg'));
+''')

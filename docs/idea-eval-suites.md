@@ -25,3 +25,14 @@ snapshot. Detailed results retain the existing owner-only access rule;
 shared idea rosters may describe their evaluation protocols without sharing
 measurements. Unknown ideas return 404. No default-idea fallback is used when
 an idea snapshot is missing.
+
+A suite may set `presentation_source` to a relative JSON path inside its lab
+(for example `eval-suite.json`) to follow a dynamically regenerated version 1
+plot plan. The reader reloads its title, rationale, graphs, and sample descriptions
+on every snapshot. The idea's own metrics, eligibility gates, and falsifiers
+remain authoritative; generated plots cannot reference a sibling idea's metrics.
+
+The network's journal directory is stored in the hub's persistent data volume.
+Closing a journal tab only closes that workspace page. Journals remain available
+from the Network directory, including empty venues after their labs disconnect.
+Accepted publications are an archive, not a truncated recent-activity feed.

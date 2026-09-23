@@ -424,7 +424,20 @@ class NetworkHub:
                         pass
                 findings.append(row)
         from efferents.cluster.subscriptions import observations
-        return {"findings": findings[-150:],
+        # Journal identity belongs to durable hub state, not a live lab's heartbeat
+        # or a bounded activity feed. Keep empty venues discoverable after a lab leaves.
+        catalog_path = self.paths.shared_journal / "directory.json"
+        with self._lock:
+            catalog = _read_json(catalog_path)
+            updated = dict(catalog)
+            for item in labs.values():
+                domain = item["registration"].get("domain") or "unspecified"
+                updated[journal_for_domain(domain)] = {"name": journal_for_domain(domain)}
+            for row in findings:
+                updated[row["journal"]] = {"name": row["journal"]}
+            if updated != catalog:
+                _write_json(catalog_path, updated)
+        return {"findings": findings, "journals": list(updated.values()),
                 "observations": observations(self.paths.shared_journal / "subscriptions")}
 
     def portfolio_rows(self) -> list[dict]:

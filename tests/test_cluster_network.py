@@ -540,3 +540,18 @@ def test_zero_lab_limit_is_unlimited(tmp_path, monkeypatch):
     finally:
         httpd.shutdown()
         httpd.server_close()
+
+
+def test_journal_directory_survives_lab_departure_and_hub_restart(hub):
+    from efferents.cluster.network import NetworkHub
+    port, ctx, _, cfg, _ = hub
+    owner, _ = _join(port, 'Journal owner')
+    _request(port, '/api/network/labs', method='POST',
+             payload={'lab_id': 'durable-lab', 'domain': 'numerical-analysis', 'hypothesis': VALID_HYP},
+             headers=_bearer(owner))
+    assert {'name': 'Journal of Numerical Analysis'} in ctx.hub.network_evidence()['journals']
+    # Simulate a lab leaving the active registry without deleting any journal evidence.
+    registration = ctx.hub.lab_dir('durable-lab') / 'registration.json'
+    registration.rename(registration.with_suffix('.inactive'))
+    restarted = NetworkHub(cfg, ctx.hub.tracks)
+    assert {'name': 'Journal of Numerical Analysis'} in restarted.network_evidence()['journals']

@@ -506,7 +506,8 @@ function renderIdeaSuite(data) {
   text("idea-suite-title", suite.title || "Eval suite");
   text("idea-suite-status", suite.message || (data.runs?.history?.total ? "Measured results" : "No measured results yet"));
   document.getElementById("idea-suite-plan").innerHTML = `<p>${esc(suite.rationale || "")}</p>` +
-    `<div class="idea-eval-graphs">${(suite.graphs || []).map(graph => ideaEvalGraph({...graph, emptyMessage: data.detail_unavailable ? "Results not shared with this viewer" : "No measured values yet"})).join("")}</div>`;
+    `<div class="idea-eval-graphs">${(suite.graphs || []).map(graph => ideaEvalGraph({...graph, emptyMessage: data.detail_unavailable ? "Results not shared with this viewer" : "No measured values yet"})).join("")}</div>` +
+    `<p>${(suite.samples || []).map(sample => `${esc(sample.kind)}: ${esc(sample.description)}`).join(" · ")}</p>`;
   const available = !data.detail_unavailable;
   document.getElementById("idea-results").hidden = !available;
   if (!available) return;
@@ -527,18 +528,19 @@ function renderIdeaSuite(data) {
 
 function ideaEvalGraph(graph) {
   const series = graph.series || [];
-  const values = series.flatMap(s => (s.points || []).map(p => p.value)).filter(Number.isFinite);
+  const values = series.flatMap(s => (s.points || []).filter(p => Number.isFinite(p.value)).map(p => p.value)).filter(Number.isFinite);
   if (!values.length) return `<article><h3>${esc(graph.title)}</h3><p>${esc(graph.emptyMessage || "No measured values yet")}</p></article>`;
-  const min = Math.min(...values), max = Math.max(...values), span = max - min || 1;
-  const runs = graph.run_ids || [];
-  const colors = ["var(--signal)", "var(--terracotta)", "var(--muted)"];
-  const paths = series.map((s, i) => {
-    const points = (s.points || []).filter(p => Number.isFinite(p.value)).map(p =>
-      [45 + Math.max(0, runs.indexOf(p.run_id)) * 440 / Math.max(1, runs.length - 1), 130 - (p.value - min) * 110 / span, p]);
-    return `<polyline fill="none" stroke="${colors[i % colors.length]}" points="${points.map(p => p.slice(0,2).join(",")).join(" ")}"/>` +
-      points.map(p => `<circle cx="${p[0]}" cy="${p[1]}" r="3" fill="${colors[i % colors.length]}"><title>${esc(s.column)} · ${esc(p[2].run_id)} · ${esc(p[2].value)}</title></circle>`).join("");
+  const min = Math.min(...values), max = Math.max(...values);
+  const span = max - min || Math.max(Math.abs(max) * .1, .01);
+  const colors = ["var(--signal)", "var(--terracotta)", "var(--muted)", "var(--ink)"];
+  const runIds = graph.run_ids || [...new Set(series.flatMap(s => (s.points || []).filter(p => Number.isFinite(p.value)).map(p => p.run_id)))];
+  const lines = series.map((s, i) => {
+    const points = (s.points || []).filter(p => Number.isFinite(p.value)).map(p => [70 + runIds.indexOf(p.run_id) * 470 / Math.max(1, runIds.length - 1),
+      150 - (p.value - min) / span * 125, p]);
+    return `<polyline fill="none" stroke="${colors[i % colors.length]}" stroke-width="2" points="${points.map(p => p.slice(0,2).join(",")).join(" ")}"/>` +
+      points.map(p => `<circle cx="${p[0]}" cy="${p[1]}" r="3" fill="${colors[i % colors.length]}"><title>${esc(s.column)} · ${esc(p[2].run_id)} · ${esc(formatMetric(p[2].value))}</title></circle>`).join("");
   }).join("");
-  return `<article><h3>${esc(graph.title)}</h3><svg viewBox="0 0 520 160" role="img" aria-label="${esc(graph.title)}"><path d="M40 15V135H495" fill="none" stroke="currentColor"/><text x="1" y="22" font-size="10">${esc(max.toPrecision(3))}</text><text x="1" y="133" font-size="10">${esc(min.toPrecision(3))}</text>${paths}</svg><p>${series.map(s => esc(s.column)).join(" · ")}</p></article>`;
+  return `<article class="panel eval-graph"><h3>${esc(graph.title)}</h3><svg viewBox="0 0 560 185" role="img" aria-label="${esc(graph.title)}"><path d="M70 20V150H545" fill="none" stroke="currentColor"/><text x="1" y="28" font-size="18">${esc(Number(max.toPrecision(3)))}</text><text x="1" y="150" font-size="18">${esc(Number(min.toPrecision(3)))}</text>${lines}<text x="70" y="180" font-size="18">Eligible runs · oldest → newest</text></svg><p>${series.map((s, i) => `<span style="color:${colors[i % colors.length]}">${esc(s.column)} (${s.points.length})</span>`).join(" · ")}</p></article>`;
 }
 
 // One ordered list for every workspace page. Migrate existing browser tabs once.
@@ -565,7 +567,7 @@ function workspaceTabItems() {
     }))),
     ...portfolioState.labs.map(lab => ({href: labHref(lab.lab_id),
       label: labDisplayName(lab.lab_id), status: lab.status || "stopped"})),
-    ...[...new Set([...portfolioLabs().map(homeJournal), ...publishedFindings().map(item => item.journal || homeJournal(item))])].map(name => ({href: journalHref(name), label: `${name} · papers`})),
+    ...journalNames().map(name => ({href: journalHref(name), label: `${name} · papers`})),
     ...publishedFindings().filter(item => item.manuscript).map(item => ({href: publicationHref(item), label: item.title || item.campaign_id}))
   ];
 }
@@ -832,6 +834,27 @@ function renderPublication() {
   return true;
 }
 
+function journalNames() {
+  return [...new Set([
+    ...(portfolioState.journals || []).map(item => item.name),
+    ...(portfolioState.eventNetwork?.journals || []).map(item => item.name),
+    ...portfolioLabs().map(homeJournal),
+    ...publishedFindings().map(item => item.journal || homeJournal(item)),
+    ...workspaceTabs.filter(href => href.startsWith("#journal/")).flatMap(href => {
+      try { return [decodeURIComponent(href.slice(9))]; } catch { return []; }
+    }),
+  ].filter(Boolean))].sort();
+}
+
+function renderJournalDirectory() {
+  const directory = document.getElementById("persistent-journal-directory");
+  if (!directory) return;
+  directory.innerHTML = journalNames().map(name => {
+    const count = publishedFindings().filter(item => (item.journal || homeJournal(item)) === name).length;
+    return `<li><a href="${esc(journalHref(name))}">${esc(name)}</a> <span>${count} accepted ${count === 1 ? "paper" : "papers"}</span></li>`;
+  }).join("") || '<li>No journals registered yet</li>';
+}
+
 function renderJournal() {
   let journalName = "";
   try {
@@ -839,10 +862,7 @@ function renderJournal() {
   } catch (error) {
     journalName = "";
   }
-  const knownJournals = new Set([
-    ...portfolioLabs().map(homeJournal),
-    ...publishedFindings().map(item => item.journal || homeJournal(item)),
-  ]);
+  const knownJournals = new Set(journalNames());
   const papers = publishedFindings()
     .filter(item => (item.journal || homeJournal(item)) === journalName)
     .sort((a, b) => String(b.at || "").localeCompare(String(a.at || "")));
@@ -989,6 +1009,7 @@ function reviewBoardMarkup(board = {}) {
 
 function renderNetwork() {
   if (document.getElementById("network-view").hidden) return;
+  renderJournalDirectory();
   const labs = portfolioLabs();
   const findings = publishedFindings();
   const publicationById = new Map(findings.map(item => [item.id, item]));
@@ -1337,6 +1358,7 @@ function renderPortfolio(payload) {
   portfolioState = {
     labs: Array.isArray(payload?.labs) ? payload.labs : [],
     edges: Array.isArray(payload?.edges) ? payload.edges : [],
+    journals: Array.isArray(payload?.journals) ? payload.journals : [],
     findings: Array.isArray(payload?.findings) ? payload.findings : [],
     observations: Array.isArray(payload?.observations) ? payload.observations : [],
     eventNetwork: payload?.event_network || null,
