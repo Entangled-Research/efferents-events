@@ -1497,8 +1497,10 @@ function renderVerdict(data) {
   const axisLabel = axes.length ? axes.join(" × ") : "all runs";
   text(
     "buckets-meta",
-    `${buckets.length} ${buckets.length === 1 ? "bucket" : "buckets"} by ${axisLabel}` +
-      (comparison.axis && arms.length ? ` · ${arms.map(armLabel).join(" vs ")}` : ""),
+    data?.remote_detail_unavailable
+      ? "Bucket evidence stays on the lab’s laptop"
+      : `${buckets.length} ${buckets.length === 1 ? "bucket" : "buckets"} by ${axisLabel}` +
+        (comparison.axis && arms.length ? ` · ${arms.map(armLabel).join(" vs ")}` : ""),
   );
 
   const head = [`<th scope="col">Bucket</th>`, `<th scope="col">n</th>`];
