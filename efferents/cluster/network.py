@@ -185,6 +185,7 @@ class NetworkHub:
                                    f"{self.cfg.labs.max_per_owner}.", status=409)
             reg = {
                 "lab_id": lab_id,
+                "display_name": existing.get("display_name"),
                 "owner_id": owner.owner_id,
                 "owner_name": owner.name,
                 "domain": str(payload.get("domain") or "unspecified")[:120],
@@ -436,6 +437,7 @@ class NetworkHub:
                 if (lab["dir"] / "paper").is_dir() else 0
             rows.append({
                 "lab_id": reg["lab_id"],
+                "display_name": reg.get("display_name"),
                 "domain": reg.get("domain"),
                 "journal": journal_for_domain(reg.get("domain") or "unspecified"),
                 "subdomain": None,
