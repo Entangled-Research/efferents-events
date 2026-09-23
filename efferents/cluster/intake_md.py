@@ -60,13 +60,13 @@ if install.get('wheel_url'):
     (folder / pathlib.Path(install['filename']).name).write_bytes(data)
 PYTHON
 uv venv --python 3.12 .venv
-uv pip install --python .venv/bin/python .event-package/*.whl
+uv pip install --reinstall-package efferents --python .venv/bin/python .event-package/*.whl
 .venv/bin/efferents --help
 ```
 
 If the config has no `wheel_url`, install the configured repository release with
 `uv pip install --python .venv/bin/python "{pip_spec}"` instead. If `uv` is
-unavailable use `python3 -m venv .venv` and `.venv/bin/pip install` with the same
+unavailable use `python3 -m venv .venv` and `.venv/bin/pip install --force-reinstall` with the same
 wheel or repository spec. Help must list `evals`, `validate`, `start`, `status`,
 `stop`, `steer`, and `serve`. Add `.event-package/` to `.gitignore`.
 
