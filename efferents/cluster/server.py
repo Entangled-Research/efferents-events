@@ -193,7 +193,8 @@ class ClusterHandler(DashboardHandler):
         if path == "/api/network/config":
             return self._send_json(hub.config_payload(owner, self._base_url()))
         if path == "/api/network/feed":
-            return self._send_bytes(hub.feed().encode(), "text/markdown; charset=utf-8")
+            lab_id = parse_qs(urlsplit(self.path).query).get("lab_id", [None])[0]
+            return self._send_bytes(hub.subscribed_feed(owner, lab_id).encode(), "text/markdown; charset=utf-8")
         m = _NET_TRACK_ROUTE.match(path)
         if m:
             return self._send_bytes(hub.track_tarball(m.group("track_id")), "application/gzip")

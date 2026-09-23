@@ -270,6 +270,10 @@ class NetworkHub:
         if journal_text.strip():
             entries = federation.parse_journal_entries(journal_text)
             for e in entries:
+                if e.get("lab_id") and e["lab_id"] != lab_id:
+                    raise ControlError("A lab may submit only its own journal entries.", status=403)
+                if not _CAMPAIGN_RE.fullmatch(str(e["campaign_id"])):
+                    raise ControlError("Invalid publication campaign id.", status=400)
                 if not e.get("lab_id"):
                     e["lab_id"] = lab_id
             path = d / "journal.md"
@@ -307,6 +311,21 @@ class NetworkHub:
     def feed(self) -> str:
         hub = self.paths.shared_journal / "journal.md"
         return hub.read_text() if hub.is_file() else ""
+
+    def subscribed_feed(self, owner: Owner, lab_id: str | None = None) -> str:
+        from efferents.cluster import subscriptions
+        if lab_id is None:
+            owned = [item["registration"]["lab_id"] for item in self.list_labs()
+                     if item["registration"].get("owner_id") == owner.owner_id]
+            if len(owned) != 1:
+                raise ControlError("Specify the owned lab_id for its journal feed.", status=400)
+            lab_id = owned[0]
+        self.require_owner(owner, lab_id)
+        directory = self.paths.shared_journal / "subscriptions" / lab_id
+        content = subscriptions.feed(directory)
+        subscriptions.acknowledge(directory, {subscriptions.publication_id(entry)
+            for entry in federation.parse_journal_entries(content)})
+        return content
 
     def reviews_for(self, owner: Owner, lab_id: str) -> str:
         self.require_owner(owner, lab_id)
@@ -403,7 +422,9 @@ class NetworkHub:
                     except (OSError, UnicodeError):
                         pass
                 findings.append(row)
-        return {"findings": findings[-150:]}
+        from efferents.cluster.subscriptions import observations
+        return {"findings": findings[-150:],
+                "observations": observations(self.paths.shared_journal / "subscriptions")}
 
     def portfolio_rows(self) -> list[dict]:
         from efferents.journals import journal_for_domain

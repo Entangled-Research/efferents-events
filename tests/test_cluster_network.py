@@ -192,6 +192,11 @@ def test_register_heartbeat_push_pull_and_portfolio(hub):
                                payload={"message": "x"}, headers=ada_hdrs)
     assert status == 409 and "own" in body["error"]
 
+    # A registered lab cannot attribute its submission to another lab.
+    status, _, _ = _request(port, "/api/network/labs/ada-lab/journal", method="POST",
+        payload={"journal": "## 2026-09-20 14:00 UTC — fake\n**Lab**: someone-else\n"}, headers=A)
+    assert status == 403
+
     # Journal push lands in the hub and, after a sync, in the feed.
     journal = ("# Journal\n\n<!-- ENTRIES BELOW -->\n\n## 2026-09-20 14:00 UTC — c1\n"
                "**Lab**: ada-lab\n**Headline**: Loss fell under 0.1\n"
@@ -206,7 +211,11 @@ def test_register_heartbeat_push_pull_and_portfolio(hub):
     summary = sync.sync_once(cfg, reviews=False)
     assert summary["new_entries"] == 1
     status, feed, _ = _request(port, "/api/network/feed", headers=B)
-    assert "Loss fell under 0.1" in feed["raw"]
+    assert status == 400  # No owned lab: never return the unrestricted hub.
+    status, _, _ = _request(port, "/api/network/feed?lab_id=ada-lab", headers=B)
+    assert status == 403
+    status, own_feed, _ = _request(port, "/api/network/feed?lab_id=ada-lab", headers=A)
+    assert status == 200 and "Loss fell under 0.1" not in own_feed["raw"]
     status, papers, _ = _request(port, "/api/labs/ada-lab/papers", headers=bob_hdrs)
     assert status == 200 and papers == []  # no fabricated accepted card from a raw draft
     status, activity, _ = _request(port, "/api/labs/ada-lab/activity", headers=bob_hdrs)

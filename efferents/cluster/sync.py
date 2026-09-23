@@ -24,6 +24,7 @@ from efferents.agents import federation
 from efferents.cluster import crossreview
 from efferents.cluster.config import ClusterConfig, write_event
 from efferents.registry import Registry
+from efferents.journals import journal_for_domain
 
 HUB_HEADER = (
     "# Shared journal — every accepted entry from every lab in this cluster\n\n"
@@ -101,6 +102,9 @@ def collect(cfg: ClusterConfig, labs: list[dict]) -> list[dict]:
                 continue
             for entry in federation.parse_journal_entries(journal.read_text()):
                 lab_id = entry.get("lab_id") or lab["lab_id"]
+                from efferents.journal.reviews import PERSONAS, review_scores
+                if lab_id != lab["lab_id"] or set(review_scores(entry["body"])) != set(PERSONAS):
+                    continue
                 key = (lab_id, entry["campaign_id"])
                 if key in known:
                     continue
@@ -114,6 +118,7 @@ def collect(cfg: ClusterConfig, labs: list[dict]) -> list[dict]:
                 rec = {
                     "ts": entry["ts"], "lab_id": lab_id, "campaign_id": entry["campaign_id"],
                     "headline": entry.get("headline"), "domain": lab.get("domain"),
+                    "journal": journal_for_domain(lab.get("domain") or "unspecified"),
                     "source_path": str(journal), "sha256": digest,
                     "published_at": _now_str(),
                 }
@@ -132,20 +137,26 @@ def collect(cfg: ClusterConfig, labs: list[dict]) -> list[dict]:
 
 
 def distribute(cfg: ClusterConfig, labs: list[dict]) -> dict[str, int]:
-    """Fan the hub out to every lab's external journal (dedup built in)."""
+    """Deliver bounded per-lab subscriptions, never the whole cross-field hub."""
+    from efferents.cluster import subscriptions
     hub = cfg.paths.shared_journal / "journal.md"
-    added: dict[str, int] = {}
     if not hub.is_file():
-        return added
+        return {}
+    entries = federation.parse_journal_entries(hub.read_text())
+    domains = {lab["lab_id"]: lab.get("domain") or "unspecified" for lab in labs}
+    added = {}
     for lab in labs:
+        directory = cfg.paths.shared_journal / "subscriptions" / lab["lab_id"]
+        content = subscriptions.visit(directory, lab["lab_id"], domains[lab["lab_id"]], entries,
+                                      domains, now=time.time(), interval=cfg.sync.interval_s)
+        source = directory / "feed.md"
+        source.write_text(content)
         out = lab["submission_dir"] / "paper" / "external_journal.md"
-        try:
-            result = federation.consume_external_journal(
-                source=hub, out_path=out, our_lab_id=lab["lab_id"],
-            )
-        except FileNotFoundError:
-            continue
+        result = federation.consume_external_journal(source=source, out_path=out, our_lab_id=lab["lab_id"])
         added[lab["lab_id"]] = int(result.get("n_added", 0))
+        # Remote receipt is recorded when its owner actually retrieves the feed.
+        if not (lab["submission_dir"] / "registration.json").is_file():
+            subscriptions.acknowledge(directory)
     return added
 
 

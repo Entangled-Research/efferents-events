@@ -20,6 +20,7 @@ import os
 import socket
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 from typing import Any
@@ -104,7 +105,7 @@ class NetworkClient:
         return result
 
     def pull_feed(self, lab_id: str, paper_dir: Path) -> dict | None:
-        text = self._request("GET", "/api/network/feed")
+        text = self._request("GET", f"/api/network/feed?lab_id={urllib.parse.quote(lab_id, safe='')}")
         if not isinstance(text, str) or not text.strip():
             return None
         tmp = paper_dir / ".hub_feed.md"

@@ -31,7 +31,7 @@ class FakeHub:
             return self._json({"ok": True, "pause": self.pause, "message": "paused by hub" if self.pause else None})
         if path.endswith("/journal"):
             return self._json({"ok": True, "entries_added": len(body.get("papers", {})), "papers_stored": 0})
-        if path == "/api/network/feed":
+        if path == "/api/network/feed?lab_id=my-lab":
             return self._text(self.feed)
         if path.endswith("/reviews"):
             return self._text(self.reviews)
