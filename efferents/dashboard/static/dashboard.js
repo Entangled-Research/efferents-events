@@ -36,14 +36,17 @@ function labPath(kind) {
 }
 let labBudget = { spent: 0, cap: 0 };
 let portfolioBudget = { spent: 0, cap: 0 };
+let ownerProxyBudget = { spent: 0, cap: 0 };
 
 function renderBudget() {
   const route = currentRoute();
   const meta = document.getElementById("budget-meta");
   const isNetwork = route === "network";
-  const budget = isNetwork ? portfolioBudget : labBudget;
+  const clusterNetwork = isNetwork && isCluster();
+  const ownerEventBudget = clusterNetwork && isJoined();
+  const budget = ownerEventBudget ? ownerProxyBudget : isNetwork ? portfolioBudget : labBudget;
   const show = isNetwork
-    ? portfolioState.labs.length > 0
+    ? ownerEventBudget || (!clusterNetwork && portfolioState.labs.length > 0)
     : route === "observe" && controlState.connected;
   meta.hidden = !show;
   if (!show) return;
@@ -52,8 +55,9 @@ function renderBudget() {
     : 0;
   text(
     "budget",
-    `${isNetwork ? "all labs" : "this lab"} · ` +
-      `$${budget.spent.toFixed(2)} / $${budget.cap.toFixed(2)} daily`,
+    ownerEventBudget
+      ? `your event spend · $${budget.spent.toFixed(2)} / $${budget.cap.toFixed(2)} cap`
+      : `${isNetwork ? "all labs" : "this lab"} · $${budget.spent.toFixed(2)} / $${budget.cap.toFixed(2)} daily`,
   );
   document.getElementById("budget-fill").style.width = `${percent}%`;
 }
@@ -505,6 +509,28 @@ function labIdeas(lab) {
   return [{id: "primary", focus, verdict: lab.verdict?.status || "undecided"}];
 }
 
+function labSpendMarkup(lab) {
+  if (!isCluster() || !lab.budget) return "";
+  const rawSpent = Number(lab.budget.spent);
+  const rawCap = Number(lab.budget.cap);
+  const spent = Number.isFinite(rawSpent) ? Math.max(0, rawSpent) : 0;
+  const cap = Number.isFinite(rawCap) ? rawCap : 0;
+  if (!(cap > 0)) return "";
+  const scale = Number(ownerProxyBudget.cap) > 0 ? Number(ownerProxyBudget.cap) : 50;
+  const percent = Math.min(100, (spent / scale) * 100);
+  const overCap = spent > cap;
+  const amount = `$${spent.toFixed(2)} / $${cap.toFixed(2)} lab cap`;
+  const overCapNotice = overCap ? `<div class="network-lab-spend-warning">Above lab cap</div>` : "";
+  const state = overCap ? "; above lab cap" : "";
+  return `<div class="network-lab-spend${overCap ? " over-cap" : ""}" ` +
+    `aria-label="Lab model spend estimate: ${esc(amount)}${state}; bar scale $${scale.toFixed(2)} per person">` +
+    `<div class="network-lab-spend-label"><span>LAB MODEL SPEND · ESTIMATE</span><strong>${esc(amount)}</strong></div>` +
+    overCapNotice +
+    `<div class="network-lab-spend-track" role="progressbar" aria-label="Lab model spend estimate" ` +
+    `aria-valuemin="0" aria-valuemax="${scale.toFixed(2)}" aria-valuenow="${spent.toFixed(2)}">` +
+    `<span style="width:${percent.toFixed(1)}%"></span></div></div>`;
+}
+
 function ideaLineMarkup(idea) {
   const falsified = idea.verdict === "falsified";
   return `<span class="lab-idea-node${falsified ? " falsified" : ""}" title="${esc(idea.focus || "")}">` +
@@ -689,6 +715,7 @@ function renderNetwork() {
       const ideas = labIdeas(lab);
       card.innerHTML = `<button type="button" class="lab-identity" aria-pressed="${lab.lab_id === networkSelection}"><strong>${esc(labDisplayName(lab.lab_id))}</strong><small>${esc(lab.status || "stopped")}${lab.remote ? " · read only" : ""}</small></button>` +
         `<div class="lab-idea-nodes" aria-label="Ideas in ${esc(labDisplayName(lab.lab_id))}"><span class="lab-idea-label">Ideas · ${ideas.length}</span>${ideas.map(ideaLineMarkup).join("")}</div>` +
+        labSpendMarkup(lab) +
         `<div class="internal-research"><span>Supervisor · Researcher · Librarian</span><b>Hypothesis → Experiment</b><b>Evidence → Paper</b><span>Executor · Coder · Analyst · Writer</span></div>`;
       // Events exposes read-only evidence for remote labs through its hub.
       card.querySelector("button").onclick = () => {
@@ -701,13 +728,13 @@ function renderNetwork() {
       const board = lab.review_board?.status ? lab.review_board : (latest ? {status: "accepted", scores: latest.review_scores} : {});
       const review = document.createElement("div");
       review.className = "network-review-board";
-      Object.assign(review.style, {left: `${x}px`, top: `${y + 242}px`, width: `${width}px`});
+      Object.assign(review.style, {left: `${x}px`, top: `${y + 276}px`, width: `${width}px`});
       review.innerHTML = reviewBoardMarkup(board);
       nodes.appendChild(review);
-      route(`M${x},${y + 210} V${y + 237}`, "publish", false,
+      route(`M${x},${y + 244} V${y + 271}`, "publish", false,
         `${labDisplayName(lab.lab_id)} submits a paper to its three-reviewer board`);
       if (board.status === "rejected") {
-        route(`M${x + half},${y + 300} H${x + half + 20} V${y + 110} H${x + half + 5}`,
+        route(`M${x + half},${y + 334} H${x + half + 20} V${y + 110} H${x + half + 5}`,
           "rejected", true, `Rejected paper → ${labDisplayName(lab.lab_id)} for revision`);
       }
       // Each lab publishes down the gutter on its right and subscribes up the
@@ -717,7 +744,7 @@ function renderNetwork() {
         !board.campaign_id || item.campaign_id === board.campaign_id);
       if (board.status !== "rejected") {
         const entry = lane > groupRight - 100 ? `V${journalY + 35} H${groupRight - 100}` : `V${journalY}`;
-        route(`M${x},${y + 332} V${y + 350} H${lane} ${entry}`,
+        route(`M${x},${y + 366} V${y + 384} H${lane} ${entry}`,
           accepted ? "accepted" : "publish", accepted, `${labDisplayName(lab.lab_id)} → ${name}: accepted papers only`);
       }
       labPorts.set(lab.lab_id, {x: x - half, y: y + 75, lane: x - half - 35});
@@ -1593,6 +1620,10 @@ async function refresh() {
 // Hosted (cluster) mode: identity, nav visibility, owner marks.
 function renderSession(session) {
   controlState.session = session.cluster || null;
+  ownerProxyBudget = {
+    spent: Number(controlState.session?.proxy_spend_usd || 0),
+    cap: Number(controlState.session?.proxy_cap_usd || 0),
+  };
   const cluster = isCluster();
   const joined = cluster && isJoined();
   document.getElementById("event-status").hidden = !cluster || !controlState.session?.frozen;

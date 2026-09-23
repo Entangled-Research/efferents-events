@@ -2770,10 +2770,19 @@ pre.instruction-line {
 }
 /* Labs are isolated; only reviewed papers cross the journal boundary. */
 .network-lab-boundary, .network-review-board { position: absolute; transform: translateX(-50%); box-sizing: border-box; background: var(--panel); border: 1px solid var(--signal); padding: 12px; }
-.network-lab-boundary { height: 210px; }
+.network-lab-boundary { height: 244px; }
 .network-lab-boundary .lab-identity { display: flex; justify-content: space-between; align-items: center; padding: 0 0 8px; }
 .network-lab-boundary .lab-identity strong { font-size: 14px; }
 .network-lab-boundary .lab-identity[aria-pressed="true"] { color: var(--signal); text-decoration: underline; text-underline-offset: 4px; }
+.network-lab-spend { display: grid; gap: 4px; margin: 2px 0 7px; }
+.network-lab-spend-label { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; color: var(--muted); font: 10px/1.3 var(--mono); }
+.network-lab-spend-label strong { color: var(--ink); font: 600 10px/1.3 var(--mono); white-space: nowrap; }
+.network-lab-spend-track { height: 4px; overflow: hidden; border: 1px solid var(--line); background: var(--bg); }
+.network-lab-spend-track span { display: block; height: 100%; background: var(--signal); }
+.network-lab-spend.over-cap .network-lab-spend-label strong,
+.network-lab-spend-warning { color: var(--terracotta); }
+.network-lab-spend.over-cap .network-lab-spend-track span { background: var(--terracotta); }
+.network-lab-spend-warning { font: 10px/1.3 var(--mono); }
 .internal-research { display: grid; gap: 9px; padding-top: 9px; border-top: 1px solid var(--line); font: 11px/1.4 var(--mono); }
 .internal-research span { font-size: 9px; color: var(--muted); }
 .network-review-board { height: 90px; }
