@@ -41,7 +41,7 @@ function labPath(kind) {
 }
 let labBudget = { spent: 0, cap: 0 };
 let portfolioBudget = { spent: 0, cap: 0 };
-let ownerEventBudget = { spent: 0, cap: 0 };
+let ownerEventBudget = { spent: 0, cap: 0, reserved: 0, remaining: 0 };
 
 function renderBudget() {
   const route = currentRoute();
@@ -59,6 +59,11 @@ function renderBudget() {
     ? `your total spend · $${budget.spent.toFixed(2)} / $${budget.cap.toFixed(2)}`
     : `${isNetwork ? "all labs" : "this lab"} · $${budget.spent.toFixed(2)} / $${budget.cap.toFixed(2)} daily`);
   meta.title = cluster ? "Your allocated event budget across all your labs and intake" : "Daily model budget";
+  const reserved = document.getElementById("budget-reserved");
+  reserved.hidden = !cluster || !(budget.reserved > 0);
+  reserved.textContent = reserved.hidden ? ""
+    : `$${budget.reserved.toFixed(2)} reserved · $${budget.remaining.toFixed(2)} available`;
+  reserved.title = "Reserved for model requests pending billing confirmation; separate from recorded spend";
   const selected = selectedPortfolioLab();
   text("selected-lab-spend", cluster && route === "observe" && selected
     ? `this lab · $${Number(selected.budget?.spent || 0).toFixed(2)}` : "");
@@ -2074,6 +2079,9 @@ function renderSession(session) {
   ownerEventBudget = {
     spent: Number(budget?.spent_usd ?? controlState.session?.proxy_spend_usd ?? 0),
     cap: Number(budget?.cap_usd ?? controlState.session?.proxy_cap_usd ?? 0),
+    reserved: Number(budget?.reserved_usd ?? 0),
+    remaining: Number(budget?.remaining_usd ?? Math.max(0,
+      Number(budget?.cap_usd || 0) - Number(budget?.spent_usd || 0) - Number(budget?.reserved_usd || 0))),
   };
   const cluster = isCluster();
   const joined = cluster && isJoined();
@@ -2338,6 +2346,8 @@ async function refreshDiagnostics() {
     document.getElementById("diagnostics-summary").innerHTML =
       `<strong>${esc(controlState.session?.owner?.name || "Your account")}</strong>` +
       `<span>$${Number(budget.spent_usd || 0).toFixed(2)} / $${Number(budget.cap_usd || 0).toFixed(2)} allocated</span>` +
+      (Number(budget.reserved_usd) > 0
+        ? `<span>$${Number(budget.reserved_usd).toFixed(2)} reserved pending billing confirmation</span>` : "") +
       `<span>${labs.length} ${labs.length === 1 ? "lab" : "labs"}</span>`;
     document.getElementById("diagnostics-labs").innerHTML = labs.map(lab =>
       `<article class="diagnostic-lab"><h2><a href="${esc(labHref(lab.id || lab.lab_id))}">${esc(lab.name || lab.display_name || lab.id || lab.lab_id)}</a></h2>` +

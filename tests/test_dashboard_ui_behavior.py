@@ -75,6 +75,26 @@ console.log(JSON.stringify(ideaBranchMarkup(lab)));
     assert 'lab-idea-branch falsified' in result
 
 
+def test_budget_holds_are_separate_from_spend_and_clear_on_account_change():
+    result = run_js("""
+controlState.mode = 'cluster';
+renderSession({cluster:{joined:true,owner:{name:'Ada'},
+ owner_budget:{spent_usd:7.25,cap_usd:50,reserved_usd:2,remaining_usd:40.75}}});
+renderBudget();
+const held = {spend:document.getElementById('budget').textContent,
+ text:document.getElementById('budget-reserved').textContent,
+ hidden:document.getElementById('budget-reserved').hidden};
+renderSession({cluster:{joined:true,owner:{name:'Grace'},
+ owner_budget:{spent_usd:1,cap_usd:50,reserved_usd:0,remaining_usd:49}}});
+renderBudget();
+console.log(JSON.stringify({held,cleared:document.getElementById('budget-reserved').hidden,
+ text:document.getElementById('budget-reserved').textContent}));
+""")
+    assert result["held"] == {"spend": "your total spend · $7.25 / $50.00",
+                              "text": "$2.00 reserved · $40.75 available", "hidden": False}
+    assert result["cleared"] and result["text"] == ""
+
+
 def test_receipt_alone_never_claims_experimental_use():
     result = run_js("""
 const publication = {id:'paper1',kind:'publication',publication_status:'accepted',lab_id:'physics',journal:'Physics'};
