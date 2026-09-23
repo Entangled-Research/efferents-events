@@ -177,7 +177,7 @@ def compose_paper(
     code_sha: str | None,
     code_repo: str | None,
     budget: Any = None,
-    model: str = "claude-sonnet-4-6",
+    model: str | None = None,
     max_tokens: int = 8192,
 ) -> str:
     """Produce a complete platform-shaped paper artifact.
@@ -186,6 +186,10 @@ def compose_paper(
     Raises ValueError if the body fails structural check or the
     frontmatter fails pydantic validation.
     """
+    from efferents.agents.budget import model_for
+    chosen_model = model or model_for("writer")
+    if chosen_model is None:
+        raise RuntimeError("No model configured for Writer")
     user = (
         f"Campaign: {campaign['id']} — {campaign['question']}\n"
         f"Hypothesis file: {campaign['hypothesis_path']}\n"
@@ -195,7 +199,7 @@ def compose_paper(
         f"Write the paper body now."
     )
     response = client.messages.create(
-        model=model,
+        model=chosen_model,
         max_tokens=max_tokens,
         system=_WRITER_SYSTEM,
         messages=[{"role": "user", "content": user}],
@@ -212,7 +216,7 @@ def compose_paper(
                 getattr(response.usage, "cache_read_input_tokens", 0) or 0
             ),
         )
-        budget.record(agent="writer", model=billing_model(client, model), usage=usage, notes="compose paper")
+        budget.record(agent="writer", model=billing_model(client, chosen_model), usage=usage, notes="compose paper")
     body = "".join(b.text for b in response.content).strip()
     ok, errors = structural_check(body)
     if not ok:
@@ -245,7 +249,7 @@ def write_phase_a_paper(
     client: Any,
     *,
     gain_threshold: float = 0.05,
-    model: str = "claude-sonnet-4-6",
+    model: str | None = None,
     budget: Any = None,
 ) -> str | None:
     """Gate-check, compose, peer-review, and commit a paper for a campaign.
@@ -253,7 +257,7 @@ def write_phase_a_paper(
     Pipeline:
       1. Mechanical pre-gate: novelty + ≥`gain_threshold` metric improvement
          (agents/writer.py:should_publish). If it fails, log and return None.
-      2. Compose the paper artifact (Sonnet via compose_paper) and write to
+      2. Compose the paper artifact (configured Writer model via compose_paper) and write to
          paper/<campaign_id>.md.
       3. If peer review is disabled (LabConfig.peer_review_enabled), return here (legacy
          publish-on-mechanical-gate behavior).

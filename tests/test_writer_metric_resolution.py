@@ -187,6 +187,7 @@ def test_paired_writer_uses_successful_same_run_aggregate_and_falsifier(
     from efferents.lab import (
         Budget, Executor, Falsifier, Headline, LabConfig, Metrics, Source,
     )
+    monkeypatch.setenv("EFFERENTS_MODEL_WRITER", "openai/event-model")
 
     source = tmp_path / "src"
     source.mkdir()
@@ -243,6 +244,7 @@ def test_paired_writer_uses_successful_same_run_aggregate_and_falsifier(
     )
     if expected == "publish":
         assert artifact is not None
+        assert client.calls[0]["model"] == "openai/event-model"
         record = yaml.safe_load(artifact.split("---", 2)[1])["metric_provenance"][0]
         assert record["value"] == 0.00003
         assert record["comparator_name"] == "baseline_error"

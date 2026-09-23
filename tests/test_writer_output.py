@@ -48,6 +48,36 @@ def test_compose_paper_returns_valid_artifact(fake_anthropic_factory):
     assert ok, errors
 
 
+@pytest.mark.parametrize("override, expected", [
+    (None, "openai/event-model"),
+    ("claude-sonnet-4-6", "claude-sonnet-4-6"),
+])
+def test_compose_paper_uses_configured_writer_model_or_explicit_override(
+    monkeypatch, fake_anthropic_factory, override, expected
+):
+    monkeypatch.setenv("EFFERENTS_MODEL_WRITER", "openai/event-model")
+    body = "\n".join(
+        f"## {section}\n\nMeasured result.\n"
+        for section in REQUIRED_SECTIONS_IN_ORDER
+    )
+    client = fake_anthropic_factory([body])
+    kwargs = {"model": override} if override is not None else {}
+    compose_paper(
+        client=client,
+        campaign={
+            "id": "c1", "question": "bounded verification",
+            "hypothesis_path": "popper-corpus/c1/hypothesis.md",
+            "hypothesis_hash": "sha256:" + "0" * 64,
+        },
+        metric_provenance=[
+            {"name": "error", "value": 0.001, "runs": ["r1"], "seeds": [0]},
+        ],
+        novelty_claim="bounded verification",
+        code_sha=None, code_repo=None, **kwargs,
+    )
+    assert client.calls[0]["model"] == expected
+
+
 def test_compose_paper_records_writer_spend(tmp_path, fake_anthropic_factory):
     body_md = "\n".join(
         f"## {s}\n\nSome content.\n" for s in REQUIRED_SECTIONS_IN_ORDER
