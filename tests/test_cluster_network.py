@@ -6,6 +6,7 @@ import io
 import json
 import tarfile
 import threading
+from datetime import datetime, timedelta, timezone
 from email.message import Message
 
 import pytest
@@ -62,6 +63,13 @@ def hub(tmp_path, monkeypatch):
 
 def _bearer(body):
     return {"Authorization": f"Bearer {body['cluster']['network_token']}"}
+
+
+def test_stopped_remote_lab_does_not_become_stale(hub):
+    _, ctx, *_ = hub
+    old = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+    assert ctx.hub._status({"ts": old, "status": "stopped"}) == "stopped"
+    assert ctx.hub._status({"ts": old, "status": "running"}) == "stale"
 
 
 def test_intake_md_and_config(hub):
@@ -169,6 +177,15 @@ def test_register_heartbeat_push_pull_and_portfolio(hub):
     assert rows["ada-lab"]["status"] == "running" and rows["ada-lab"]["headline"]["best"] == 0.09
     status, state, _ = _request(port, "/api/labs/ada-lab/state", headers=bob_hdrs)
     assert status == 200 and state["budget"]["spent"] == 0.42
+    status, runs, _ = _request(port, "/api/labs/ada-lab/runs", headers=bob_hdrs)
+    assert status == 200 and runs["remote_detail_unavailable"] is True
+    assert runs["history"]["total"] == 7 and runs["history"]["best"] == 0.09
+    assert runs["runs"] == []  # a heartbeat count is not a run ledger
+    status, verdict, _ = _request(port, "/api/labs/ada-lab/verdict", headers=bob_hdrs)
+    assert status == 200 and verdict["remote_detail_unavailable"] is True
+    assert verdict["n_runs"] == 7 and verdict["falsifiers"] == []
+    status, evidence, _ = _request(port, "/api/labs/ada-lab/evidence", headers=bob_hdrs)
+    assert status == 200 and evidence["remote_detail_unavailable"] is True
     status, control, _ = _request(port, "/api/labs/ada-lab/control", headers=ada_hdrs)
     assert control["remote"] is True and control["owner_name"] == "Ada"
     status, body, _ = _request(port, "/api/labs/ada-lab/steer", method="POST",
@@ -183,6 +200,11 @@ def test_register_heartbeat_push_pull_and_portfolio(hub):
     status, reply, _ = _request(port, "/api/network/labs/ada-lab/heartbeat", method="POST",
                                 payload={**beat, "command_acks": [command_id]}, headers=A)
     assert status == 200 and reply["commands"] == []
+
+    # A registered lab cannot attribute its submission to another lab.
+    status, _, _ = _request(port, "/api/network/labs/ada-lab/journal", method="POST",
+        payload={"journal": "## 2026-09-20 14:00 UTC — fake\n**Lab**: someone-else\n"}, headers=A)
+    assert status == 403
 
     # Journal push lands in the hub and, after a sync, in the feed.
     journal = ("# Journal\n\n<!-- ENTRIES BELOW -->\n\n## 2026-09-20 14:00 UTC — c1\n"
@@ -199,9 +221,13 @@ def test_register_heartbeat_push_pull_and_portfolio(hub):
     summary = sync.sync_once(cfg, reviews=False)
     assert summary["new_entries"] == 1
     status, feed, _ = _request(port, "/api/network/feed", headers=B)
-    assert "Loss fell under 0.1" in feed["raw"]
+    assert status == 400  # No owned lab: never return the unrestricted hub.
+    status, _, _ = _request(port, "/api/network/feed?lab_id=ada-lab", headers=B)
+    assert status == 403
+    status, own_feed, _ = _request(port, "/api/network/feed?lab_id=ada-lab", headers=A)
+    assert status == 200 and "Loss fell under 0.1" not in own_feed["raw"]
     status, papers, _ = _request(port, "/api/labs/ada-lab/papers", headers=bob_hdrs)
-    assert status == 200
+    assert status == 200 and papers == []  # no fabricated accepted card from a raw draft
     status, activity, _ = _request(port, "/api/labs/ada-lab/activity", headers=bob_hdrs)
     assert activity[0]["title"].endswith("c1")
 
@@ -221,6 +247,158 @@ def test_register_heartbeat_push_pull_and_portfolio(hub):
              payload={**reg, "lab_id": "bob-lab", "host": "bobs-pc"}, headers=B)
     status, portfolio, _ = _request(port, "/api/labs", headers=bob_hdrs)
     assert {(e["kind"], e["source"], e["target"]) for e in portfolio["edges"]} >= {("cited", "ada-lab", "bob-lab")}
+
+
+def test_eval_snapshot_shared_reads_and_owner_only_writes(hub):
+    import base64
+    import hashlib
+
+    port, ctx, _, _, _ = hub
+    ada, ada_headers = _join(port, "Ada")
+    bob, bob_headers = _join(port, "Bob")
+    auth = _bearer(ada)
+    reg = {"lab_id": "ada-lab", "domain": "synthetic", "hypothesis": VALID_HYP,
+           "track": "coefficient-sweep", "host": "adas-macbook"}
+    assert _request(port, "/api/network/labs", method="POST", payload=reg,
+                    headers=auth)[0] == 200
+
+    png = b"\x89PNG\r\n\x1a\nsmall-test-image"
+    digest = hashlib.sha256(png).hexdigest()
+    snapshot = {
+        "runs": {"runs": [{"run_id": "run-1"}]},
+        "evidence": {"records": [{"run_id": "run-1", "artifacts": [
+            {"kind": "plot", "token": digest},
+        ]}]},
+        "verdict": {"verdict": "survives"},
+        "images": {digest: base64.b64encode(png).decode("ascii")},
+    }
+    snapshot["ideas"] = {
+        "primary": {"student_id": "primary", "name": "Original", "hypothesis": {"claim": "A"},
+                    "suite": {"title": "Original suite", "status": "configured"},
+                    "runs": snapshot["runs"], "evidence": snapshot["evidence"], "verdict": snapshot["verdict"]},
+        "second": {"student_id": "second", "name": "New", "hypothesis": {"claim": "B"},
+                   "suite": {"title": "New suite", "status": "configured"},
+                   "runs": {"runs": []}, "evidence": {"records": []}, "verdict": {"verdict": "undecided"}},
+    }
+    status, _, _ = _request(
+        port, "/api/network/labs/ada-lab/heartbeat", method="POST",
+        payload={"status": "running", "runs": 1, "owner_evals": snapshot, "ideas": [{"id": "primary"}, {"id": "second"}]}, headers=auth,
+    )
+    assert status == 200
+
+    status, first, _ = _request(port, "/api/labs/ada-lab/ideas/primary", headers=ada_headers)
+    assert status == 200 and first["runs"]["runs"] == [{"run_id": "run-1"}]
+    status, second, _ = _request(port, "/api/labs/ada-lab/ideas/second", headers=ada_headers)
+    assert status == 200 and second["runs"]["runs"] == []
+    assert second["suite"]["title"] == "New suite"
+    status, shared, _ = _request(port, "/api/labs/ada-lab/ideas/primary", headers=bob_headers)
+    assert status == 200 and shared == first
+    assert _request(port, "/api/labs/ada-lab/ideas/missing", headers=ada_headers)[0] == 404
+    saved = json.loads((ctx.hub.lab_dir("ada-lab") / "owner-evals.json").read_text())
+    assert saved["images"][digest] == snapshot["images"][digest]
+    assert saved["evidence"]["records"][0]["artifacts"][0]["url"] == (
+        f"/api/labs/ada-lab/artifacts/{digest}"
+    )
+    assert saved["synced_at"]
+
+    status, owner_runs, _ = _request(port, "/api/labs/ada-lab/runs", headers=ada_headers)
+    assert status == 200 and owner_runs["runs"] == [{"run_id": "run-1"}]
+    assert owner_runs["synced_at"] == saved["synced_at"]
+    status, viewer_runs, _ = _request(port, "/api/labs/ada-lab/runs", headers=bob_headers)
+    assert status == 200 and viewer_runs == owner_runs
+
+    status, _, image_headers = _request(
+        port, f"/api/labs/ada-lab/artifacts/{digest}", headers=ada_headers,
+    )
+    assert status == 200 and image_headers["content-type"] == "image/png"
+    status, _, _ = _request(
+        port, f"/api/labs/ada-lab/artifacts/{digest}", headers=bob_headers,
+    )
+    assert status == 200
+    assert _request(port, f"/api/labs/ada-lab/artifacts/{digest}")[0] == 401
+    assert _request(port, "/api/labs/ada-lab/ideas/primary")[0] == 401
+    for action, payload in [("heartbeat", {"owner_evals": snapshot}), ("journal", {"journal": "replacement"})]:
+        assert _request(port, f"/api/network/labs/ada-lab/{action}", method="POST",
+                        payload=payload, headers=_bearer(bob))[0] == 403
+    assert json.loads((ctx.hub.lab_dir("ada-lab") / "owner-evals.json").read_text()) == saved
+
+
+def test_remote_paper_register_requires_accepted_journal_entry(hub):
+    port, *_ = hub
+    owner, _ = _join(port, "Ada")
+    _, viewer_headers = _join(port, "Bob")
+    auth = _bearer(owner)
+    _request(port, "/api/network/labs", method="POST",
+             payload={"lab_id": "ada-lab", "domain": "synthetic", "hypothesis": VALID_HYP},
+             headers=auth)
+    journal = ("# Journal\n\n<!-- ENTRIES BELOW -->\n\n"
+               "## 2026-09-20 14:00 UTC — accepted-one\n"
+               "**Lab**: ada-lab\n**Headline**: Reviewed result\n"
+               "**Scores**: critical=6, neutral=7, optimistic=8 (mean=7.0)\n")
+
+    def paper(campaign, status):
+        return (f"---\nlab_id: ada-lab\ncampaign_id: {campaign}\n"
+                f"novelty_claim: Result\npublished_at: '2026-09-20'\n"
+                f"status: {status}\n---\n\n# Result\n")
+
+    _request(port, "/api/network/labs/ada-lab/journal", method="POST",
+             payload={"journal": journal, "papers": {
+                 "accepted-one": paper("accepted-one", "preprint"),
+                 "unreviewed-one": paper("unreviewed-one", "accepted"),
+                 "draft-one": paper("draft-one", "draft"),
+                 "rejected-one": paper("rejected-one", "rejected"),
+             }}, headers=auth)
+    status, papers, _ = _request(port, "/api/labs/ada-lab/papers", headers=viewer_headers)
+    assert status == 200
+    assert [paper["campaign_id"] for paper in papers] == ["accepted-one"]
+    assert papers[0]["status"] == "accepted"
+
+
+def test_network_evidence_includes_only_same_lab_accepted_manuscripts(hub):
+    port, ctx, _, cfg, _ = hub
+    owner, _ = _join(port, "Ada")
+    auth = _bearer(owner)
+    _request(port, "/api/network/labs", method="POST",
+             payload={"lab_id": "ada-lab", "domain": "synthetic", "hypothesis": VALID_HYP},
+             headers=auth)
+    accepted = ("---\nlab_id: ada-lab\ncampaign_id: accepted-one\n"
+                "novelty_claim: bounded result\npublished_at: '2026-09-20'\nstatus: accepted\n---\n\n"
+                "# Bounded result\n\n| case | error |\n| --- | --- |\n| A | 0.1 |\n")
+    mismatch = accepted.replace("accepted-one", "mismatch-one").replace("lab_id: ada-lab", "lab_id: another-lab")
+    rejected = accepted.replace("accepted-one", "rejected-one")
+    explicitly_rejected = accepted.replace("accepted-one", "explicit-rejection").replace(
+        "status: accepted", "status: rejected")
+    large = accepted.replace("accepted-one", "large-one") + ("x" * 100_001)
+    journal = ("# Journal\n\n<!-- ENTRIES BELOW -->\n\n"
+               "## 2026-09-20 14:00 UTC — accepted-one\n**Lab**: ada-lab\n"
+               "**Headline**: Reviewed bounded result\n"
+               "**Scores**: critical=6, neutral=7, optimistic=8 (mean=7.0)\n\n"
+               "## 2026-09-20 14:01 UTC — mismatch-one\n**Lab**: ada-lab\n"
+               "**Headline**: Mismatched manuscript\n"
+               "**Scores**: critical=6, neutral=7, optimistic=8 (mean=7.0)\n\n"
+               "## 2026-09-20 14:02 UTC — large-one\n**Lab**: ada-lab\n"
+               "**Headline**: Large manuscript\n"
+               "**Scores**: critical=6, neutral=7, optimistic=8 (mean=7.0)\n\n"
+               "## 2026-09-20 14:03 UTC — explicit-rejection\n**Lab**: ada-lab\n"
+               "**Headline**: Rejected artifact\n"
+               "**Scores**: critical=6, neutral=7, optimistic=8 (mean=7.0)\n")
+    _request(port, "/api/network/labs/ada-lab/journal", method="POST",
+             payload={"journal": journal, "papers": {
+                 "accepted-one": accepted, "mismatch-one": mismatch,
+                 "rejected-one": rejected, "large-one": large,
+                 "explicit-rejection": explicitly_rejected,
+             }}, headers=auth)
+    from efferents.cluster import sync
+    sync.sync_once(cfg, reviews=False)
+
+    findings = ctx.hub.network_evidence()["findings"]
+    by_campaign = {item["campaign_id"]: item for item in findings}
+    assert by_campaign["accepted-one"]["body"].startswith("## 2026-09-20")
+    assert by_campaign["accepted-one"]["manuscript"].startswith("---\nlab_id: ada-lab")
+    assert "mismatch-one" in by_campaign and "manuscript" not in by_campaign["mismatch-one"]
+    assert "large-one" in by_campaign and "manuscript" not in by_campaign["large-one"]
+    assert "explicit-rejection" in by_campaign and "manuscript" not in by_campaign["explicit-rejection"]
+    assert "rejected-one" not in by_campaign
 
 
 def test_bind_and_proxy(hub):
@@ -377,3 +555,18 @@ def test_zero_lab_limit_is_unlimited(tmp_path, monkeypatch):
     finally:
         httpd.shutdown()
         httpd.server_close()
+
+
+def test_journal_directory_survives_lab_departure_and_hub_restart(hub):
+    from efferents.cluster.network import NetworkHub
+    port, ctx, _, cfg, _ = hub
+    owner, _ = _join(port, 'Journal owner')
+    _request(port, '/api/network/labs', method='POST',
+             payload={'lab_id': 'durable-lab', 'domain': 'numerical-analysis', 'hypothesis': VALID_HYP},
+             headers=_bearer(owner))
+    assert {'name': 'Journal of Numerical Analysis'} in ctx.hub.network_evidence()['journals']
+    # Simulate a lab leaving the active registry without deleting any journal evidence.
+    registration = ctx.hub.lab_dir('durable-lab') / 'registration.json'
+    registration.rename(registration.with_suffix('.inactive'))
+    restarted = NetworkHub(cfg, ctx.hub.tracks)
+    assert {'name': 'Journal of Numerical Analysis'} in restarted.network_evidence()['journals']

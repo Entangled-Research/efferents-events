@@ -87,7 +87,7 @@ def _ledger_sum(path: Path) -> float:
     return float(sum(r.get("cost_usd", 0.0) or 0.0 for r in read_jsonl(path)))
 
 
-def cluster_spend(paths: ClusterPaths) -> dict[str, float]:
+def cluster_spend(paths: ClusterPaths, *, precision: int | None = 4) -> dict[str, float]:
     """Every organizer-paid dollar so far, by ledger family."""
     labs = 0.0
     if paths.labs.is_dir():
@@ -96,12 +96,13 @@ def cluster_spend(paths: ClusterPaths) -> dict[str, float]:
     intake = _ledger_sum(paths.intake_ledger)
     reviews = _ledger_sum(paths.reviews_ledger)
     proxy = _ledger_sum(paths.root / "proxy" / "budget.jsonl")
+    display = (lambda value: round(value, precision)) if precision is not None else (lambda value: value)
     return {
-        "labs": round(labs, 4),
-        "intake": round(intake, 4),
-        "reviews": round(reviews, 4),
-        "proxy": round(proxy, 4),
-        "total": round(labs + intake + reviews + proxy, 4),
+        "labs": display(labs),
+        "intake": display(intake),
+        "reviews": display(reviews),
+        "proxy": display(proxy),
+        "total": display(labs + intake + reviews + proxy),
     }
 
 
@@ -161,7 +162,7 @@ class SpendCoordinator:
             if total + pending + estimate > cap:
                 raise BudgetExhausted("participant total", spend=total + pending,
                                       cap=cap, estimate=estimate)
-            cluster = cluster_spend(self.cfg.paths)["total"]
+            cluster = cluster_spend(self.cfg.paths, precision=None)["total"]
             cluster_pending = sum(value for _, _, value in self.pending.values())
             if cluster + cluster_pending + estimate > self.cfg.caps.cluster_total_usd:
                 raise BudgetExhausted("event total", spend=cluster + cluster_pending,
@@ -174,8 +175,8 @@ class SpendCoordinator:
                     raise BudgetExhausted("intake", spend=owner_intake + family_pending,
                                           cap=self.cfg.intake.cap_per_owner_usd, estimate=estimate)
                 intake_pending = sum(value for _, f, value in self.pending.values() if f == family)
-                if cluster_spend(self.cfg.paths)["intake"] + intake_pending + estimate > self.cfg.intake.cap_total_usd:
-                    raise BudgetExhausted("event intake", spend=cluster_spend(self.cfg.paths)["intake"] + intake_pending,
+                if cluster_spend(self.cfg.paths, precision=None)["intake"] + intake_pending + estimate > self.cfg.intake.cap_total_usd:
+                    raise BudgetExhausted("event intake", spend=cluster_spend(self.cfg.paths, precision=None)["intake"] + intake_pending,
                                           cap=self.cfg.intake.cap_total_usd, estimate=estimate)
             key = secrets.token_hex(16)
             self.pending[key] = (ids[0], family, estimate)

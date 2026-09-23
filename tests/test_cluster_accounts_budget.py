@@ -131,3 +131,25 @@ def test_remote_commands_deliver_once_and_ack_without_losing_evidence(tmp_path, 
     assert (submission / "lab" / "evidence.json").read_text() == '{"runs":42}'
     assert pending_commands(ctx.hub, ada, "chemistry", {"command_acks": command_acks(submission / "lab")}) == []
     assert all(item["delivered_at"] for item in json.loads((remote / "commands.json").read_text()))
+
+
+def test_diagnostics_scrubs_provider_and_owner_tokens_and_reports_eval_sync(tmp_path, monkeypatch):
+    from efferents.cluster.diagnostics import diagnostics
+    cfg = make_cluster(tmp_path, monkeypatch)
+    ctx = ClusterContext(cfg, tracks={})
+    owner = ctx.owners.join("Ada")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-private-provider-value")
+    folder = ctx.hub.lab_dir("chem-lab")
+    folder.mkdir()
+    (folder / "registration.json").write_text(json.dumps({"lab_id": "chem-lab", "owner_id": owner.owner_id}))
+    (folder / "heartbeat.json").write_text(json.dumps({
+        "halt_reason": f"Failed Bearer {owner.token} and sk-private-provider-value",
+        "eval_sync_error": "InvalidSnapshot",
+    }))
+    (folder / "owner-evals.json").write_text(json.dumps({"synced_at": "2026-09-23T22:00:00+00:00"}))
+    report = diagnostics(ctx, owner)
+    assert owner.token not in json.dumps(report)
+    assert "sk-private-provider-value" not in json.dumps(report)
+    assert report["labs"][0]["eval_sync_error"] == "InvalidSnapshot"
+    assert report["labs"][0]["eval_synced_at"] == "2026-09-23T22:00:00+00:00"
+    assert report["labs"][0]["eval_snapshot_present"] is True

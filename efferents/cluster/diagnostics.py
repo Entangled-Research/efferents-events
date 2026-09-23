@@ -40,11 +40,16 @@ def diagnostics(context, owner=None) -> dict:
         paused = control_flag(context.paths, f"halt_{lab_id}")
         status = context.hub._status(beat)
         error = scrub(str(beat.get("halt_reason") or ""), credentials)
+        eval_error = scrub(str(beat.get("eval_sync_error") or ""), credentials)
+        snapshot = _read(item["dir"] / "owner-evals.json")
         labs.append({"id": lab_id, "name": reg.get("name") or lab_id,
                      "execution": "participant", "status": status,
                      "last_seen": beat.get("ts"), "spend_usd": beat.get("spend_usd", 0),
                      "runs": beat.get("runs", 0), "pause_reason": context.hub._message_for(lab_id),
-                     "last_error": error or None,
+                     "last_error": error or eval_error or None,
+                     "eval_sync_error": eval_error or None,
+                     "eval_synced_at": snapshot.get("synced_at"),
+                     "eval_snapshot_present": bool(snapshot),
                      "recovery_hint": ("Ask the organizer to lift the hub pause; then resume the existing lab locally."
                                        if paused or context.frozen() else
                                        "In the existing lab folder, run efferents status --submission .; resume with efferents start --submission . --detach. Existing evidence and queues are preserved.")})

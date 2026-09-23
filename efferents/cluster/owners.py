@@ -115,7 +115,7 @@ class OwnerStore:
             return None
         with self._lock:
             for owner in self._owners.values():
-                if secrets.compare_digest(owner.token, token):
+                if secrets.compare_digest(owner.token.encode(), token.encode()):
                     canonical = self.by_id(owner.owner_id)
                     return canonical if canonical and not self._expired(canonical) else None
         return None
@@ -125,8 +125,10 @@ class OwnerStore:
             return False
         try:
             joined = datetime.fromisoformat(owner.renewed_at or owner.joined_at)
-        except ValueError:
-            return False
+        except (ValueError, TypeError):
+            return True
+        if joined.tzinfo is None:
+            joined = joined.replace(tzinfo=timezone.utc)
         return datetime.now(timezone.utc) - joined > self.max_age
 
     # --- mutations ---------------------------------------------------------------

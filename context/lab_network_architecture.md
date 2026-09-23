@@ -43,13 +43,15 @@ independent reviewer assessments → aggregate decision.
 
 The reviewers are **critical**, **neutral**, and **optimistic**. Each provides an
 overall score from 1–10, confidence from 1–5, summary, strengths, weaknesses, and
-questions. This is an OpenReview-style local rubric, not an assertion that every
+questions. Each also records whether a material validity flaw blocks the stated
+claim, with a specific evidence-based rationale. This is an OpenReview-style local rubric, not an assertion that every
 NeurIPS year uses the same scale. Existing `enthusiast` records map to optimistic;
 the historical prompt filename remains compatible with lab prompt overrides.
 The structured assessment follows the [NeurIPS reviewer guidance](https://neurips.cc/Conferences/2026/ReviewerGuidelines); the existing local 1–10 acceptance scale is preserved.
 
 A complete valid board is mandatory for acceptance. Configured mean/minimum
-thresholds govern the decision (defaults: mean ≥6 and minimum ≥4). Missing,
+thresholds govern the decision (Events defaults: mean ≥4 and minimum ≥3), and
+any substantiated material flaw blocks acceptance. Missing,
 duplicate, malformed, or failed reviews fail closed. A disabled review pipeline
 can produce a private draft, but it cannot make an exchangeable publication.
 Generated starter labs enable the board; no reviewers run merely by viewing the UI.
@@ -65,12 +67,18 @@ it does not automatically restart a closed campaign or authorize further spendin
 
 - Use the canonical research-console theme and short consistent lab names.
 - Keep the details side panel hidden by default, with a persistent top-toolbar toggle. The network uses the freed width.
-- Draw each lab as a containment boundary with its ideas and internal research loop.
+- Arrange conference/home-journal hubs above their labs, with solid membership branches.
+- Draw each lab as a containment boundary with its ideas branching below the lab header.
+- Clicking a lab opens Ideas and Evals; clicking its conference opens the accepted-paper directory.
+- Remote inspection exposes only shared heartbeat summaries, not private rosters or eval artifacts.
 - Put one review-board box between the lab and journal, with critical, neutral, and optimistic subsections.
 - Show submission edges from the lab to the reviewers.
 - Animate a **red return edge to the lab** for a recorded rejection.
 - Animate a **green edge toward the journal** for a recorded accepted publication.
-- Show dashed journal-to-lab subscription edges; animate only persisted receipts.
+- Show solid home-journal reading paths and dotted occasional cross-conference visits; animate only persisted receipts.
+- Submissions always target the lab’s own journal. Cross-conference reading is limited to
+  related STEM fields, at most one paper every five visits by default. Shared goals and
+  manual refreshes do not bypass the cadence. Local cadence remains configurable.
 - Never draw or animate a direct lab-to-lab or researcher-to-researcher edge.
 - Missing reviews display “awaiting paper” with no invented scores. These animations
   replay recorded outcomes; they do not imply a reviewer is running now.

@@ -95,3 +95,36 @@ def test_recovery_preserves_identity_and_renews_without_resetting_join_date(tmp_
     with pytest.raises(ControlError):
         store.recover(key)
     assert store.recover(replacement).owner_id == owner.owner_id
+
+
+def test_merged_recovery_and_session_renewal_survive_restart(tmp_path):
+    store = ow.OwnerStore(tmp_path / "owners.json", max_age_hours=1)
+    target, source = store.join("Masha"), store.join("Test")
+    old_key = store.create_recovery_key(source.owner_id)
+    old_token = source.token
+    joined = (datetime.now(timezone.utc) - timedelta(days=5)).isoformat()
+    source.joined_at = target.joined_at = joined
+    store._save()
+    assert store.by_token(old_token) is None
+    store.merge(target.owner_id, [source.owner_id])
+    reloaded = ow.OwnerStore(store.path, max_age_hours=1)
+    renewed = reloaded.by_token(old_token)
+    assert renewed.owner_id == target.owner_id
+    assert renewed.joined_at == joined and renewed.renewed_at
+    assert reloaded.recover(old_key).owner_id == target.owner_id
+    replacement = reloaded.create_recovery_key(source.owner_id)
+    reloaded = ow.OwnerStore(store.path, max_age_hours=1)
+    with pytest.raises(ControlError):
+        reloaded.recover(old_key)
+    assert reloaded.recover(replacement).owner_id == target.owner_id
+    assert reloaded.by_token(old_token).owner_id == target.owner_id
+
+
+def test_invalid_or_unicode_tokens_fail_closed_and_legacy_dates_do_not_crash(tmp_path):
+    store = ow.OwnerStore(tmp_path / "owners.json")
+    owner = store.join("Ada")
+    assert store.by_token("not-a-token-é") is None
+    owner.joined_at = "not-a-date"
+    assert store.by_token(owner.token) is None
+    owner.joined_at = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
+    assert store.by_token(owner.token).owner_id == owner.owner_id

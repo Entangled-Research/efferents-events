@@ -63,7 +63,7 @@ class ClusterContext:
         if not self.join_limiter.allow(ip or "unknown"):
             raise ControlError("Too many join attempts; wait a minute.", status=429)
         supplied = (code or "").strip()
-        if not supplied or not secrets.compare_digest(supplied, self.cfg.join_code):
+        if not supplied or not secrets.compare_digest(supplied.encode(), self.cfg.join_code.encode()):
             raise ControlError("That join code is not right.", status=403)
         owner = self.owners.join(name, ip=ip)
         write_event(self.paths, "join", owner_id=owner.owner_id, name=owner.name)

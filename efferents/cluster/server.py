@@ -133,7 +133,7 @@ class ClusterHandler(DashboardHandler):
     def _require_admin(self) -> None:
         expected = os.environ.get("EFFERENTS_ADMIN_TOKEN", "")
         supplied = self._bearer() or ""
-        if not expected or not supplied or not secrets.compare_digest(expected, supplied):
+        if not expected or not supplied or not secrets.compare_digest(expected.encode(), supplied.encode()):
             raise ControlError("Organizer authentication required.", status=403)
 
     def _extra_get(self, path: str) -> bool:
@@ -169,7 +169,7 @@ class ClusterHandler(DashboardHandler):
             return True
         remote = self._remote_lab_id(path)
         if remote is not None:
-            self._require_viewer()
+            owner = self._require_joined()
             lab_id, kind = remote
             self._send_json(self.cluster.hub.lab_view(lab_id, kind, owner_id=self._session().owner_id))
             return True
