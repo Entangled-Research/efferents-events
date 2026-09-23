@@ -41,14 +41,17 @@ def test_side_panels_collapse():
 
 def test_event_network_shows_per_lab_spend_and_keeps_owner_cap_separate():
     assert "function labSpendMarkup(lab)" in JS
-    assert "if (!isCluster() || !lab.budget) return \"\";" in JS
-    assert "LAB MODEL SPEND · ESTIMATE" in JS
-    assert "lab cap`" in JS
-    assert "Above lab cap" in JS
-    assert "proxy_spend_usd" in JS
-    assert "proxy_cap_usd" in JS
-    assert "your event spend" in JS
-    assert "clusterNetwork && isJoined()" in JS
-    assert "!clusterNetwork && portfolioState.labs.length > 0" in JS
-    assert "network-lab-spend-track" in CSS
-    assert ".network-lab-spend.over-cap .network-lab-spend-track span { background: var(--terracotta); }" in CSS
+    assert "LAB SPEND" in JS
+    assert "your total spend" in JS
+    assert "owner_budget" in JS
+    assert "lab cap`" not in JS
+    assert "Above lab cap" not in JS
+    assert 'id="selected-lab-spend"' in HTML
+
+
+def test_returning_identity_and_diagnostics_are_available():
+    for element in ("login-form", "recovery-panel", "copy-recovery", "diagnostics-view",
+                    "refresh-diagnostics", "copy-diagnostics", "diagnostics-report"):
+        assert f'id="{element}"' in HTML
+    assert 'getJSON("/api/diagnostics")' in JS
+    assert 'postJSON("/api/login"' in JS

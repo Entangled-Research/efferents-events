@@ -23,6 +23,7 @@
       <a href="#connect" data-route-link="connect" data-local-only>Connect</a>
       <a href="#join" data-route-link="join" data-cluster-only hidden>Connect a lab</a>
       <a href="#network" data-route-link="network">Network</a>
+      <a href="#diagnostics" data-route-link="diagnostics" data-cluster-only hidden>Diagnostics</a>
     </nav>
 
     <div class="topbar-right">
@@ -32,6 +33,7 @@
       </span>
       <div class="budget-meta" id="budget-meta">
         <span id="budget">—</span>
+        <span id="selected-lab-spend"></span>
         <span class="budget-track" aria-hidden="true"><span id="budget-fill"></span></span>
       </div>
     </div>
@@ -81,8 +83,35 @@
           One join code for the room. Pick the name other labs will see next to yours.
         </p>
       </div>
+      <section class="panel join-panel" id="login-panel" aria-labelledby="login-title">
+        <header class="panel-header"><h2 id="login-title">Returning? Sign in</h2></header>
+        <div class="join-body">
+          <p class="hint">Use your saved recovery key, or a still-valid network token or owner link. This restores your identity and labs in any browser, including incognito.</p>
+          <form id="login-form" class="join-form">
+            <label class="field-label" for="login-credential">Recovery key or token</label>
+            <input id="login-credential" type="password" autocomplete="current-password" maxlength="2048" required>
+            <button class="primary-button" type="submit">Sign in</button>
+          </form>
+          <div id="login-message" class="form-message" role="status"></div>
+          <p class="hint">Lost your key and token? Ask the event organizer to recover your existing identity. A name alone cannot prove ownership.</p>
+        </div>
+      </section>
+      <section class="panel join-panel" id="recovery-panel" hidden>
+        <header class="panel-header"><h2>Keep your identity</h2></header>
+        <div class="join-body">
+          <p class="hint">Save your recovery key in a password manager before leaving. It works after cookies are cleared or your 48-hour token expires, and renews access to the same labs and budget. Anyone with this key can act as you. It stays valid until replaced.</p>
+          <button id="create-recovery" class="compact-button" type="button">Create recovery key</button>
+          <div id="recovery-secret" hidden>
+            <code id="recovery-key" class="instruction-line"></code>
+            <button id="copy-recovery" class="compact-button" type="button">Copy recovery key</button>
+            <p class="hint">Save this now. The server cannot show it again.</p>
+          </div>
+          <div id="recovery-message" class="form-message" role="status"></div>
+          <button id="sign-out" class="compact-button" type="button">Sign out of this browser</button>
+        </div>
+      </section>
       <section class="panel join-panel" id="join-panel" aria-labelledby="join-form-title">
-        <header class="panel-header"><h2 id="join-form-title">Who is steering?</h2></header>
+        <header class="panel-header"><h2 id="join-form-title">First time? Create an identity</h2></header>
         <div class="join-body">
           <form id="join-form" class="join-form">
             <label class="field-label" for="join-code">Join code</label>
@@ -125,14 +154,14 @@
           <div class="join-body">
             <p class="hint">
               The harness sharpens your claim until it can fail, builds the lab, and starts it.
-              Your lab appears on the network within a minute. From then on, its direction is
-              set in the lab folder, not in the browser:
+              Your lab appears on the network within a minute. Open your lab to steer, pause or
+              resume it in the browser, or use these commands from its folder:
             </p>
             <pre class="instruction-line">efferents steer --submission . "Prioritise the small buckets."
 efferents steer --submission . --pause     # or --resume
 efferents stop  --submission .</pre>
             <p class="hint">
-              Come back as yourself with your owner link. Anyone with it can act as you.
+              Use your owner link while your token is valid. Save a recovery key above for later access to the same labs and budget.
             </p>
             <code id="owner-link" class="instruction-line"></code>
             <button id="copy-owner-link" class="compact-button" type="button">Copy owner link</button>
@@ -346,6 +375,43 @@ efferents stop  --submission .</pre>
         <header class="panel-header"><h1 id="lab-ideas-title">Ideas</h1><span>Each idea has its own eval suite</span></header>
         <div id="lab-ideas-list"></div>
       </section>
+      <div class="steer-layout">
+        <section class="panel">
+          <header class="panel-header">
+            <h2>Steer</h2>
+            <span id="steer-runtime-state" class="header-meta">queued locally</span>
+          </header>
+          <form id="steer-form" class="steer-form">
+            <label for="steer-message">Research instruction</label>
+            <textarea id="steer-message" name="message" maxlength="4000" required
+              placeholder="Example: Verify the current best result on a held-out seed before broadening the sweep."></textarea>
+            <div class="steer-options">
+              <label for="steer-mode">
+                Researcher mode
+                <select id="steer-mode" name="mode">
+                  <option value="auto">Auto-select</option>
+                  <option value="refine">Refine</option>
+                  <option value="moonshot">Moonshot</option>
+                  <option value="devils_advocate">Devil’s advocate</option>
+                  <option value="escape_to_code">Escape to code</option>
+                </select>
+              </label>
+              <span class="char-count"><span id="steer-count">0</span> / 4000</span>
+              <button class="primary-button" type="submit">Record direction</button>
+            </div>
+          </form>
+          <div id="steer-message-state" class="form-message" role="status" aria-live="polite"></div>
+        </section>
+
+        <section class="panel steering-history-panel">
+          <header class="panel-header">
+            <h2>Direction log</h2>
+            <span id="steering-count" class="header-meta">0 records</span>
+          </header>
+          <div id="steering-history" class="steering-history"></div>
+        </section>
+      </div>
+
       <div id="idea-evaluation" hidden>
         <nav id="idea-breadcrumb" aria-label="Idea navigation"></nav>
         <section class="panel idea-suite-panel" aria-labelledby="idea-suite-title">
@@ -445,43 +511,6 @@ efferents stop  --submission .</pre>
           </table>
         </div>
       </section>
-
-      <div class="steer-layout">
-        <section class="panel">
-          <header class="panel-header">
-            <h2>Steer</h2>
-            <span id="steer-runtime-state" class="header-meta">queued locally</span>
-          </header>
-          <form id="steer-form" class="steer-form">
-            <label for="steer-message">Research instruction</label>
-            <textarea id="steer-message" name="message" maxlength="4000" required
-              placeholder="Example: Verify the current best result on a held-out seed before broadening the sweep."></textarea>
-            <div class="steer-options">
-              <label for="steer-mode">
-                Researcher mode
-                <select id="steer-mode" name="mode">
-                  <option value="auto">Auto-select</option>
-                  <option value="refine">Refine</option>
-                  <option value="moonshot">Moonshot</option>
-                  <option value="devils_advocate">Devil’s advocate</option>
-                  <option value="escape_to_code">Escape to code</option>
-                </select>
-              </label>
-              <span class="char-count"><span id="steer-count">0</span> / 4000</span>
-              <button class="primary-button" type="submit">Record direction</button>
-            </div>
-          </form>
-          <div id="steer-message-state" class="form-message" role="status" aria-live="polite"></div>
-        </section>
-
-        <section class="panel steering-history-panel">
-          <header class="panel-header">
-            <h2>Direction log</h2>
-            <span id="steering-count" class="header-meta">0 records</span>
-          </header>
-          <div id="steering-history" class="steering-history"></div>
-        </section>
-      </div>
 
       <section id="evidence-panel" class="panel evidence-panel" hidden
                aria-labelledby="evidence-title">
@@ -605,6 +634,20 @@ efferents stop  --submission .</pre>
           </section>
         </div>
       </section>
+    <section id="diagnostics-view" class="app-view" data-route-view="diagnostics" hidden>
+      <section class="panel" aria-labelledby="diagnostics-title">
+        <header class="panel-header"><h1 id="diagnostics-title">Your lab diagnostics</h1><span id="diagnostics-meta" class="header-meta">Not loaded</span></header>
+        <div class="diagnostics-body">
+          <p>Copy this report when asking for help during the event. Your labs, evidence and intake sessions stay in place while you troubleshoot.</p>
+          <div class="diagnostics-actions"><button id="refresh-diagnostics" class="compact-button" type="button">Refresh report</button><button id="copy-diagnostics" class="compact-button" type="button" disabled>Copy report</button></div>
+          <div id="diagnostics-message" class="form-message" role="status"></div>
+          <div id="diagnostics-summary" class="diagnostics-summary"></div>
+          <div id="diagnostics-labs"></div>
+          <details><summary>Full report · no credentials</summary><pre id="diagnostics-report" class="instruction-line"></pre></details>
+        </div>
+      </section>
+    </section>
+
     <section id="publication-view" class="app-view" data-route-view="publication" hidden>
       <article class="panel publication-reader" aria-labelledby="publication-title">
         <header class="panel-header">
@@ -612,6 +655,7 @@ efferents stop  --submission .</pre>
           <a href="#network">Back to network</a>
         </header>
         <div id="publication-meta" class="exchange-record-meta"></div>
+        <aside id="publication-usage" class="publication-usage" aria-label="Experimental use and provenance" hidden></aside>
         <div id="publication-manuscript" class="published-manuscript-text publication-manuscript" tabindex="0"></div>
       </article>
     </section>

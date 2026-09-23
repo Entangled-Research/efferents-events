@@ -21,7 +21,7 @@ def test_portfolio_and_map_present():
     assert '"/api/labs/select"' not in JS  # selection is per browser, never server-wide
     assert 'id="lab-rail-toggle"' not in HTML
     assert 'id="lab-tabs"' in HTML
-    assert 'getElementById("lab-tabs")' in JS and 'data-tab="${esc(labId)}"' in JS
+    assert 'getElementById("lab-tabs")' in JS and 'data-close-href="${esc(item.href)}"' in JS
 
 
 def test_map_is_pan_zoom_viewport():
@@ -51,7 +51,7 @@ def test_evidence_panels_present():
     for needle in ('id="metric-eligible"', 'id="metric-median"', 'id="metric-iqr"',
                    'id="evidence-panel"'):
         assert needle in HTML, needle
-    assert '"/api/evidence"' in JS
+    assert '/ideas/${encodeURIComponent(routeIdeaId())}' in JS
     assert ".evidence-gallery" in CSS
 
 
@@ -62,7 +62,15 @@ def test_verdict_belongs_to_idea():
 
 
 def test_journal_panel_minimal():
-    for removed in ("Journal publications", "Labs communicate only", "exchange-count",
+    for removed in ("Labs communicate only", "exchange-count",
                     "exchange-explanation"):
         assert removed not in HTML and removed not in JS, removed
     assert 'id="exchange-panel"' in HTML
+
+
+def test_ideas_branch_inside_a_lab_without_clipping():
+    assert 'class="lab-idea-branches"' in JS
+    assert 'href="${esc(ideaHref(lab.lab_id, idea.id))}"' in JS
+    assert "card.offsetHeight + 168" in JS
+    assert '.network-lab-boundary { height: auto; }' in CSS
+    assert '.lab-idea-branch::before' in CSS

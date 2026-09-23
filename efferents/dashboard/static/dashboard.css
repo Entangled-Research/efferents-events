@@ -2771,7 +2771,7 @@ pre.instruction-line {
 }
 /* Labs are isolated; only reviewed papers cross the journal boundary. */
 .network-lab-boundary, .network-review-board { position: absolute; transform: translateX(-50%); box-sizing: border-box; background: var(--panel); border: 1px solid var(--signal); padding: 12px; }
-.network-lab-boundary { height: 244px; pointer-events: auto; }
+.network-lab-boundary { min-height: 200px; pointer-events: auto; }
 .network-lab-boundary .lab-identity { display: flex; justify-content: space-between; align-items: center; padding: 0 0 8px; }
 .network-lab-boundary .lab-identity strong { font-size: 14px; }
 .network-lab-boundary .lab-identity[aria-pressed="true"] { color: var(--signal); text-decoration: underline; text-underline-offset: 4px; }
@@ -2849,7 +2849,7 @@ pre.instruction-line {
 .living-network .network-nodes { pointer-events: none; }
 .living-network .network-lab-boundary, .living-network .network-review-board, .living-network .shared-journal-node { pointer-events: auto; }
 
-.network-lab-boundary { height: 244px; }
+.network-lab-boundary { height: auto; }
 
 /* A lab contains ideas; each idea owns its evaluation surface. */
 .idea-directory-row { padding: 18px; border-top: 1px solid var(--line); }
@@ -2864,3 +2864,38 @@ pre.instruction-line {
 .idea-eval-graphs article { border-top: 1px solid var(--line); padding: 12px 0; }
 .idea-eval-graphs h3 { font: 12px var(--mono); }
 .idea-eval-graphs svg { width: 100%; }
+
+/* Every idea remains visible in its lab boundary and feeds the common loop. */
+.network-lab-boundary .lab-identity { gap: 12px; text-decoration: none; }
+.network-lab-boundary .lab-identity strong { overflow-wrap: anywhere; }
+.network-lab-boundary .lab-identity small { flex-shrink: 0; font: 10px/1.4 var(--mono); }
+.network-lab-boundary.mine { border-left-width: 3px; }
+.network-lab-owner { min-height: 15px; color: var(--muted); font: 10px/1.4 var(--mono); margin-bottom: 7px; }
+.network-lab-boundary .lab-idea-branches { margin: 12px 0 10px 12px; padding: 0 0 5px 16px; border-left: 1px solid var(--signal); }
+.network-lab-boundary .lab-idea-branches .lab-idea-label { position: static; display: block; margin-bottom: 6px; }
+.lab-idea-branch { position: relative; display: grid; gap: 4px; margin-bottom: 8px; padding: 7px 9px; border: 1px solid var(--signal); color: var(--signal); font: 11px/1.4 var(--mono); text-decoration: none; overflow-wrap: anywhere; }
+.lab-idea-branch::before { content: ""; position: absolute; right: 100%; top: 18px; width: 17px; border-top: 1px solid var(--signal); }
+.lab-idea-branch small { font: 9px/1.3 var(--mono); color: var(--muted); }
+.lab-idea-branch.falsified { border-color: var(--terracotta); }
+.lab-idea-branch.falsified small { color: var(--terracotta); }
+.lab-idea-branch:hover, .lab-idea-branch:focus-visible { outline: 1px solid var(--signal); outline-offset: 2px; }
+.network-lab-boundary .internal-research { position: relative; padding-top: 7px; }
+.network-lab-boundary .internal-research::before { content: "↓"; position: absolute; left: 8px; top: -17px; color: var(--signal); font: 14px var(--mono); }
+#selected-lab-spend:empty { display: none; }
+#selected-lab-spend { color: var(--muted); }
+
+.diagnostics-body { padding: 16px; }
+.diagnostics-body > p { margin-top: 0; }
+.diagnostics-actions, .diagnostics-summary { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin: 12px 0; }
+.diagnostics-summary { padding: 12px 0; border-block: 1px solid var(--line); font: 12px/1.5 var(--mono); }
+.diagnostic-lab { padding: 12px 0; border-bottom: 1px solid var(--line); }
+.diagnostic-lab h2 { font: 600 14px/1.5 var(--mono); margin: 0 0 7px; }
+.diagnostic-lab p, .diagnostic-lab pre { margin: 6px 0; font: 11px/1.5 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+.diagnostic-error { color: var(--terracotta); }
+.diagnostics-body details { margin-top: 16px; font: 12px/1.5 var(--mono); }
+#diagnostics-report { max-height: 55vh; overflow: auto; white-space: pre-wrap; }
+
+.publication-usage { margin: 0 18px; }
+.publication-uses { padding: 10px 0; border-top: 1px solid var(--signal); font: 11px/1.6 var(--mono); overflow-wrap: anywhere; }
+.publication-uses > strong { color: var(--signal); }
+.publication-uses p { margin: 7px 0; }
