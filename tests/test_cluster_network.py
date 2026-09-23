@@ -173,17 +173,28 @@ def test_register_heartbeat_push_pull_and_portfolio(hub):
     assert control["remote"] is True and control["owner_name"] == "Ada"
     status, body, _ = _request(port, "/api/labs/ada-lab/steer", method="POST",
                                payload={"message": "x"}, headers=ada_hdrs)
-    assert status == 409 and "own" in body["error"]
+    assert status == 200 and body["queued"] == "steer"
+    command_id = body["command_id"]
+    assert _request(port, "/api/labs/ada-lab/steer", method="POST",
+                    payload={"message": "hijack"}, headers=bob_hdrs)[0] == 403
+    status, reply, _ = _request(port, "/api/network/labs/ada-lab/heartbeat", method="POST",
+                                payload=beat, headers=A)
+    assert status == 200 and reply["commands"][0]["id"] == command_id
+    status, reply, _ = _request(port, "/api/network/labs/ada-lab/heartbeat", method="POST",
+                                payload={**beat, "command_acks": [command_id]}, headers=A)
+    assert status == 200 and reply["commands"] == []
 
     # Journal push lands in the hub and, after a sync, in the feed.
     journal = ("# Journal\n\n<!-- ENTRIES BELOW -->\n\n## 2026-09-20 14:00 UTC — c1\n"
-               "**Lab**: ada-lab\n**Headline**: Loss fell under 0.1\n")
+               "**Lab**: ada-lab\n**Headline**: Loss fell under 0.1\n**Scores**: critical=6, neutral=7, optimistic=8\n")
     status, pushed, _ = _request(port, "/api/network/labs/ada-lab/journal", method="POST",
                                  payload={"journal": journal, "papers": {"c1": "# paper c1\n"}}, headers=A)
     assert pushed["entries_added"] == 1 and pushed["papers_stored"] == 1
     status, pushed, _ = _request(port, "/api/network/labs/ada-lab/journal", method="POST",
                                  payload={"journal": journal}, headers=A)
     assert pushed["entries_added"] == 0
+    _request(port, "/api/network/labs", method="POST",
+             payload={**reg, "lab_id": "bob-lab", "host": "bobs-pc"}, headers=B)
     from efferents.cluster import sync
     summary = sync.sync_once(cfg, reviews=False)
     assert summary["new_entries"] == 1
@@ -196,7 +207,7 @@ def test_register_heartbeat_push_pull_and_portfolio(hub):
 
     # Reviews written for the lab are pulled by its owner only.
     (cfg.paths.root / "network" / "labs" / "ada-lab" / "paper" / "incoming_reviews.md").write_text("# r\n")
-    assert _request(port, "/api/network/labs/ada-lab/reviews", headers=A)[1]["raw"] == "# r\n"
+    assert _request(port, "/api/network/labs/ada-lab/reviews", headers=A)[1] == {}
     assert _request(port, "/api/network/labs/ada-lab/reviews", headers=B)[0] == 403
 
     # A cluster-wide pause reaches the laptop through the next heartbeat.

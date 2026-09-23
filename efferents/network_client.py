@@ -111,20 +111,22 @@ class NetworkClient:
         tmp = paper_dir / ".hub_feed.md"
         paper_dir.mkdir(parents=True, exist_ok=True)
         tmp.write_text(text)
-        return federation.consume_external_journal(
+        result = federation.consume_external_journal(
             source=tmp, out_path=paper_dir / "external_journal.md", our_lab_id=lab_id,
         )
+        # fsync before acknowledging; a failed network ACK retries on the next pull.
+        with (paper_dir / "external_journal.md").open("rb") as stream:
+            os.fsync(stream.fileno())
+        from efferents.journal.reviews import PERSONAS, review_scores
+        entries = federation.parse_journal_entries((paper_dir / "external_journal.md").read_text())
+        received = [f"journal:{e['lab_id']}:{e['campaign_id']}" for e in entries
+                    if e.get("lab_id") != lab_id and set(review_scores(e["body"])) == set(PERSONAS)]
+        self._request("POST", f"/api/network/labs/{lab_id}/receipts", {"received": received[-1000:]})
+        return result
 
     def pull_reviews(self, lab_id: str, paper_dir: Path) -> bool:
-        text = self._request("GET", f"/api/network/labs/{lab_id}/reviews")
-        if not isinstance(text, str) or not text.strip():
-            return False
-        target = paper_dir / "incoming_reviews.md"
-        paper_dir.mkdir(parents=True, exist_ok=True)
-        if target.is_file() and target.read_text() == text:
-            return False
-        target.write_text(text)
-        return True
+        # Direct reviews were superseded by accepted journal publications.
+        return False
 
     def due_heartbeat(self) -> bool:
         return time.monotonic() - self._last_heartbeat >= self.heartbeat_s

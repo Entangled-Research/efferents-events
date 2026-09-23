@@ -31,8 +31,10 @@ class FakeHub:
             return self._json({"ok": True, "pause": self.pause, "message": "paused by hub" if self.pause else None})
         if path.endswith("/journal"):
             return self._json({"ok": True, "entries_added": len(body.get("papers", {})), "papers_stored": 0})
-        if path == "/api/network/feed":
+        if path.startswith("/api/network/feed?"):
             return self._text(self.feed)
+        if path.endswith("/receipts"):
+            return self._json({"ok": True})
         if path.endswith("/reviews"):
             return self._text(self.reviews)
         raise AssertionError(path)
@@ -75,7 +77,7 @@ def test_client_register_heartbeat_push_pull(tmp_path):
     assert pulled["n_added"] == 1 and pulled["n_skipped_self"] == 1
     assert "theirs" in (paper / "external_journal.md").read_text()
     hub.reviews = "# reviews\n"
-    assert client.pull_reviews("my-lab", paper) is True
+    assert client.pull_reviews("my-lab", paper) is False
     assert client.pull_reviews("my-lab", paper) is False  # unchanged
 
 

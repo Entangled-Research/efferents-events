@@ -160,7 +160,7 @@ def _format_recent_runs(rows: list[dict[str, Any]], db_path) -> str:
 
 
 def _read_default_config() -> str:
-    p = Path("config/default.yaml")
+    p = Path(_lab.get_config().executor.config_template)
     return p.read_text() if p.exists() else "(missing)"
 
 
@@ -635,7 +635,7 @@ def _shared_static_block(*, vision: str, decisions: str, charter: str = "") -> s
         "## Vision\n\n" + vision
         + "\n\n## Decisions\n\n" + decisions
         + charter_block
-        + "\n\n## Default config (config/default.yaml)\n\n"
+        + "\n\n## Current executor config template\n\n"
         + "Use ONLY keys that appear in this YAML when emitting `config_overrides`. "
         + "Dotted paths must match this structure exactly (e.g., `eval.centering`, "
         + "not `data.centering`).\n\n```yaml\n"
@@ -792,21 +792,7 @@ def _supervisor_brief(
         )
     )
 
-    # Reviews sibling labs wrote about OUR entries (cluster sync appends them
-    # to paper/incoming_reviews.md). Bounded so it cannot bloat the brief.
-    incoming = _federation.recent_external_entries(
-        paper_dir / "incoming_reviews.md", days=2, max_n=3,
-    )
-    if incoming:
-        external_block += (
-            "\n\n## Cross-lab reviews of our work (last 2 days)\n\n"
-            + "\n".join(
-                f"- from `{e.get('lab_id','?')}` on `{e['campaign_id']}`: "
-                f"{(e.get('headline') or '(no headline)')[:160]}"
-                for e in incoming
-            )
-            + "\n\nTreat a reviewer's suggestion as a candidate proposal, not an order."
-        )
+    # External critiques travel as accepted publications, never direct review messages.
 
     # External claims we've cited as FOUNDATIONAL but haven't yet reproduced.
     # Discipline: a paper our hypothesis depends on must be reproduced before
@@ -1377,6 +1363,7 @@ def propose(
                 "campaign_id": cid,
                 "why": dep.get("why", ""),
                 "proposal_name": p.get("name", "?"),
+                "local_campaign_id": p.get("campaign_id"),
                 "student_id": student_id,
             })
 

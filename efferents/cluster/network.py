@@ -53,6 +53,12 @@ def _write_json(path: Path, data: dict) -> None:
     os.replace(tmp, path)
 
 
+def participant_wheel() -> Path | None:
+    configured = os.environ.get("EFFERENTS_INSTALL_WHEEL")
+    path = Path(configured) if configured else None
+    return path if path and path.is_file() and path.suffix == ".whl" else None
+
+
 class NetworkHub:
     def __init__(self, cfg: ClusterConfig, tracks: dict[str, Track]):
         self.cfg = cfg
@@ -77,7 +83,7 @@ class NetworkHub:
 
     def require_owner(self, owner: Owner, lab_id: str) -> dict:
         reg = self.registration(lab_id)
-        if reg.get("owner_id") != owner.owner_id:
+        if reg.get("owner_id") not in owner.identity_ids:
             raise ControlError("Only this lab's owner can report for it.", status=403)
         return reg
 
@@ -109,16 +115,22 @@ class NetworkHub:
                 "ANTHROPIC_API_KEY": owner.token,
                 "ANTHROPIC_BASE_URL": f"{url}/proxy/anthropic",
             }
+        wheel = participant_wheel()
+        bundle = ({"wheel_url": f"{url}/api/network/package", "filename": wheel.name,
+                   "sha256": hashlib.sha256(wheel.read_bytes()).hexdigest()} if wheel else {})
         return {
             "hub_url": url,
             "owner": owner.public(),
             "install": {
+                **bundle,
                 "repo_url": self.cfg.network.repo_url,
                 "ref": self.cfg.network.install_ref,
                 "pip_spec": f"git+{self.cfg.network.repo_url}.git@{self.cfg.network.install_ref}",
             },
             "env": {
                 **model_env,
+                "EFFERENTS_GENERATE_EVAL_SUITE": "1",
+                "EFFERENTS_OWNER_EVAL_SYNC": "1",
                 "EFFERENTS_NETWORK_URL": url,
                 "EFFERENTS_NETWORK_TOKEN": owner.token,
                 "OMP_NUM_THREADS": "1",
@@ -175,10 +187,10 @@ class NetworkHub:
         with self._lock:
             d = self.lab_dir(lab_id)
             existing = _read_json(d / "registration.json")
-            if existing and existing.get("owner_id") != owner.owner_id:
+            if existing and existing.get("owner_id") not in owner.identity_ids:
                 raise ControlError(f"Lab id {lab_id!r} is taken by another participant.", status=409)
             owned = [p.name for p in self.root.iterdir()
-                     if p.is_dir() and _read_json(p / "registration.json").get("owner_id") == owner.owner_id]
+                     if p.is_dir() and _read_json(p / "registration.json").get("owner_id") in owner.identity_ids]
             limit = self.cfg.labs.max_per_owner
             if not existing and limit > 0 and len(owned) >= limit:
                 raise ControlError(f"You already registered {len(owned)} lab(s); the limit is "
@@ -187,6 +199,7 @@ class NetworkHub:
                 "lab_id": lab_id,
                 "display_name": existing.get("display_name"),
                 "owner_id": owner.owner_id,
+                "original_owner_id": existing.get("original_owner_id") or existing.get("owner_id") or owner.owner_id,
                 "owner_name": owner.name,
                 "domain": str(payload.get("domain") or "unspecified")[:120],
                 "track": (str(payload.get("track"))[:64] if payload.get("track") else None),
@@ -232,6 +245,23 @@ class NetworkHub:
             except (ValueError, TypeError) as exc:
                 raise ControlError("Invalid eval snapshot", status=422) from exc
             snapshot["synced_at"] = beat["ts"]
+        if isinstance(payload.get("journal_uses"), list):
+            from efferents.agents.conference import _rows
+            received = {row["finding_id"] for row in _rows(
+                self.paths.shared_journal / "subscriptions" / lab_id / "receipts.jsonl")}
+            uses = []
+            for use in payload["journal_uses"][-100:]:
+                if (not isinstance(use, dict) or not isinstance(use.get("publication_id"), str)
+                        or use["publication_id"] not in received
+                        or use["publication_id"] != f"journal:{use.get('lab_id')}:{use.get('campaign_id')}"
+                        or not isinstance(use.get("run_ids"), list)
+                        or not use["run_ids"] or not isinstance(use.get("why"), str)):
+                    continue
+                uses.append({key: use.get(key) for key in (
+                    "id", "ts", "publication_id", "lab_id", "campaign_id", "journal", "domain",
+                    "local_campaign_id", "student_id", "proposal_name", "run_ids", "use_kind", "why",
+                    "reproduction_status", "source_sha256", "foundational")})
+            _write_json(d / "journal-uses.json", {"uses": uses})
         _write_json(d / "heartbeat.json", beat)
         if snapshot is not None:
             _write_json(d / "owner-evals.json", snapshot)
@@ -241,8 +271,10 @@ class NetworkHub:
                 "cited": [e for e in (edges.get("cited") or []) if isinstance(e, dict)][:200],
                 "reproduced": [e for e in (edges.get("reproduced") or []) if isinstance(e, dict)][:200],
             })
+        from efferents.cluster.remote_control import pending_commands
         return {
             "ok": True,
+            "commands": pending_commands(self, owner, lab_id, payload),
             "pause": control_flag(self.paths, "pause_all") or is_frozen(self.paths)
             or control_flag(self.paths, f"halt_{lab_id}"),
             "frozen": is_frozen(self.paths),
@@ -317,21 +349,32 @@ class NetworkHub:
         from efferents.cluster import subscriptions
         if lab_id is None:
             owned = [item["registration"]["lab_id"] for item in self.list_labs()
-                     if item["registration"].get("owner_id") == owner.owner_id]
+                     if item["registration"].get("owner_id") in owner.identity_ids]
             if len(owned) != 1:
                 raise ControlError("Specify the owned lab_id for its journal feed.", status=400)
             lab_id = owned[0]
         self.require_owner(owner, lab_id)
         directory = self.paths.shared_journal / "subscriptions" / lab_id
         content = subscriptions.feed(directory)
-        subscriptions.acknowledge(directory, {subscriptions.publication_id(entry)
-            for entry in federation.parse_journal_entries(content)})
         return content
+
+    def acknowledge_feed(self, owner: Owner, lab_id: str, payload: dict) -> dict:
+        self.require_owner(owner, lab_id)
+        ids = payload.get("received")
+        if not isinstance(ids, list) or len(ids) > 1000 or not all(isinstance(x, str) for x in ids):
+            raise ControlError("Send received publication IDs (at most 1000).", status=400)
+        from efferents.cluster import subscriptions
+        directory = self.paths.shared_journal / "subscriptions" / lab_id
+        count = subscriptions.acknowledge(directory, set(ids))
+        if count:
+            write_event(self.paths, "journal_receipt", owner_id=owner.owner_id, lab_id=lab_id,
+                        publications=count)
+        return {"ok": True, "receipts_added": count}
 
     def reviews_for(self, owner: Owner, lab_id: str) -> str:
         self.require_owner(owner, lab_id)
-        path = self.lab_dir(lab_id) / "paper" / "incoming_reviews.md"
-        return path.read_text() if path.is_file() else ""
+        # Historical direct reviews remain on disk, but are not scientific transport.
+        return ""
 
     # --- reads for the dashboard -------------------------------------------------
 
@@ -437,7 +480,13 @@ class NetworkHub:
                 updated[row["journal"]] = {"name": row["journal"]}
             if updated != catalog:
                 _write_json(catalog_path, updated)
-        return {"findings": findings, "journals": list(updated.values()),
+        known = {row["id"] for row in findings}
+        uses = [{**use, "source": use["lab_id"], "target": lab_id,
+                 "finding_id": use["publication_id"]}
+                for lab_id, item in labs.items()
+                for use in _read_json(item["dir"] / "journal-uses.json").get("uses", [])
+                if use.get("publication_id") in known and use.get("run_ids")]
+        return {"findings": findings, "journals": list(updated.values()), "journal_uses": uses,
                 "observations": observations(self.paths.shared_journal / "subscriptions")}
 
     def portfolio_rows(self) -> list[dict]:
@@ -502,13 +551,15 @@ class NetworkHub:
             return {"student_id": student_id, "name": idea.get("name", student_id),
                     "focus": idea.get("focus", ""), "suite": plan, "detail_unavailable": True}
         if kind == "control":
+            from efferents.cluster.remote_control import command_history
             return {
                 "connected": True, "lab_id": lab_id, "domain": reg.get("domain"),
                 "submission_dir": None, "lab_root": None, "source": reg.get("host") or "remote lab",
                 "repository": None, "readme_path": None, "status": self._status(beat),
                 "owner_paused": (beat.get("status") == "paused"), "owner_id": reg.get("owner_id"),
                 "owner_name": reg.get("owner_name"), "track": reg.get("track"), "remote": True,
-                "has_api_key": True, "paused_demo": False, "modes": [], "steering": [],
+                "has_api_key": True, "paused_demo": False, "modes": [],
+                "steering": command_history(self, lab_id) if owner_id == reg.get("owner_id") else [],
                 "contract": {"readme": False, "lab_yaml": True, "hypothesis": True},
             }
         if kind == "state":

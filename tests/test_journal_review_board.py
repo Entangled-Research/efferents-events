@@ -7,7 +7,7 @@ from efferents.journal.reviews import is_publication
 
 
 def test_exactly_three_valid_independent_scores_are_required():
-    reviews = [Review(p, score, "Evidence-based review", confidence=4)
+    reviews = [Review(p, score, "Evidence-based review", confidence=4, material_flaw=False)
                for p, score in zip(PERSONAS, [6, 7, 8])]
     assert decide(reviews, accept_mean=6, accept_min=4)["accept"]
     for invalid in (reviews[:2], reviews + reviews[:1],

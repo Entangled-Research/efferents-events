@@ -32,7 +32,7 @@ def _lab(cfg, lab_id, domain, *, journal_entries=()):
         text = "# Journal\n\n<!-- ENTRIES BELOW -->\n"
         for cid, headline in journal_entries:
             text += ("\n## 2026-09-20 14:00 UTC — " + cid + f"\n**Lab**: {lab_id}\n"
-                     f"**Headline**: {headline}\n")
+                     f"**Headline**: {headline}\n**Scores**: critical=6, neutral=7, optimistic=8\n")
             (sub / "paper").mkdir(exist_ok=True)
             (sub / "paper" / f"{cid}.md").write_text(f"# paper {cid}\n\nbody\n")
         (sub / "paper").mkdir(exist_ok=True)
@@ -74,11 +74,11 @@ def cluster(tmp_path, monkeypatch):
 def test_collect_and_distribute_are_idempotent(cluster):
     cfg, a, b, c = cluster
     summary = sync.sync_once(cfg, reviews=False)
-    assert summary["new_entries"] == 1 and summary["fan_out_added"] == 2
+    assert summary["new_entries"] == 1 and summary["fan_out_added"] == 1
     hub = (cfg.paths.shared_journal / "journal.md").read_text()
     assert "**Lab**: lab-a" in hub and "Loss falls under 0.1" in hub
     assert (cfg.paths.shared_journal / "entries" / "lab-a__c1.md").exists()
-    for other in (b, c):
+    for other in (b,):
         ext = federation.parse_journal_entries((other / "paper" / "external_journal.md").read_text())
         assert [(e["lab_id"], e["campaign_id"]) for e in ext] == [("lab-a", "c1")]
     assert not (a / "paper" / "external_journal.md").exists() or not federation.parse_journal_entries(
@@ -88,60 +88,16 @@ def test_collect_and_distribute_are_idempotent(cluster):
     assert (cfg.paths.shared_journal / "index.md").read_text().count("lab-a / c1") == 1
 
 
-def test_reviews_charge_cluster_ledger_and_feed_back(cluster):
+def test_subscription_never_starts_direct_crossreviews_or_spending(cluster):
     cfg, a, b, c = cluster
-    summary = sync.sync_once(cfg, reviews=True, client_factory=ReviewClient)
-    assert summary["reviews"] == 2
-    reviews = crossreview.list_reviews(cfg.paths)
-    assert {r["reviewer_lab"] for r in reviews} == {"lab-b", "lab-c"}
-    assert all(r["reviewed_lab"] == "lab-a" and r["status"] == "open" for r in reviews)
-    # Same-domain reviewer is preferred first.
-    first = (cfg.paths.shared_journal / "reviews.jsonl").read_text().splitlines()[0]
-    assert json.loads(first)["reviewer_lab"] == "lab-b"
-    assert cfg.paths.reviews_ledger.exists()
-    assert not (a / "lab" / "budget.jsonl").exists()
-    incoming = federation.parse_journal_entries((a / "paper" / "incoming_reviews.md").read_text())
-    assert len(incoming) == 2 and incoming[0]["headline"] == "Try a finer coefficient sweep"
-    # A second sync does not re-review.
-    again = sync.sync_once(cfg, reviews=True, client_factory=ReviewClient)
-    assert again["reviews"] == 0
-    index = (cfg.paths.shared_journal / "index.md").read_text()
-    assert "review by `lab-b`" in index
-
-
-def test_review_status_adopted_when_author_cites_reviewer(cluster):
-    cfg, a, b, c = cluster
-    sync.sync_once(cfg, reviews=True, client_factory=ReviewClient)
-    (a / "lab" / "foundational_deps.jsonl").write_text(
-        json.dumps({"lab_id": "lab-b", "campaign_id": "x", "ts": "t"}) + "\n")
-    assert crossreview.mark_adopted(cfg.paths) == 1
-    statuses = {r["reviewer_lab"]: r["status"] for r in crossreview.list_reviews(cfg.paths)}
-    assert statuses == {"lab-b": "adopted", "lab-c": "open"}
-    assert crossreview.mark_adopted(cfg.paths) == 0
-
-
-def test_reviews_cap_stops_calls(tmp_path, monkeypatch):
-    cfg = make_cluster(tmp_path, monkeypatch, caps={"reviews_total_usd": 0.0001})
-    _lab(cfg, "lab-a", "s", journal_entries=[("c1", "h")])
-    _lab(cfg, "lab-b", "s")
-
-    class Strict(ReviewClient):
-        def create(self, **kwargs):
-            raise AssertionError("must not be called when the cap refuses the reserve")
-
-    def factory(budget):
-        client = Strict(budget)
-        # emulate RoutingMessagesClient: reserve before the request
-        def create(**kwargs):
-            budget.reserve(kwargs["model"], kwargs.get("max_tokens"), 100)
-            return Strict.create(client, **kwargs)
-        client.create = create
-        return client
-
-    summary = sync.sync_once(cfg, reviews=True, client_factory=factory)
-    assert summary["reviews"] == 0
-    events = [json.loads(line)["event"] for line in cfg.paths.events.read_text().splitlines()]
-    assert "reviews_cap_reached" in events
+    def forbidden(*args, **kwargs):
+        raise AssertionError("Journal delivery must not run direct reviews")
+    summary = sync.sync_once(cfg, reviews=True, client_factory=forbidden)
+    assert summary["new_entries"] == 1 and summary["reviews"] == 0
+    assert not cfg.paths.reviews_ledger.exists()
+    assert not (a / "paper" / "incoming_reviews.md").exists()
+    received = (b / "paper" / "external_journal.md").read_text()
+    assert "### Accepted manuscript" in received and "> # paper c1" in received
 
 
 def test_select_reviewers_deterministic_and_spread():
@@ -164,11 +120,12 @@ def test_remote_labs_join_the_shared_journal(tmp_path, monkeypatch):
     (remote / "heartbeat.json").write_text(json.dumps({"ts": "2999-01-01T00:00:00+00:00",
                                                        "status": "running", "runs": 4}))
     (remote / "paper" / "journal.md").write_text(
-        "# J\n\n<!-- ENTRIES BELOW -->\n\n## 2026-09-20 14:00 UTC — c7\n**Lab**: laptop-a\n**Headline**: remote finding\n")
+        "# J\n\n<!-- ENTRIES BELOW -->\n\n## 2026-09-20 14:00 UTC — c7\n**Lab**: laptop-a\n**Headline**: remote finding\n**Scores**: critical=6, neutral=7, optimistic=8\n")
+    (remote / "paper" / "c7.md").write_text("# Accepted manuscript\nActual run provenance.\n")
     summary = sync.sync_once(cfg, reviews=True, client_factory=ReviewClient)
-    assert summary["labs"] == 2 and summary["new_entries"] == 1 and summary["reviews"] == 1
+    assert summary["labs"] == 2 and summary["new_entries"] == 1 and summary["reviews"] == 0
     reviews = crossreview.list_reviews(cfg.paths)
-    assert reviews[0]["reviewer_lab"] == "hosted-b" and reviews[0]["reviewed_lab"] == "laptop-a"
-    assert (remote / "paper" / "incoming_reviews.md").exists()
+    assert reviews == []
+    assert not (remote / "paper" / "incoming_reviews.md").exists()
     hosted_ext = (cfg.paths.labs / "hosted-b" / "paper" / "external_journal.md").read_text()
     assert "remote finding" in hosted_ext

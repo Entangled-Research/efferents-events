@@ -210,6 +210,8 @@ def compose_paper(
         f"Finding kind: {campaign.get('finding_kind') or 'improvement'}\n"
         "If this is a negative result or verification, state only the bounded "
         "finding supported by the cited measurements; do not imply a metric gain.\n"
+        f"Recorded external journal use (cite these exact publications, do not invent replication): "
+        f"{campaign.get('external_journal_citations', [])}\n"
         f"Write the paper body now."
     )
     response = client.messages.create(
@@ -474,9 +476,12 @@ def write_phase_a_paper(
     sha = _resolve_code_sha() if _lab.CODE_REPO else None
     repo = _lab.CODE_REPO if sha else None  # if we can't get a SHA, set neither
 
+    from efferents.journal.provenance import campaign_citations, citation_markdown
+    citations = campaign_citations(paths.lab, campaign_id)
+    paper_campaign = {**campaign, "external_journal_citations": citations}
     artifact = compose_paper(
         client=client,
-        campaign=campaign,
+        campaign=paper_campaign,
         metric_provenance=metric_provenance,
         novelty_claim=novelty_claim,
         code_sha=sha,
@@ -484,6 +489,13 @@ def write_phase_a_paper(
         budget=budget,
         model=model,
     )
+
+    if citations:
+        _, metadata, body = artifact.split("---", 2)
+        frontmatter = _yaml.safe_load(metadata)
+        frontmatter["external_journal_citations"] = citations
+        artifact = "---\n" + _yaml.safe_dump(frontmatter, sort_keys=False) + "---" + body
+        artifact += citation_markdown(citations)
 
     # Write artifact to paper/<campaign_id>.md.
     paper_dir = paths.paper

@@ -41,6 +41,7 @@ def visit(directory: Path, lab_id: str, domain: str, entries: list[dict],
                     "finding_id": publication_id(entry), "source": entry["lab_id"], "target": lab_id,
                     "track": "field" if entry in same else "interdisciplinary", "at": now,
                     "visit": number, "body": entry["body"],
+                    "journal": journal_for_domain(domains[entry["lab_id"]]),
                 })
             _append(directory / "attendance.jsonl", {"at": now, "visit": number,
                     "received": [publication_id(entry) for entry in selected]})
@@ -52,8 +53,9 @@ def feed(directory: Path) -> str:
         row["body"] for row in _rows(directory / "deliveries.jsonl"))
 
 
-def acknowledge(directory: Path, finding_ids: set[str] | None = None) -> None:
-    """Record only deliveries actually served to a reader; safe to retry."""
+def acknowledge(directory: Path, finding_ids: set[str] | None = None) -> int:
+    """Acknowledge durably stored publications; GET delivery alone is not receipt."""
+    count = 0
     directory.mkdir(parents=True, exist_ok=True)
     with (directory / ".lock").open("a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
@@ -61,10 +63,14 @@ def acknowledge(directory: Path, finding_ids: set[str] | None = None) -> None:
         for delivery in _rows(directory / "deliveries.jsonl"):
             if (delivery["finding_id"] not in seen
                     and (finding_ids is None or delivery["finding_id"] in finding_ids)):
+                count += 1
+                seen.add(delivery["finding_id"])
                 _append(directory / "receipts.jsonl", {
                     **{k: v for k, v in delivery.items() if k != "body"},
                     "kind": "observation", "meaning": "Journal feed received; not a replication",
                 })
+
+    return count
 
 
 def observations(root: Path) -> list[dict]:

@@ -42,6 +42,7 @@ from efferents.agents.state import (
     queue_push,
     queue_size,
     runs_count,
+    read_jsonl,
     save_state,
     now_iso,
 )
@@ -275,6 +276,7 @@ class Orchestrator:
             "papers": summary.get("papers", 0),
             "last_activity": summary.get("last_activity"),
             "halt_reason": halt,
+            "journal_uses": read_jsonl(self.paths.root / "journal_uses.jsonl")[-100:],
             "edges": {
                 "cited": citation_edges_for(cfg.lab_id, self.paths.root / "foundational_deps.jsonl"),
                 "reproduced": reproduction_edges_for(cfg.lab_id, self.submission_dir / "paper" / "reproductions.md"),
@@ -296,7 +298,11 @@ class Orchestrator:
         if self.network.due_heartbeat():
             self.network.mark_heartbeat()
             try:
-                reply = self.network.heartbeat(cfg.lab_id, self._network_heartbeat_payload())
+                from efferents.cluster.remote_control import apply_commands, command_acks
+                payload = self._network_heartbeat_payload()
+                payload["command_acks"] = command_acks(self.paths.root)
+                reply = self.network.heartbeat(cfg.lab_id, payload)
+                apply_commands(self.submission_dir, self.paths.root, reply.get("commands") or [])
                 wants_pause = bool(reply.get("pause"))
                 if wants_pause and not self._network_paused:
                     _steer.record_steering(self.paths.root, text=reply.get("message") or "hub pause",
@@ -765,6 +771,8 @@ class Orchestrator:
         else:
             queue_ack(self.paths.queue)
         if outcome.get("ok"):
+            from efferents.journal.provenance import record_execution
+            record_execution(self.paths.root, proposal, outcome)
             state = load_state(self.paths.state)
             state["last_success_ts"] = now_iso()
             save_state(self.paths.state, state)

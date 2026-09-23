@@ -1,12 +1,7 @@
-"""Shared-journal sync: hub, fan-out, cross-lab reviews, index.
+"""Sync accepted manuscripts through durable, bounded journal subscriptions.
 
-Runs as its own process (``efferents cluster sync --loop``). Reads every
-lab's ``paper/journal.md``, publishes new entries into ``shared_journal/``
-(hub ``journal.md`` + one file per entry + ``index.jsonl``), fans the hub
-out to every other lab's ``paper/external_journal.md`` with the existing
-federation importer, asks sibling labs to review new entries, and feeds
-those reviews back to the authors. Writes only under ``shared_journal/``
-and ``labs/<id>/paper/``; never under ``lab/``.
+Historical direct cross-reviews remain auditable on disk. New critiques and
+corroborations must be published by their own lab through the review board.
 """
 
 from __future__ import annotations
@@ -14,6 +9,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import sys
 import time
 from datetime import datetime, timezone
@@ -86,6 +82,33 @@ def _index_keys(paths) -> set[tuple[str, str]]:
     return keys
 
 
+def publication_body(lab: dict, journal: Path, entry: dict) -> str | None:
+    """A complete manuscript and valid board are required for scientific transport."""
+    import yaml
+    from efferents.journal.reviews import PERSONAS, review_scores
+    lab_id, campaign = entry.get("lab_id"), entry["campaign_id"]
+    if (lab_id != lab["lab_id"] or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", campaign)
+            or set(review_scores(entry["body"])) != set(PERSONAS)):
+        return None
+    paper = journal.parent / f"{campaign}.md"
+    if not paper.is_file() or not paper.resolve().is_relative_to(journal.parent.resolve()) or paper.stat().st_size > 200_000:
+        return None
+    manuscript = paper.read_text()
+    if not manuscript.strip():
+        return None
+    if manuscript.startswith("---"):
+        try:
+            meta = yaml.safe_load(manuscript.split("---", 2)[1])
+        except (ValueError, IndexError, yaml.YAMLError):
+            return None
+        if (not isinstance(meta, dict) or meta.get("status") not in {"preprint", "accepted"}
+                or meta.get("lab_id") != lab_id or meta.get("campaign_id") != campaign):
+            return None
+    domain = lab.get("domain") or "unspecified"
+    return (entry["body"].rstrip() + f"\n**Journal**: {journal_for_domain(domain)}\n**Domain**: {domain}"
+            + "\n\n### Accepted manuscript\n\n" + "\n".join("> " + line for line in manuscript.splitlines()))
+
+
 def collect(cfg: ClusterConfig, labs: list[dict]) -> list[dict]:
     """Publish new journal entries into the hub. Returns the new entries."""
     sj = cfg.paths.shared_journal
@@ -101,19 +124,20 @@ def collect(cfg: ClusterConfig, labs: list[dict]) -> list[dict]:
             if not journal.is_file():
                 continue
             for entry in federation.parse_journal_entries(journal.read_text()):
-                lab_id = entry.get("lab_id") or lab["lab_id"]
-                from efferents.journal.reviews import PERSONAS, review_scores
-                if lab_id != lab["lab_id"] or set(review_scores(entry["body"])) != set(PERSONAS):
-                    continue
+                lab_id = entry.get("lab_id")
+                body = publication_body(lab, journal, entry)
                 key = (lab_id, entry["campaign_id"])
+                if body is None:
+                    continue
+                # Preserve complete accepted manuscripts even for older indexed summaries.
+                manuscripts = sj / "manuscripts"
+                manuscripts.mkdir(exist_ok=True)
+                snapshot = manuscripts / f"{lab_id}__{entry['campaign_id']}.md"
+                if not snapshot.exists():
+                    snapshot.write_text(body + "\n")
                 if key in known:
                     continue
                 known.add(key)
-                body = entry["body"].rstrip()
-                if not entry.get("lab_id"):
-                    # Stamp the origin so every reader can attribute it.
-                    head, _, rest = body.partition("\n")
-                    body = f"{head}\n**Lab**: {lab_id}\n{rest}".rstrip()
                 digest = hashlib.sha256(body.encode()).hexdigest()
                 rec = {
                     "ts": entry["ts"], "lab_id": lab_id, "campaign_id": entry["campaign_id"],
@@ -142,7 +166,17 @@ def distribute(cfg: ClusterConfig, labs: list[dict]) -> dict[str, int]:
     hub = cfg.paths.shared_journal / "journal.md"
     if not hub.is_file():
         return {}
-    entries = federation.parse_journal_entries(hub.read_text())
+    entries = []
+    for entry in federation.parse_journal_entries(hub.read_text()):
+        source, campaign = entry.get("lab_id"), entry["campaign_id"]
+        if not all(isinstance(value, str) and re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}", value)
+                   for value in (source, campaign)):
+            continue
+        snapshot = cfg.paths.shared_journal / "manuscripts" / f"{source}__{campaign}.md"
+        if snapshot.is_file():
+            entry = {**entry, "body": snapshot.read_text().rstrip()}
+        if "### Accepted manuscript\n" in entry["body"]:
+            entries.append(entry)
     domains = {lab["lab_id"]: lab.get("domain") or "unspecified" for lab in labs}
     added = {}
     for lab in labs:
@@ -218,20 +252,8 @@ def sync_once(cfg: ClusterConfig, *, reviews: bool = True, client_factory=None) 
     labs = _labs(cfg)
     new_entries = collect(cfg, labs)
     added = distribute(cfg, labs)
+    # No direct lab-to-lab review messages or automatic spending from subscriptions.
     n_reviews = 0
-    if reviews and new_entries:
-        reviewer = crossreview.Reviewer(cfg, client_factory=client_factory)
-        budget_left = cfg.sync.max_reviews_per_tick
-        for entry in new_entries:
-            if budget_left <= 0:
-                break
-            for review in reviewer.review_entry(entry, labs):
-                feed_back(cfg, review, Path(entry["submission_dir"]))
-                n_reviews += 1
-                budget_left -= 1
-                if budget_left <= 0:
-                    break
-    crossreview.mark_adopted(cfg.paths)
     rebuild_index(cfg)
     summary = {"ts": _now_str(), "labs": len(labs), "new_entries": len(new_entries),
                "fan_out_added": sum(added.values()), "reviews": n_reviews}
