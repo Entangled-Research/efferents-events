@@ -1,8 +1,8 @@
 # Events deployment
 
-The Events repository includes the framework network through upstream commit
-`89ed429`, preserving participant identity, owner-only control, intake, the model
-proxy and remote-lab transport. The production deployment is independent of the
+The Events repository includes the framework network and the September 23 event
+readiness fixes, preserving participant identity, owner-only control, intake,
+the model proxy and remote-lab transport. The production deployment is independent of the
 older framework dashboard.
 
 - Droplet: `161.35.164.202`, existing DigitalOcean LON1 Ubuntu host on the
@@ -16,7 +16,7 @@ older framework dashboard.
 
 ## Operating state
 
-As of 2026-09-22, **intake and participant API testing are enabled**. The owner
+As of 2026-09-23, **intake and participant API testing are enabled**. The owner
 authorized clearing the initial freeze; automatic hosted lab starts remain off.
 The owner decided on 2026-09-22 that nothing runs on the droplet:
 `labs.hosted: false` is set in `/data/cluster/cluster.yaml`, so the hub never
@@ -38,10 +38,13 @@ The external Popper checkout is installed at `/data/popper-probe`. The old
 evacuation placeholder has been removed from the event catalogue; an empty
 hosted-track catalogue is valid because new executors are built on participant
 laptops. `efferents cluster check /data/cluster` passes.
-Configured caps (set 2026-09-22 for the event): $1,500 for the cluster and
-$1,500 proxy total; $50 per person through the proxy and $50 per lab, so one
-person can spend their allowance on one lab or spread it across multiple labs;
-$50 intake total ($1 per person); $3 reviews. These are separate from Azure credits.
+Configured safeguards: $1,500 for the cluster and $1,500 proxy total; **$50 per
+person shared across intake and every lab**, including merged identity aliases.
+Lab spend is an absolute expense, not another allocation. A lab may set a lower
+local safety cap. Intake retains its additional $50 event/$1 person safeguards;
+reviews have a $3 cap. Remote heartbeat expenses mirror proxy charges and are
+not charged twice. In-flight model holds persist through hub restarts. These
+limits are separate from Azure credits.
 The join code is retained in private access notes outside the repository.
 
 Local testing uses `http://localhost:8843`; the legacy preview at port 8840
@@ -49,12 +52,29 @@ retains its Basic login. Local daemon credentials are in
 `~/.efferents-events-local/.env` (0600). Restart the preview process after changing
 that file. Recreate the Docker hub after changing its Compose environment file.
 
-This is not yet a fully rehearsed live research event. Follow `EVENT_HOSTING.md`
-and `EVENT_RUNBOOK.md` to enable keeper and journal-sync services and rehearse a
-complete owned lab with real review output. Only the web hub currently runs;
-the keeper's aggregate-cap enforcement and continuous hosted-lab supervision
-are not active. Intake and proxy retain their own configured caps. Enable
-automatic hosted lab starts only when that operational setup is ready.
+The live stack runs **hub and sync**, with sync configured `--no-reviews`.
+Research and the three-reviewer board execute in each participant lab; accepted
+manuscripts then enter the shared journal. The hosted-lab keeper is intentionally
+absent because `labs.hosted: false`. The hub's proxy enforces the shared account
+and proxy caps; this deployment does not claim keeper enforcement for arbitrary
+non-proxy local spending.
+
+The September 23 rehearsal uses a separate ChemistryNerd owner and a chemistry
+lab with three ideas, real ORD data, paired local trials and Azure-backed agents.
+The chemistry question is scoped to reaction-family evidence retrieval: ORD
+family annotations are not elementary-mechanism ground truth. Preserve negative
+results and report dataset coverage alongside metrics.
+
+The deployed application revision is recorded on the host in
+`deployed-event-ready-20260923.json`; the matching served wheel is authenticated
+and SHA-256 pinned by `GET /api/network/config`. The readiness baseline passed
+873 tests locally (3 skipped, 1 deselected). Follow-up protocol-specific tests
+and live checks are documented in the private rehearsal report.
+
+Signed-in owners have **Diagnostics**, shared-budget reporting, recoverable
+sessions and durable remote steer/pause/resume commands. Operator diagnostics,
+identity merges and reservation inspection require the server-only admin token.
+Do not copy that token into participant credentials or support reports.
 
 ## Update and rollback
 

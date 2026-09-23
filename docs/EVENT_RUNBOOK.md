@@ -1,65 +1,50 @@
 # Event runbook
 
-Operator checklist for a hosted efferents cluster. Commands run on the host
-as the `efferents` user with the event environment loaded:
+This runbook describes the deployed **Docker hub with participant-side labs**.
+The alternative systemd/hosted-lab installation is in `EVENT_HOSTING.md`.
+
+## Live services
+
+SSH to the event host, then run from `/opt/efferents-events`:
 
 ```bash
-sudo -u efferents -i
-set -a; . /etc/efferents/event.env; set +a
-cd /srv/efferents/current
-alias ef='.venv/bin/efferents'
-C=/srv/efferents/cluster
+docker compose -f deploy/events/compose.yaml ps
+docker compose -f deploy/events/compose.yaml logs --tail 100 hub sync
+docker compose -f deploy/events/compose.yaml exec hub efferents cluster check /data/cluster
 ```
 
-## Watch
+Both hub and sync should be healthy/running. Labs execute on participant
+machines; there is no hosted keeper and restarting the hub does not restart or
+erase a lab. State is in the `efferents-events_events_data` Docker volume.
+Provider credentials remain in `deploy/events/.env` (0600), outside Git.
 
-- Wall display: the network view in a browser you joined, or
-  `watch -n 30 .venv/bin/efferents cluster status $C`.
-- Provider console: usage and rate-limit pages.
-- Logs: `journalctl -u efferents-cluster -u efferents-keeper -u efferents-sync -f`.
-- Phone: subscribe to the `NTFY_TOPIC` from `event.env`.
+## During the event
 
-## Before the doors open
-
-- `systemctl status caddy efferents-cluster efferents-keeper efferents-sync` all active.
-- `ef cluster check $C` prints `ok`.
-- `ef cluster status $C --refresh` shows free disk above 20 GB and no labs.
-- Create one canary lab yourself, watch a run, a digest and the shared
-  journal entry appear, then pause it or leave it as the first node.
-- Put the join code and the URL on a slide. Remind people to keep their owner
-  link.
-
-## Situations
+Start with the signed-in **Diagnostics** page. Ask the participant to copy that
+credential-free report into the support conversation. The report includes the
+owner, labs, last heartbeat, sync errors, saved intakes and shared spend. Keep the
+existing lab directory and session when applying a fix.
 
 | Situation | Action |
 |---|---|
-| One lab spends or misbehaves | `ef cluster pause $C --lab-id X --by operator --reason "…"`; the daemon idles at its next step. `ef cluster resume $C --lab-id X` to continue. |
-| Stop all spending now | `ef cluster pause-all $C` (queues an owner pause on every lab and sets `controls/pause_all`, which also stops keeper restarts). `ef cluster resume-all $C` lifts it and clears `frozen`. |
-| A lab crashed | The keeper restarts it within a tick, at most 3 times in 30 minutes, then quarantines it (`controls/halt_<id>`). Read `labs/<id>/lab/daemon.log` and `lab/last_traceback.txt`; fix; `rm $C/controls/halt_<id>`. |
-| A lab hit its cap and deserves more | `ef cluster raise-cap $C --lab-id X --total 18` (edits lab.yaml, restarts the daemon). |
-| Cluster cap approaching or reached | Everything pauses at the cap (`controls/frozen`). Raise `caps.cluster_total_usd` in `cluster.yaml`, check the provider workspace limit, then `ef cluster resume-all $C`. |
-| 429s or "rate limited" notebook lines | Lower `EFFERENTS_MAX_CONCURRENT_CALLS` in `event.env`, `systemctl restart efferents-cluster efferents-keeper`, then `ef cluster restart-all $C --stagger 3` (daemons read the limit at start). Or raise `EFFERENTS_CADENCE_RESEARCHER_MIN_INTERVAL_S`. |
-| Provider outage | Labs halt and re-probe with backoff (cap 5 min). If prolonged, set `EFFERENTS_MODEL=openai/gpt-4.1` in `event.env` and `restart-all`. |
-| Key compromised | New key in the console → edit `event.env` → `systemctl restart efferents-cluster efferents-sync` → `ef cluster restart-all $C --stagger 3` → revoke the old key. |
-| Server bug fix | New release directory procedure in `docs/EVENT_HOSTING.md`; daemons keep running. |
-| Disk filling | `du -sh $C/labs/* | sort -h`; the keeper rotates daemon logs and blocks new starts below `min_free_disk_gb`; delete old `backups/*.tgz`. |
-| Host out of memory | `ef cluster pause-all $C`, `ef cluster stop-all $C`, resize the droplet, `ef cluster start-all $C --stagger 3`. Labs resume from `lab/` state. |
-| Participant lost their owner link or network token | Both are the same token, in `$C/owners.json` (server-only); hand them `https://<host>/?owner=<token>` privately. |
-| A laptop lab misbehaves | `touch $C/controls/halt_<lab_id>`: its next heartbeat carries `pause: true` and the daemon pauses itself. Remove the file to let it resume. `pause-all` reaches laptops the same way. |
-| A laptop lab shows "stale" | No heartbeat for 3 minutes: the laptop slept, lost Wi-Fi, or the daemon died. The owner runs `efferents status --submission .` locally; the hub keeps the last state. |
-| Someone's laptop cannot install anything | The deployed hub does not run participant labs; use a connected web harness or another participant laptop for local execution. |
-| Proxy spend for one person looks wrong | `$C/proxy/<owner_id>/budget.jsonl` is the ledger; the cluster total is `$C/proxy/budget.jsonl`. |
+| One lab needs direction or a pause | Use its owner-only steering/pause/resume panel. The daemon applies the durable request on its next heartbeat; inspect the delivery status. |
+| Laptop lab is stale | On that laptop, in its existing folder, run `efferents status --submission .`; inspect `lab/daemon.log` and `lab/last_traceback.txt`. Resume with `efferents start --submission . --detach` after repair. Sleeping/offline laptops cannot receive commands until they reconnect. |
+| All labs must pause | `docker compose -f deploy/events/compose.yaml exec hub efferents cluster pause-all /data/cluster --reason "operator pause"`. The flag reaches participant daemons on heartbeat. Resume with the corresponding `resume-all` command. |
+| Server bug fix | Commit and test; deploy the tracked source and rebuild hub/sync. Refresh the browser. Do not delete the state volume. |
+| Participant daemon bug fix | Stop only that daemon, install the verified wheel from its authenticated connection config, then start from the same submission folder. Its ledger, queues, papers and steering persist. |
+| Evals look missing | Diagnostics reports eval sync health. Confirm the current served wheel and `EFFERENTS_OWNER_EVAL_SYNC=1`; reconnect the daemon, then inspect the idea's measurement count and contract. A new unmeasured idea must not inherit another idea's verdict. |
+| Proxy budget looks wrong | Inspect shared account diagnostics first. Completed spend and pending holds are separate; heartbeat mirrors are not additional charges. Operator reservation inspection is described below. |
+| A participant loses access | Use the returning-user recovery form. Organizer-assisted repair must verify the identity; never post owner tokens in shared chat. |
+| Provider request fails | Inspect sanitized daemon/proxy errors and provider status. A timed-out request can retain a budget hold until its billing outcome is known. Do not reset the ledger to make an error disappear. |
 
-## After
+For a deployment, keep the previous image and a private state backup. Run
+`docker compose -f deploy/events/compose.yaml build` then `up -d --no-build hub sync`.
+Verify health, sign-in, the network, one owner control and a participant proxy
+request. Never use `down -v`. Caddy and the older gateway are separate services.
 
-1. `ef cluster stop-all $C`.
-2. Final backup: `systemctl start efferents-backup.service`; download
-   `/srv/efferents/backups/` and the DigitalOcean snapshot.
-3. Revoke every key in the provider console.
-4. Give each participant their lab directory (`labs/<id>`): hypothesis,
-   charter, run ledger, papers, and the reviews other labs wrote about them.
-5. Destroy the droplet, or at least `ufw deny 80,443/tcp`.
-
+After the event, pause participant research, stop local daemons, preserve each
+lab folder and back up the Docker volume before changing credentials or removing
+infrastructure. Stopping the web hub alone does not stop local CPU experiments.
 
 ### Returning participants
 
