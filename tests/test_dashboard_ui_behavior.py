@@ -95,3 +95,18 @@ console.log(JSON.stringify({receiptOnly,used,count:journalUses().length}));
     assert "chem-run-1" in result["used"]
     assert "rare-mechanisms" in result["used"]
     assert result["count"] == 1
+
+
+def test_remote_steering_log_distinguishes_queued_and_delivered_commands():
+    result = run_js("""
+renderSteering([
+ {ts:'2026-09-23T22:00:00Z',text:'Keep prior evidence',action:'steer',by:'participant:Ada',ack:null},
+ {ts:'2026-09-23T22:01:00Z',text:'Pause safely',action:'pause',by:'participant:Ada',ack:'2026-09-23T22:02:00Z'}
+]);
+console.log(JSON.stringify(document.getElementById('steering-history').innerHTML));
+""")
+    assert "Keep prior evidence" in result
+    assert "Pause safely" in result
+    assert " · queued" in result
+    assert " · delivered" in result
+    assert "2026-09-23 22:00" in result

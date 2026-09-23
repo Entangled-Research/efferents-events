@@ -363,13 +363,14 @@ function renderSteering(records) {
     const mode = String(record.mode || "auto").replace(/_/g, " ");
     const label = record.action ? String(record.action) : mode;
     const who = record.by ? ` · ${esc(record.by)}` : "";
-    const ack = record.acknowledged === false ? " · queued" : "";
+    const ack = record.acknowledged === false || ("ack" in record && !record.ack)
+      ? " · queued" : record.ack ? " · delivered" : "";
     return `<article class="steering-record">` +
       `<div class="steering-record-meta">` +
-        `<time>${esc(formatTimestamp(record.timestamp, true))} UTC</time>` +
+        `<time>${esc(formatTimestamp(record.timestamp || record.ts, true))} UTC</time>` +
         `<span class="steering-mode">${esc(label)}${who}${ack}</span>` +
       `</div>` +
-      `<p>${esc(record.message || "")}</p>` +
+      `<p>${esc(record.message || record.text || "")}</p>` +
     `</article>`;
   }).join("");
 }
