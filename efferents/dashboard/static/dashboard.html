@@ -527,7 +527,7 @@ efferents stop  --submission .</pre>
       </section>
     </section>
 
-      <section id="network-view" class="app-view" data-route-view="network" hidden>
+    <section id="network-view" class="app-view" data-route-view="network" hidden>
         <div class="network-grid">
           <section class="panel network-map-panel" aria-labelledby="network-map-title">
             <header class="panel-header">
@@ -561,7 +561,8 @@ efferents stop  --submission .</pre>
               <span><i class="legend-line rejected"></i> rejected → lab</span>
               <span>Moving dots: recorded publications / receipts</span>
             </footer>
-          </section>
+    </section>
+
           <section id="exchange-panel" class="panel exchange-panel" aria-label="Published journal papers" hidden>
             <div id="exchange-feed" class="exchange-feed"></div>
           </section>
@@ -585,6 +586,26 @@ efferents stop  --submission .</pre>
           </section>
         </div>
       </section>
+    <section id="publication-view" class="app-view" data-route-view="publication" hidden>
+      <article class="panel publication-reader" aria-labelledby="publication-title">
+        <header class="panel-header">
+          <h1 id="publication-title">Published paper</h1>
+          <a href="#network">Back to network</a>
+        </header>
+        <div id="publication-meta" class="exchange-record-meta"></div>
+        <div id="publication-manuscript" class="published-manuscript-text publication-manuscript" tabindex="0"></div>
+      </article>
+    </section>
+    <section id="journal-view" class="app-view" data-route-view="journal" hidden>
+      <section class="panel journal-directory" aria-labelledby="journal-directory-title">
+        <header class="panel-header">
+          <h1 id="journal-directory-title">Journal publications</h1>
+          <a href="#network">Back to network</a>
+        </header>
+        <div id="journal-directory-meta" class="header-meta"></div>
+        <ol id="journal-publication-list" class="journal-publication-list"></ol>
+      </section>
+    </section>
     </main>
   </div>
 

@@ -314,6 +314,53 @@ def test_remote_paper_register_requires_accepted_journal_entry(hub):
     assert papers[0]["status"] == "accepted"
 
 
+def test_network_evidence_includes_only_same_lab_accepted_manuscripts(hub):
+    port, ctx, _, cfg, _ = hub
+    owner, _ = _join(port, "Ada")
+    auth = _bearer(owner)
+    _request(port, "/api/network/labs", method="POST",
+             payload={"lab_id": "ada-lab", "domain": "synthetic", "hypothesis": VALID_HYP},
+             headers=auth)
+    accepted = ("---\nlab_id: ada-lab\ncampaign_id: accepted-one\n"
+                "novelty_claim: bounded result\npublished_at: '2026-09-20'\nstatus: accepted\n---\n\n"
+                "# Bounded result\n\n| case | error |\n| --- | --- |\n| A | 0.1 |\n")
+    mismatch = accepted.replace("accepted-one", "mismatch-one").replace("lab_id: ada-lab", "lab_id: another-lab")
+    rejected = accepted.replace("accepted-one", "rejected-one")
+    explicitly_rejected = accepted.replace("accepted-one", "explicit-rejection").replace(
+        "status: accepted", "status: rejected")
+    large = accepted.replace("accepted-one", "large-one") + ("x" * 100_001)
+    journal = ("# Journal\n\n<!-- ENTRIES BELOW -->\n\n"
+               "## 2026-09-20 14:00 UTC — accepted-one\n**Lab**: ada-lab\n"
+               "**Headline**: Reviewed bounded result\n"
+               "**Scores**: critical=6, neutral=7, optimistic=8 (mean=7.0)\n\n"
+               "## 2026-09-20 14:01 UTC — mismatch-one\n**Lab**: ada-lab\n"
+               "**Headline**: Mismatched manuscript\n"
+               "**Scores**: critical=6, neutral=7, optimistic=8 (mean=7.0)\n\n"
+               "## 2026-09-20 14:02 UTC — large-one\n**Lab**: ada-lab\n"
+               "**Headline**: Large manuscript\n"
+               "**Scores**: critical=6, neutral=7, optimistic=8 (mean=7.0)\n\n"
+               "## 2026-09-20 14:03 UTC — explicit-rejection\n**Lab**: ada-lab\n"
+               "**Headline**: Rejected artifact\n"
+               "**Scores**: critical=6, neutral=7, optimistic=8 (mean=7.0)\n")
+    _request(port, "/api/network/labs/ada-lab/journal", method="POST",
+             payload={"journal": journal, "papers": {
+                 "accepted-one": accepted, "mismatch-one": mismatch,
+                 "rejected-one": rejected, "large-one": large,
+                 "explicit-rejection": explicitly_rejected,
+             }}, headers=auth)
+    from efferents.cluster import sync
+    sync.sync_once(cfg, reviews=False)
+
+    findings = ctx.hub.network_evidence()["findings"]
+    by_campaign = {item["campaign_id"]: item for item in findings}
+    assert by_campaign["accepted-one"]["body"].startswith("## 2026-09-20")
+    assert by_campaign["accepted-one"]["manuscript"].startswith("---\nlab_id: ada-lab")
+    assert "mismatch-one" in by_campaign and "manuscript" not in by_campaign["mismatch-one"]
+    assert "large-one" in by_campaign and "manuscript" not in by_campaign["large-one"]
+    assert "explicit-rejection" in by_campaign and "manuscript" not in by_campaign["explicit-rejection"]
+    assert "rejected-one" not in by_campaign
+
+
 def test_bind_and_proxy(hub):
     port, ctx, scripts, cfg, upstream = hub
     ada, _ = _join(port, "Ada")

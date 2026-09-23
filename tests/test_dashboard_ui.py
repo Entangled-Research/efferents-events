@@ -60,3 +60,18 @@ def test_remote_observer_labels_private_detail_and_lifetime_budget():
     assert "Falsifier evaluations stay on the lab’s laptop" in JS
     assert "No accepted papers at the hub" in JS
     assert "lab spend · $${budget.spent.toFixed(2)} / $${budget.cap.toFixed(2)} lab cap" in JS
+
+
+def test_accepted_journal_papers_have_deep_links_and_safe_reader():
+    assert 'data-route-view="publication"' in HTML
+    assert 'data-route-view="journal"' in HTML
+    assert 'href="#network"' in HTML
+    assert 'if (/^publication\\/[^/]+\\/[^/]+$/.test(route)) return "publication";' in JS
+    assert 'if (/^journal\\/[^/]+$/.test(route)) return "journal";' in JS
+    assert 'function publicationHref(item)' in JS
+    assert 'function journalHref(name)' in JS
+    assert 'aria-label="Browse ${esc(name)' in JS
+    assert 'function renderMarkdownSafe(markdown)' in JS
+    assert 'replace(/^---\\r?\\n[\\s\\S]*?\\r?\\n---\\r?\\n?/, "")' in JS
+    assert 'history.replaceState(null, "", "#network")' in JS
+    assert 'const item = publishedFindings().find((finding) =>' in JS

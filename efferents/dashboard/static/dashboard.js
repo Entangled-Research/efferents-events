@@ -1,6 +1,7 @@
 let csrfToken = "";
 let controlState = { connected: false, hydrated: false };
 let portfolioState = { labs: [], edges: [], findings: [], observations: [], eventNetwork: null };
+let portfolioHydrated = false;
 let isConnecting = false;
 let runtimeAction = "start";
 let renderedRoute = "";
@@ -28,6 +29,10 @@ function writeStored(key, value) {
 let openTabs = Array.isArray(readStored("efferents-open-labs", []))
   ? readStored("efferents-open-labs", [])
   : [];
+let openPublicationIds = Array.isArray(readStored("efferents-open-publications", []))
+  ? readStored("efferents-open-publications", []) : [];
+let openJournalNames = Array.isArray(readStored("efferents-open-journals", []))
+  ? readStored("efferents-open-journals", []) : [];
 const storedSelected = readStored("efferents-selected-lab", null);
 if (typeof storedSelected === "string" && storedSelected) selectedLabId = storedSelected;
 
@@ -41,7 +46,7 @@ let ownerProxyBudget = { spent: 0, cap: 0 };
 function renderBudget() {
   const route = currentRoute();
   const meta = document.getElementById("budget-meta");
-  const isNetwork = route === "network";
+  const isNetwork = ["network", "journal", "publication"].includes(route);
   const clusterNetwork = isNetwork && isCluster();
   const ownerEventBudget = clusterNetwork && isJoined();
   const budget = ownerEventBudget ? ownerProxyBudget : isNetwork ? portfolioBudget : labBudget;
@@ -198,6 +203,8 @@ function currentRoute() {
   if (route === "steer") return "observe";
   const known = ["connect", "observe", "network", "join"];
   if (known.includes(route)) return route;
+  if (/^publication\/[^/]+\/[^/]+$/.test(route)) return "publication";
+  if (/^journal\/[^/]+$/.test(route)) return "journal";
   // Hosted events land on the connect page: the harness is the way onto the network.
   return isCluster() ? "join" : "connect";
 }
@@ -221,19 +228,26 @@ function renderRoute() {
     }
   } else if (controlState.hydrated && route === "join") {
     route = "connect";
-  } else if (controlState.hydrated && !controlState.connected && !["connect", "network"].includes(route)) {
+  } else if (controlState.hydrated && !controlState.connected && !["connect", "network", "publication", "journal"].includes(route)) {
     route = "connect";
+  }
+  if (portfolioHydrated && route === "publication" && !renderPublication()) {
+    history.replaceState(null, "", "#network"); route = "network";
+  }
+  if (portfolioHydrated && route === "journal" && !renderJournal()) {
+    history.replaceState(null, "", "#network"); route = "network";
   }
   // Before /api/control has answered, the mode is unknown; leave an empty hash
   // alone so the hosted default (the connect page) applies once it is known.
-  if (window.location.hash !== `#${route}` && (controlState.hydrated || window.location.hash)) {
+  if (!/^#(?:publication|journal)\//.test(window.location.hash) &&
+      window.location.hash !== `#${route}` && (controlState.hydrated || window.location.hash)) {
     history.replaceState(null, "", `#${route}`);
   }
   document.querySelectorAll("[data-route-view]").forEach((view) => {
     view.hidden = view.dataset.routeView !== route;
   });
   document.querySelectorAll("[data-route-link]").forEach((link) => {
-    if (link.dataset.routeLink === route) {
+    if (link.dataset.routeLink === (["publication", "journal"].includes(route) ? "network" : route)) {
       link.setAttribute("aria-current", "page");
     } else {
       link.removeAttribute("aria-current");
@@ -251,7 +265,7 @@ function renderRoute() {
   document.title = `efferents — ${route}`;
   renderLabTabs();
   renderBudget();
-  if (route === "network" && networkWasHidden) renderNetwork();
+  if (["network", "publication", "journal"].includes(route) && networkWasHidden) renderNetwork();
 }
 
 // Lab navigation lives in the workspace tabs below the topbar.
@@ -422,11 +436,26 @@ function renderLabTabs() {
     openTabs.push(selected.lab_id);
   }
   writeStored("efferents-open-labs", openTabs);
-  const visibleTabIds = route === "network"
+  const visibleTabIds = ["network", "publication", "journal"].includes(route)
     ? portfolioState.labs.map((lab) => lab.lab_id)
     : openTabs;
-  strip.hidden = !["network", "observe"].includes(route) || visibleTabIds.length === 0;
+  strip.hidden = !["network", "publication", "journal", "observe"].includes(route) || visibleTabIds.length === 0;
   const networkActive = route === "network";
+  const availableFindings = publishedFindings().filter(item => item.manuscript);
+  const publicationFindings = openPublicationIds.map(id => availableFindings.find(item => item.id === id)).filter(Boolean);
+  if (portfolioHydrated) {
+    openPublicationIds = publicationFindings.map(item => item.id);
+    writeStored("efferents-open-publications", openPublicationIds);
+  }
+  const availableJournals = [...new Set([
+    ...portfolioLabs().map(homeJournal),
+    ...availableFindings.map(item => item.journal || homeJournal(item)),
+  ])];
+  const journals = openJournalNames.filter(name => availableJournals.includes(name));
+  if (portfolioHydrated) {
+    openJournalNames = journals;
+    writeStored("efferents-open-journals", openJournalNames);
+  }
   strip.innerHTML =
     `<button class="lab-tab home${networkActive ? " active" : ""}" type="button" ` +
     `data-tab-network aria-current="${networkActive ? "true" : "false"}">` +
@@ -440,6 +469,19 @@ function renderLabTabs() {
         `<span class="tab-name">${esc(labDisplayName(labId))}</span>` +
         `${route === "observe" ? `<span class="tab-close" data-close="${esc(labId)}" title="Close tab">×</span>` : ""}` +
         `</button>`;
+    }).join("") +
+    journals.map(name => {
+      const href = journalHref(name);
+      const active = route === "journal" && window.location.hash === href;
+      return `<a class="lab-tab journal-tab${active ? " active" : ""}" href="${esc(href)}" aria-current="${active ? "page" : "false"}">` +
+        `<span class="tab-name">${esc(name)} · papers</span></a>`;
+    }).join("") +
+    publicationFindings.map((item) => {
+      const href = publicationHref(item);
+      const active = route === "publication" && window.location.hash === href;
+      return `<a class="lab-tab publication-tab${active ? " active" : ""}" aria-current="${active ? "page" : "false"}" ` +
+        `href="${esc(href)}" title="${esc(item.title || item.campaign_id)}">` +
+        `<span class="tab-name">${esc(item.title || item.campaign_id)}</span></a>`;
     }).join("");
   strip.querySelector("[data-tab-network]").addEventListener("click", () => {
     window.location.hash = "network";
@@ -625,6 +667,114 @@ function publishedFindings() {
     .filter(item => item.kind === "publication" && item.publication_status === "accepted");
 }
 
+function publicationHref(item) {
+  return `#publication/${encodeURIComponent(item.lab_id)}/${encodeURIComponent(item.campaign_id)}`;
+}
+
+function journalHref(name) {
+  return `#journal/${encodeURIComponent(name)}`;
+}
+
+function renderPublication() {
+  const parts = window.location.hash.replace(/^#publication\//, "").split("/");
+  let labId = "", campaignId = "";
+  try {
+    labId = decodeURIComponent(parts[0] || "");
+    campaignId = decodeURIComponent(parts[1] || "");
+  } catch (error) {
+    labId = campaignId = "";
+  }
+  const item = publishedFindings().find((finding) =>
+    finding.lab_id === labId && finding.campaign_id === campaignId &&
+    typeof finding.manuscript === "string" && finding.manuscript);
+  if (!item) {
+    return false;
+  }
+  if (!openPublicationIds.includes(item.id)) openPublicationIds.push(item.id);
+  text("publication-title", item.title || item.campaign_id);
+  const scores = Object.entries(item.review_scores || {}).map(([reviewer, score]) => `${reviewer} ${Number(score)}/10`).join(" · ");
+  text("publication-meta", `${labDisplayName(item.lab_id)} · ${item.journal || homeJournal(item)} · ${item.at || "date unavailable"}${scores ? ` · ${scores}` : ""}`);
+  document.getElementById("publication-manuscript").innerHTML = renderMarkdownSafe(item.manuscript);
+  return true;
+}
+
+function renderJournal() {
+  let journalName = "";
+  try {
+    journalName = decodeURIComponent(window.location.hash.replace(/^#journal\//, ""));
+  } catch (error) {
+    journalName = "";
+  }
+  const knownJournals = new Set([
+    ...portfolioLabs().map(homeJournal),
+    ...publishedFindings().map(item => item.journal || homeJournal(item)),
+  ]);
+  const papers = publishedFindings()
+    .filter(item => (item.journal || homeJournal(item)) === journalName && typeof item.manuscript === "string")
+    .sort((a, b) => String(b.at || "").localeCompare(String(a.at || "")));
+  if (!journalName || !knownJournals.has(journalName)) {
+    return false;
+  }
+  if (!openJournalNames.includes(journalName)) openJournalNames.push(journalName);
+  text("journal-directory-title", journalName);
+  text("journal-directory-meta", `${papers.length} accepted ${papers.length === 1 ? "paper" : "papers"}`);
+  document.getElementById("journal-publication-list").innerHTML = papers.length ? papers.map(item =>
+    `<li><a href="${esc(publicationHref(item))}">${esc(item.title || item.campaign_id)}</a>` +
+    `<p>${esc(labDisplayName(item.lab_id))} · ${esc(item.at || "date unavailable")} · ` +
+    `${Object.entries(item.review_scores || {}).map(([reviewer, score]) => `${esc(reviewer)} ${Number(score)}/10`).join(" · ")}</p></li>`
+  ).join("") : '<li class="empty-state">No accepted publications yet</li>';
+  return true;
+}
+
+function renderMarkdownSafe(markdown) {
+  const source = String(markdown || "").replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, "");
+  const lines = source.split(/\r?\n/);
+  const out = [];
+  let paragraph = [], listType = "", tableRows = [], code = null;
+  const flushParagraph = () => {
+    if (paragraph.length) out.push(`<p>${paragraph.map(esc).join("<br>")}</p>`);
+    paragraph = [];
+  };
+  const flushList = () => { if (listType) out.push(`</${listType}>`); listType = ""; };
+  const flushTable = () => {
+    if (!tableRows.length) return;
+    const rows = tableRows.filter(row => !/^\|?\s*:?-{3,}/.test(row));
+    out.push(`<div class="markdown-table-wrap"><table>${rows.map((row, index) =>
+      `<${index === 0 ? "thead" : "tbody"}><tr>${row.replace(/^\||\|$/g, "").split("|").map(cell => `<${index === 0 ? "th" : "td"}>${esc(cell.trim())}</${index === 0 ? "th" : "td"}>`).join("")}</tr>${index === 0 ? "</thead>" : "</tbody>"}`
+    ).join("")}</table></div>`);
+    tableRows = [];
+  };
+  for (const line of lines) {
+    if (/^```/.test(line)) {
+      flushParagraph(); flushList(); flushTable();
+      if (code) { out.push(`<pre><code>${code.map(esc).join("\n")}</code></pre>`); code = null; }
+      else code = [];
+      continue;
+    }
+    if (code) { code.push(line); continue; }
+    if (/^\s*\|.*\|\s*$/.test(line)) {
+      flushParagraph(); flushList(); tableRows.push(line.trim()); continue;
+    }
+    flushTable();
+    const heading = line.match(/^(#{1,6})\s+(.+)$/);
+    if (heading) {
+      flushParagraph(); flushList();
+      const level = Math.min(heading[1].length + 1, 6);
+      out.push(`<h${level}>${esc(heading[2])}</h${level}>`);
+    } else if (/^\s*[-*+]\s+/.test(line)) {
+      flushParagraph(); if (listType !== "ul") { flushList(); listType = "ul"; out.push("<ul>"); }
+      out.push(`<li>${esc(line.replace(/^\s*[-*+]\s+/, ""))}</li>`);
+    } else if (/^\s*\d+[.)]\s+/.test(line)) {
+      flushParagraph(); if (listType !== "ol") { flushList(); listType = "ol"; out.push("<ol>"); }
+      out.push(`<li>${esc(line.replace(/^\s*\d+[.)]\s+/, ""))}</li>`);
+    } else if (!line.trim()) { flushParagraph(); flushList(); }
+    else { flushList(); paragraph.push(line); }
+  }
+  flushParagraph(); flushList(); flushTable();
+  if (code) out.push(`<pre><code>${code.map(esc).join("\n")}</code></pre>`);
+  return out.join("");
+}
+
 function reviewBoardMarkup(board = {}) {
   const personas = ["critical", "neutral", "optimistic"];
   const scores = board.scores || {};
@@ -742,7 +892,7 @@ function renderNetwork() {
     const journal = document.createElement("div");
     journal.className = "shared-journal-node";
     Object.assign(journal.style, {left: `${groupLeft + 100}px`, top: `${journalY}px`, width: `${groupWidth - 200}px`});
-    journal.innerHTML = `<small>SHARED JOURNAL · ACCEPTED PAPERS</small><strong>${esc(name)}</strong><small>${published.length} ${published.length === 1 ? "publication" : "publications"} · append-only evidence</small>`;
+    journal.innerHTML = `<a class="shared-journal-link" href="${esc(journalHref(name))}" aria-label="Browse ${esc(name)}, ${published.length} accepted ${published.length === 1 ? "paper" : "papers"}"><small>SHARED JOURNAL · ACCEPTED PAPERS</small><strong>${esc(name)}</strong><small>${published.length} ${published.length === 1 ? "publication" : "publications"} · browse accepted papers</small></a>`;
     journalsLayer.appendChild(journal);
     journalPorts.set(name, {x: groupRight - 150, y: journalY + 70});
     // Subscription capability is visible; animation requires a persisted receipt.
@@ -944,7 +1094,10 @@ function renderExchange() {
     const observers = [...new Set(receipts.filter((r) => r.finding_id === item.id).map((r) => r.target))];
     return `<article class="exchange-record"><div class="exchange-record-meta"><strong>${esc(labDisplayName(item.lab_id))}</strong>` +
       `<span>${esc(item.kind)} → ${esc(homeJournal(item))}</span></div>` +
-      (item.kind === "hypothesis" ? `<details><summary>Experiment claim</summary><p>${esc(item.body)}</p></details>` : `<p>${esc(item.body)}</p>`) + `<div class="exchange-provenance">` +
+      (item.kind === "hypothesis" ? `<details><summary>Experiment claim</summary><p>${esc(item.body)}</p></details>` : `<p>${esc(item.body)}</p>`) +
+      (item.kind === "publication" && typeof item.manuscript === "string" && item.manuscript
+        ? `<p><a href="${esc(publicationHref(item))}">Open accepted paper</a> · <a href="${esc(journalHref(item.journal || homeJournal(item)))}">Browse journal</a></p>`
+        : "") + `<div class="exchange-provenance">` +
       `${item.run_id ? `Run ${esc(item.run_id)} · ` : ""}Record ${esc(item.id.slice(0, 12))}` +
       `</div><div class="exchange-receipt">${observers.length ? `Received by ${observers.map(id => esc(labDisplayName(id))).join(", ")}` : "Awaiting a peer visit"}</div></article>`;
   }).join("") : "";
@@ -982,6 +1135,7 @@ function renderPortfolio(payload) {
     observations: Array.isArray(payload?.observations) ? payload.observations : [],
     eventNetwork: payload?.event_network || null,
   };
+  portfolioHydrated = true;
   if (!selectedLabId) {
     // First load in a single-lab workspace: follow the server's default lab.
     const serverDefault = portfolioState.labs.find((lab) => lab.selected);
@@ -1001,6 +1155,7 @@ function renderPortfolio(payload) {
   renderLabTabs();
   renderBudget();
   renderNetwork();
+  if (["publication", "journal"].includes(currentRoute())) renderRoute();
 }
 
 async function refreshPortfolio() {

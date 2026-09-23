@@ -32,6 +32,7 @@ from efferents.dashboard.control import ControlError
 _LAB_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 _CAMPAIGN_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 _MAX_TEXT = 200_000
+_MAX_PUBLISHED_MANUSCRIPT = 100_000
 
 
 def _now() -> str:
@@ -344,11 +345,14 @@ class NetworkHub:
         from efferents.journal.reviews import review_scores, is_publication
         from efferents.journals import journal_for_domain
         findings = []
-        domains = {item["registration"]["lab_id"]: item["registration"].get("domain")
-                   for item in self.list_labs()}
+        accepted_papers_by_lab: dict[str, set[str]] = {}
+        labs = {item["registration"]["lab_id"]: item
+                for item in self.list_labs()}
         for entry in parse_journal_entries(self.feed()):
             lab_id = entry.get("lab_id")
-            domain = domains.get(lab_id) or "unspecified"
+            registered = labs.get(lab_id)
+            domain = (registered["registration"].get("domain")
+                      if registered is not None else None) or "unspecified"
             row = {"id": f"journal:{lab_id}:{entry['campaign_id']}",
                    "lab_id": lab_id, "campaign_id": entry["campaign_id"],
                    "kind": "publication", "publication_status": "accepted",
@@ -357,6 +361,47 @@ class NetworkHub:
                    "title": entry.get("headline") or entry["campaign_id"],
                    "body": entry["body"][:4000], "at": entry.get("ts")}
             if is_publication(row):
+                # Only include manuscript text if the canonical paper file is
+                # independently recognized as accepted for this exact lab and
+                # campaign by the same journal parser used in the lab view.
+                # This keeps stray drafts/rejections and mismatched manifests
+                # out of the public network payload.
+                from efferents.dashboard.reader import read_papers
+                from efferents.journal.feed import render_feed
+                if registered is not None:
+                    lab_dir = registered["dir"]
+                    campaign_id = entry["campaign_id"]
+                    paper_path = (lab_dir / "paper" / f"{campaign_id}.md"
+                                  if _CAMPAIGN_RE.fullmatch(str(campaign_id)) else None)
+                    if lab_id not in accepted_papers_by_lab:
+                        accepted_papers_by_lab[lab_id] = {
+                            paper["campaign_id"] for paper in read_papers(lab_dir / "lab")
+                            if paper.get("status") == "accepted" and paper.get("lab_id") == lab_id
+                        }
+                    accepted = campaign_id in accepted_papers_by_lab[lab_id]
+                else:
+                    accepted = False
+                    paper_path = None
+                    campaign_id = entry["campaign_id"]
+                if accepted and paper_path is not None and paper_path.is_file():
+                    try:
+                        if paper_path.stat().st_size <= _MAX_PUBLISHED_MANUSCRIPT:
+                            paper_cards = render_feed([paper_path])
+                            source_card = paper_cards[0] if paper_cards else None
+                            # A journal entry can promote a preprint to publication,
+                            # but a draft or explicitly rejected artifact never leaves
+                            # the lab even if an unrelated/stale entry has matching IDs.
+                            if (source_card is not None
+                                    and source_card.lab_id == lab_id
+                                    and source_card.campaign_id == campaign_id
+                                    and source_card.status in {"preprint", "accepted"}):
+                                manuscript = paper_path.read_text()
+                            else:
+                                manuscript = ""
+                            if manuscript and len(manuscript.encode("utf-8")) <= _MAX_PUBLISHED_MANUSCRIPT:
+                                row["manuscript"] = manuscript
+                    except (OSError, UnicodeError):
+                        pass
                 findings.append(row)
         return {"findings": findings[-150:]}
 
