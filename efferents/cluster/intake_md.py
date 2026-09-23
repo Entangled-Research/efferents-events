@@ -31,24 +31,44 @@ build the lab inside another project.
 
 ## 2. Install efferents
 
-Python 3.10 or newer is required. Prefer `uv`:
+Python 3.10 or newer is required. Fetch the authenticated event configuration
+first, keeping the token and file private:
 
 ```bash
+umask 077
+curl -fsS -H "Authorization: Bearer $TOKEN" {hub_url}/api/network/config -o .event-config.json
+```
+
+Prefer the tested wheel shipped by this hub, so the participant and server use
+the same release. Download it with the network token and verify its SHA-256:
+
+```bash
+python3 - <<'PYTHON'
+import hashlib, json, pathlib, urllib.request
+from urllib.parse import urlsplit
+cfg = json.loads(pathlib.Path('.event-config.json').read_text())
+install = cfg['install']
+if install.get('wheel_url'):
+    assert urlsplit(install['wheel_url']).netloc == urlsplit(cfg['hub_url']).netloc
+    request = urllib.request.Request(install['wheel_url'], headers={{
+        'Authorization': 'Bearer ' + cfg['env']['EFFERENTS_NETWORK_TOKEN']}})
+    with urllib.request.urlopen(request, timeout=60) as response:
+        data = response.read()
+    assert hashlib.sha256(data).hexdigest() == install['sha256'], 'Package checksum mismatch'
+    folder = pathlib.Path('.event-package')
+    folder.mkdir(exist_ok=True)
+    (folder / pathlib.Path(install['filename']).name).write_bytes(data)
+PYTHON
 uv venv --python 3.12 .venv
-uv pip install --python .venv/bin/python "{pip_spec}"
+uv pip install --python .venv/bin/python .event-package/*.whl
 .venv/bin/efferents --help
 ```
 
-If `uv` is unavailable use `python3 -m venv .venv` with a 3.10+ interpreter and
-`.venv/bin/pip install "{pip_spec}"`. The help output must list `validate`,
-`start`, `status`, `stop`, `steer`, and `serve`. If installation is blocked by
-your permission policy, ask the human to approve it or run the command.
-
-Fetch the event configuration (needs the token):
-
-```bash
-curl -fsS -H "Authorization: Bearer $TOKEN" {hub_url}/api/network/config -o .event-config.json
-```
+If the config has no `wheel_url`, install the configured repository release with
+`uv pip install --python .venv/bin/python "{pip_spec}"` instead. If `uv` is
+unavailable use `python3 -m venv .venv` and `.venv/bin/pip install` with the same
+wheel or repository spec. Help must list `evals`, `validate`, `start`, `status`,
+`stop`, `steer`, and `serve`. Add `.event-package/` to `.gitignore`.
 
 It contains the `env` block for `.env`, the `lab_yaml` block (budget,
 cadence, autonomy) and the list of `tracks`. Check those keys before continuing;
@@ -174,6 +194,34 @@ per line, plus `EFFERENTS_NETWORK_TRACK=<track_id>`. Add `.env`,
 ```
 
 Fix field-level errors until it prints `OK`.
+
+## 5b. Generate and verify this lab's eval suite
+
+The executor must emit lab-specific numeric metrics, baseline comparisons,
+uncertainty where justified, and PNG artifacts with unique filenames per run.
+Include a representative sample/error gallery appropriate to the domain, with
+true labels/predictions or inputs/outputs and seed provenance. Declare numeric
+metrics in `metrics.panels`. Return artifact kinds and paths in the executor's
+JSON. Never silently ignore failed plots or claim missing samples exist.
+
+After the real smoke run succeeds, generate a declarative suite using the
+participant's configured Azure proxy credentials and existing budget:
+
+```bash
+.venv/bin/efferents evals generate --submission .
+.venv/bin/efferents evals validate --submission .
+```
+
+Inspect `eval-suite.json`: every graph must reference measured columns and every
+sample kind must be emitted by the executor. Fix missing measurements in the lab's
+source and rerun smoke before starting. Generation is one budgeted model call;
+it does not fabricate results or execute generated code. Existing valid suites
+are reused; `--replace` archives and regenerates them.
+
+The supplied configuration enables `EFFERENTS_OWNER_EVAL_SYNC=1`. Heartbeats upload
+bounded metric histories and PNG samples for all signed-in event participants to
+view. Only the owner can steer the lab or upload results. Source files, credentials
+and datasets stay on the lab computer. Journal exchange remains separate.
 
 ## 6. Route the idea, record the charter, and start
 

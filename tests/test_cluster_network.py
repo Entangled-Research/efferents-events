@@ -158,6 +158,8 @@ def test_register_heartbeat_push_pull_and_portfolio(hub):
     status, body, _ = _request(port, "/api/labs/ada-lab/steer", method="POST",
                                payload={"message": "x"}, headers=ada_hdrs)
     assert status == 409 and "own" in body["error"]
+    assert _request(port, "/api/labs/ada-lab/steer", method="POST",
+                    payload={"message": "x"}, headers=bob_hdrs)[0] == 403
 
     # Journal push lands in the hub and, after a sync, in the feed.
     journal = ("# Journal\n\n<!-- ENTRIES BELOW -->\n\n## 2026-09-20 14:00 UTC — c1\n"

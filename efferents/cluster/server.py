@@ -8,7 +8,7 @@ import re
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
-from efferents.cluster.config import ClusterConfig, activate_environment, load_cluster_config
+from efferents.cluster.config import ClusterConfig, activate_environment, load_cluster_config, write_event
 from efferents.cluster.context import ClusterContext
 from efferents.cluster.binding import propose_falsifiers
 from efferents.cluster.budget import owner_intake_budget
@@ -125,7 +125,7 @@ class ClusterHandler(DashboardHandler):
             if owner is not None:
                 self._set_owner_cookie(owner)
                 return self._redirect("/#join")
-            return self._redirect("/#join")
+            return self._redirect("/?signin=expired#join")
         return super().do_GET()
 
     def _extra_get(self, path: str) -> bool:
@@ -137,11 +137,24 @@ class ClusterHandler(DashboardHandler):
             owner = self._require_joined()
             self._network_get(owner, path)
             return True
+        artifact = re.fullmatch(r"/api/labs/([A-Za-z0-9._-]+)/artifacts/([a-f0-9]{64})", path)
+        if artifact:
+            self._require_joined()
+            lab_id, digest = artifact.groups()
+            self.cluster.hub.registration(lab_id)
+            snapshot_path = self.cluster.hub.lab_dir(lab_id) / "owner-evals.json"
+            snapshot = json.loads(snapshot_path.read_text()) if snapshot_path.is_file() else {}
+            encoded = snapshot.get("images", {}).get(digest)
+            if encoded is None:
+                raise ControlError("Unknown eval image", status=404)
+            import base64
+            self._send_bytes(base64.b64decode(encoded), "image/png")
+            return True
         remote = self._remote_lab_id(path)
         if remote is not None:
             self._require_viewer()
             lab_id, kind = remote
-            self._send_json(self.cluster.hub.lab_view(lab_id, kind))
+            self._send_json(self.cluster.hub.lab_view(lab_id, kind, owner_id=self._session().owner_id))
             return True
         if path == "/api/tracks":
             self._require_viewer()
@@ -175,6 +188,12 @@ class ClusterHandler(DashboardHandler):
 
     def _network_get(self, owner: Owner, path: str) -> None:
         hub = self.cluster.hub
+        if path == "/api/network/package":
+            from efferents.cluster.network import participant_wheel
+            wheel = participant_wheel()
+            if wheel is None:
+                raise ControlError("No tested participant package on this hub", status=404)
+            return self._send_file(wheel)
         if path == "/api/network/config":
             return self._send_json(hub.config_payload(owner, self._base_url()))
         if path == "/api/network/feed":
@@ -205,6 +224,20 @@ class ClusterHandler(DashboardHandler):
                 raise ControlError("Too many hub requests; slow down.", status=429)
             self._network_post(owner, path, self._read_json(_NETWORK_BODY))
             return True
+        if path == "/api/login":
+            if not self.cluster.login_limiter.allow(self._client_ip()):
+                raise ControlError("Too many sign-in attempts; wait a minute.", status=429)
+            payload = self._read_json(4096)
+            credential = str(payload.get("credential") or "").strip()
+            if "?owner=" in credential:
+                credential = (parse_qs(urlsplit(credential).query).get("owner") or [""])[0]
+            owner = self.cluster.owners.recover(credential)
+            write_event(self.cluster.paths, "sign_in", owner_id=owner.owner_id)
+            self._owner, self._owner_loaded = owner, True
+            self._set_owner_cookie(owner)
+            self._send_json({"owner": owner.public(), "csrf_token": self.csrf_token,
+                             "cluster": self.cluster.cluster_payload(owner)})
+            return True
         if path != "/api/join":
             return False
         payload = self._read_json()
@@ -212,9 +245,11 @@ class ClusterHandler(DashboardHandler):
             str(payload.get("code") or ""), str(payload.get("name") or ""),
             ip=self._client_ip(),
         )
+        recovery_key = self.cluster.owners.create_recovery_key(owner.owner_id)
         self._owner, self._owner_loaded = owner, True
         self._set_owner_cookie(owner)
         self._send_json({
+            "recovery_key": recovery_key,
             "owner": owner.public(),
             "owner_link": f"/?owner={owner.token}",
             "csrf_token": self.csrf_token,
@@ -267,6 +302,19 @@ class ClusterHandler(DashboardHandler):
                          status=status, extra_headers=extra)
 
     def _extra_post(self, path: str, payload: dict) -> bool:
+        if path == "/api/account/recovery":
+            owner = self._require_joined()
+            if not self.cluster.mutation_limiter.allow(owner.owner_id):
+                raise ControlError("Too many requests; slow down.", status=429)
+            key = self.cluster.owners.create_recovery_key(owner.owner_id)
+            write_event(self.cluster.paths, "recovery_key_replaced", owner_id=owner.owner_id)
+            self._send_json({"recovery_key": key})
+            return True
+        if path == "/api/logout":
+            self._require_joined()
+            self._pending_cookie = build_cookie("", max_age_s=0, secure=self.cluster.cfg.session.secure_cookies)
+            self._send_json({"signed_out": True})
+            return True
         if path in ("/api/connect", "/api/labs/select", "/api/steer",
                     "/api/lab/start", "/api/lab/stop", "/api/onboard",
                     "/api/lab/trial", "/api/network/observe"):
@@ -274,6 +322,8 @@ class ClusterHandler(DashboardHandler):
             self.send_error(404)
             return True
         if path.startswith("/api/labs/") and (self.cluster.hub.root / path.split("/")[3] / "registration.json").is_file():
+            owner = self._require_joined()
+            self.cluster.hub.require_owner(owner, path.split("/")[3])
             raise ControlError(
                 "This lab runs on its owner's machine; steer it there "
                 "(efferents steer / the local workspace).", status=409,

@@ -141,7 +141,7 @@ class NetworkPolicy:
 
 @dataclass(frozen=True)
 class SessionPolicy:
-    max_age_hours: float = 12.0
+    max_age_hours: float = 48.0
     secure_cookies: bool = True
     trust_proxy: bool = True
 
@@ -304,7 +304,7 @@ sync:
   max_reviews_per_tick: 10
 
 session:
-  max_age_hours: 12
+  max_age_hours: 48
   secure_cookies: true              # set false only for plain-http rehearsals
   trust_proxy: true                 # X-Forwarded-For from the reverse proxy
 

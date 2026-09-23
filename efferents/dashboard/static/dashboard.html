@@ -83,8 +83,35 @@
           One join code for the room. Pick the name other labs will see next to yours.
         </p>
       </div>
+      <section class="panel join-panel" aria-labelledby="login-title">
+        <header class="panel-header"><h2 id="login-title">Returning? Sign in</h2></header>
+        <div class="join-body">
+          <p class="hint">Use your saved recovery key, or a still-valid network token or owner link. This restores your identity and labs in any browser, including incognito.</p>
+          <form id="login-form" class="join-form">
+            <label class="field-label" for="login-credential">Recovery key or token</label>
+            <input id="login-credential" type="password" autocomplete="current-password" maxlength="2048" required>
+            <button class="primary-button" type="submit">Sign in</button>
+          </form>
+          <div id="login-message" class="form-message" role="status"></div>
+          <p class="hint">Lost your key and token? Ask the event organizer to recover your existing identity. A name alone cannot prove ownership.</p>
+        </div>
+      </section>
+      <section class="panel join-panel" id="recovery-panel" hidden>
+        <header class="panel-header"><h2>Keep your identity</h2></header>
+        <div class="join-body">
+          <p class="hint">Save your recovery key in a password manager before leaving. It works after cookies are cleared or your 48-hour token expires, and renews access to the same labs and budget. Anyone with this key can act as you. It stays valid until replaced.</p>
+          <button id="create-recovery" class="compact-button" type="button">Create recovery key</button>
+          <div id="recovery-secret" hidden>
+            <code id="recovery-key" class="instruction-line"></code>
+            <button id="copy-recovery" class="compact-button" type="button">Copy recovery key</button>
+            <p class="hint">Save this now. The server cannot show it again.</p>
+          </div>
+          <div id="recovery-message" class="form-message" role="status"></div>
+          <button id="sign-out" class="compact-button" type="button">Sign out of this browser</button>
+        </div>
+      </section>
       <section class="panel join-panel" id="join-panel" aria-labelledby="join-form-title">
-        <header class="panel-header"><h2 id="join-form-title">Who is steering?</h2></header>
+        <header class="panel-header"><h2 id="join-form-title">First time? Create an identity</h2></header>
         <div class="join-body">
           <form id="join-form" class="join-form">
             <label class="field-label" for="join-code">Join code</label>
@@ -134,7 +161,7 @@
 efferents steer --submission . --pause     # or --resume
 efferents stop  --submission .</pre>
             <p class="hint">
-              Come back as yourself with your owner link. Anyone with it can act as you.
+              This owner link works while your network token is valid. Save a recovery key above for access after expiration. Anyone with either credential can act as you.
             </p>
             <code id="owner-link" class="instruction-line"></code>
             <button id="copy-owner-link" class="compact-button" type="button">Copy owner link</button>

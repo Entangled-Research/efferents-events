@@ -58,3 +58,40 @@ def test_cookie_roundtrip():
     assert ow.token_from_cookie_header(f"other=1; {ow.COOKIE_NAME}=tok") == "tok"
     assert ow.token_from_cookie_header(None) is None
     assert "Secure" not in ow.build_cookie("t", max_age_s=1, secure=False)
+
+
+def test_default_tokens_last_48_hours(tmp_path):
+    from datetime import datetime, timedelta, timezone
+    from efferents.cluster.config import SessionPolicy
+    assert SessionPolicy().max_age_hours == 48
+    store = ow.OwnerStore(tmp_path / "owners.json")
+    owner = store.join("Ada")
+    owner.joined_at = (datetime.now(timezone.utc) - timedelta(hours=47)).isoformat()
+    assert store.by_token(owner.token) is owner
+    owner.joined_at = (datetime.now(timezone.utc) - timedelta(hours=49)).isoformat()
+    assert store.by_token(owner.token) is None
+
+
+def test_recovery_preserves_identity_and_renews_without_resetting_join_date(tmp_path):
+    store = ow.OwnerStore(tmp_path / 'owners.json')
+    owner = store.join('Ada')
+    store.add_lab(owner.owner_id, 'ada-lab')
+    key = store.create_recovery_key(owner.owner_id)
+    original_token = owner.token
+    owner.joined_at = (datetime.now(timezone.utc) - timedelta(days=3)).isoformat()
+    joined = owner.joined_at
+    store._save()
+    assert key not in store.path.read_text()
+    with pytest.raises(ControlError):
+        store.recover(original_token)
+    store = ow.OwnerStore(store.path)
+    recovered = store.recover(key)
+    assert recovered.owner_id == owner.owner_id
+    assert recovered.joined_at == joined
+    assert recovered.token == original_token
+    assert recovered.labs == ['ada-lab']
+    assert store.by_token(original_token) is recovered
+    replacement = store.create_recovery_key(recovered.owner_id)
+    with pytest.raises(ControlError):
+        store.recover(key)
+    assert store.recover(replacement).owner_id == owner.owner_id

@@ -21,9 +21,12 @@ COPY efferents/ ./efferents/
 COPY docs/prototypes/event-network.html ./docs/prototypes/event-network.html
 COPY examples/smoke-lab/ ./examples/smoke-lab/
 RUN uv venv /opt/venv \
-    && uv pip install --no-cache --python /opt/venv/bin/python .
+    && uv build --wheel --out-dir /opt/efferents/dist \
+    && chmod 644 /opt/efferents/dist/*.whl \
+    && uv pip install --no-cache --python /opt/venv/bin/python /opt/efferents/dist/*.whl
 
-ENV PATH="/opt/venv/bin:$PATH" \
+ENV EFFERENTS_INSTALL_WHEEL=/opt/efferents/dist/efferents-0.1.4-py3-none-any.whl \
+    PATH="/opt/venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     HOME=/data/home \

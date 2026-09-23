@@ -262,7 +262,7 @@ class Orchestrator:
             n_runs = runs_count(self.paths.runs_db)
         except Exception:  # no runs table before the first execution
             n_runs = 0
-        return {
+        payload = {
             "status": status,
             "runs": n_runs,
             "spend_usd": round(self.budget.spend_total(), 4),
@@ -280,6 +280,13 @@ class Orchestrator:
                 "reproduced": reproduction_edges_for(cfg.lab_id, self.submission_dir / "paper" / "reproductions.md"),
             },
         }
+        if os.environ.get("EFFERENTS_OWNER_EVAL_SYNC") == "1":
+            from efferents.cluster.eval_snapshot import build
+            try:
+                payload["owner_evals"] = build(self.paths.root, cfg)
+            except Exception as exc:
+                payload["eval_sync_error"] = type(exc).__name__
+        return payload
 
     def _maybe_network(self) -> None:
         if self.network is None:

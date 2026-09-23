@@ -202,6 +202,13 @@ function renderRoute() {
   if (isCluster()) {
     if (controlState.hydrated && !isJoined()) {
       route = "join";
+      document.getElementById("join-panel").hidden = false;
+      document.getElementById("connect-steps").hidden = true;
+      document.getElementById("recovery-panel").hidden = true;
+      showRecoveryKey("");
+      document.getElementById("recovery-panel").hidden = true;
+      text("join-title", "Sign in or join the lab network");
+      text("join-lede", "Keep the same identity across browsers. Sign in below if you have joined before.");
     } else if (route === "join") {
       renderTerminalPanel(controlState.session);
       document.getElementById("join-panel").hidden = true;
@@ -1141,11 +1148,12 @@ function renderRuns(data) {
 
   if (!runs.length) {
     const row = document.createElement("tr");
-    row.innerHTML = '<td colspan="5"><div class="empty-state">No runs</div></td>';
+    row.innerHTML = `<td colspan="5"><div class="empty-state">${esc(data.access?.message || 'No runs')}</div></td>`;
     tbody.appendChild(row);
   }
 
   renderTrend(Array.isArray(data.series) ? data.series : [], direction, {
+    accessMessage: data.access?.message,
     metric: headline.column || "metric",
     eligible: eligibleRuns.length,
     excluded: excludedCount,
@@ -1169,7 +1177,7 @@ function renderTrend(series, direction, summary = {}) {
   );
 
   if (!finiteSeries.length) {
-    text("trend-caption", "No eligible metric observations");
+    text("trend-caption", summary.accessMessage || "No eligible metric observations");
     text("metric-range", "—");
     return;
   }
@@ -1327,7 +1335,7 @@ function renderEvidenceRecord(record, metricPanels, hiddenDimensions = new Set()
   const failures = Array.isArray(record.constraint_failures)
     ? record.constraint_failures
     : [];
-  const artifact = (record.artifacts || [])[0];
+  const artifacts = record.artifacts || [];
   const metricRows = metricPanels
     .filter((metric) => record.metrics?.[metric.column] != null)
     .map((metric) =>
@@ -1335,11 +1343,9 @@ function renderEvidenceRecord(record, metricPanels, hiddenDimensions = new Set()
       `<dd>${esc(formatMetric(record.metrics[metric.column]))}</dd></div>`
     ).join("");
   return `<article class="evidence-record ${record.eligible ? "is-eligible" : "is-excluded"}">` +
-    (artifact
-      ? `<a class="evidence-artifact" href="${esc(artifact.url)}" target="_blank" rel="noopener" ` +
+    artifacts.map(artifact => `<a class="evidence-artifact" href="${esc(artifact.url)}" target="_blank" rel="noopener" ` +
         `aria-label="Open ${esc(record.name)} image at full resolution">` +
-        `<img src="${esc(artifact.url)}" loading="lazy" alt="${esc(record.name)} visual result"></a>`
-      : "") +
+        `<img src="${esc(artifact.url)}" loading="lazy" alt="${esc(record.name)} visual result"></a>`).join("") +
     `<div class="evidence-record-body"><div class="evidence-record-head">` +
     `<strong title="${esc(record.run_id)}">${esc(record.name || compactRunId(record.run_id))}</strong>` +
     `<span class="evidence-validity">${record.eligible ? "eligible" : "excluded"}</span></div>` +
@@ -1387,6 +1393,23 @@ function renderEvidenceComparison(group, metricPanels, comparison) {
     }).join("") + `</div></section>`;
 }
 
+function evalGraph(graph) {
+  const series = graph.series || [];
+  const values = series.flatMap(s => s.points.map(p => p.value)).filter(Number.isFinite);
+  if (!values.length) return `<article><h3>${esc(graph.title)}</h3><p>No measured values yet</p></article>`;
+  const min = Math.min(...values), max = Math.max(...values);
+  const span = max - min || Math.max(Math.abs(max) * .1, .01);
+  const colors = ["var(--signal)", "var(--terracotta)", "var(--muted)", "var(--ink)"];
+  const runIds = graph.run_ids || [...new Set(series.flatMap(s => s.points.map(p => p.run_id)))];
+  const lines = series.map((s, i) => {
+    const points = s.points.map(p => [70 + runIds.indexOf(p.run_id) * 470 / Math.max(1, runIds.length - 1),
+      150 - (p.value - min) / span * 125, p]);
+    return `<polyline fill="none" stroke="${colors[i % colors.length]}" stroke-width="2" points="${points.map(p => p.slice(0,2).join(",")).join(" ")}"/>` +
+      points.map(p => `<circle cx="${p[0]}" cy="${p[1]}" r="3" fill="${colors[i % colors.length]}"><title>${esc(s.column)} · ${esc(p[2].run_id)} · ${esc(formatMetric(p[2].value))}</title></circle>`).join("");
+  }).join("");
+  return `<article class="panel eval-graph"><h3>${esc(graph.title)}</h3><svg viewBox="0 0 560 185" role="img" aria-label="${esc(graph.title)}"><path d="M70 20V150H545" fill="none" stroke="currentColor"/><text x="1" y="28" font-size="18">${esc(Number(max.toPrecision(3)))}</text><text x="1" y="150" font-size="18">${esc(Number(min.toPrecision(3)))}</text>${lines}<text x="70" y="180" font-size="18">Eligible runs · oldest → newest</text></svg><p>${series.map((s, i) => `<span style="color:${colors[i % colors.length]}">${esc(s.column)} (${s.points.length})</span>`).join(" · ")}</p></article>`;
+}
+
 function renderEvidence(data) {
   const panel = document.getElementById("evidence-panel");
   const records = Array.isArray(data?.records) ? data.records : [];
@@ -1396,12 +1419,28 @@ function renderEvidence(data) {
   const groups = groupEvidenceRecords(records, comparison);
   const matched = groups.filter((group) => group.kind === "comparison").length;
   const standalone = groups.length - matched;
-  panel.hidden = records.length === 0;
+  panel.hidden = false;
+  let suitePanel = document.getElementById("eval-suite");
+  if (!suitePanel) {
+    suitePanel = document.createElement("div");
+    suitePanel.id = "eval-suite";
+    panel.querySelector(".panel-header").after(suitePanel);
+  }
+  const suite = data?.suite || {};
+  suitePanel.innerHTML = suite.status === "configured"
+    ? `<h3>${esc(suite.title)}</h3><details><summary>Evaluation protocol</summary><p>${esc(suite.rationale)}</p></details><div class="eval-graphs">${(suite.graphs || []).map(evalGraph).join("")}</div><p>${(suite.samples || []).map(s => `${esc(s.kind)} (${Number(s.available || 0)} images): ${esc(s.description)}`).join(" · ")}</p>`
+    : `<p>${esc(suite.message || "Eval suite not configured")}</p>`;
   text(
     "evidence-count",
-    `${matched} matched / ${standalone} standalone / ${Number(data?.artifact_count || 0)} images`,
+    `${matched} matched / ${standalone} standalone / ${Number(data?.artifact_count || 0)} images${data?.synced_at ? " · synced " + data.synced_at : ""}`,
   );
-  if (!records.length) return;
+  if (["private", "not_synced"].includes(suite.status)) {
+    text("evidence-count", suite.status === "private" ? "Owner access required" : "Awaiting sync");
+    document.getElementById("evidence-gates").innerHTML = "";
+    document.getElementById("evidence-gallery").innerHTML = "";
+    return;
+  }
+  // Metrics and suite status remain visible even before the first sample.
 
   const gates = document.getElementById("evidence-gates");
   gates.innerHTML = constraints.length
@@ -1830,7 +1869,53 @@ function initPanelToggles() {
 
 // --- hosted cluster: join ------------------------------------------------------
 
+let recoveryKey = "";
+function showRecoveryKey(key) {
+  recoveryKey = key;
+  text("recovery-key", key);
+  document.getElementById("recovery-secret").hidden = !key;
+  document.getElementById("recovery-panel").hidden = false;
+}
+
 function initJoinForm() {
+  if (new URLSearchParams(window.location.search).get("signin") === "expired") {
+    showMessage("login-message", "That owner link is invalid or expired. Sign in with your saved recovery key below.", "error");
+  }
+  document.getElementById("login-form").addEventListener("submit", async event => {
+    event.preventDefault();
+    const button = event.target.querySelector("button");
+    button.disabled = true;
+    try {
+      const result = await postJSON("/api/login", {credential: document.getElementById("login-credential").value});
+      document.getElementById("login-credential").value = "";
+      showRecoveryKey("");
+      if (result.csrf_token) csrfToken = result.csrf_token;
+      controlState.session = result.cluster;
+      controlState.mode = "cluster";
+      controlState.hydrated = true;
+      renderRoute();
+      showMessage("login-message", `Signed in as ${result.owner.name}.`, "success");
+      await refreshPortfolio().catch(() => {});
+    } catch (error) { showMessage("login-message", error.message, "error"); }
+    finally { button.disabled = false; }
+  });
+  document.getElementById("create-recovery").addEventListener("click", async () => {
+    if (controlState.session?.has_recovery_key && !window.confirm("Replace your recovery key? The previous key will stop working. Save the new key before leaving.")) return;
+    try {
+      const result = await postJSON("/api/account/recovery", {});
+      controlState.session.has_recovery_key = true;
+      showRecoveryKey(result.recovery_key);
+      text("create-recovery", "Replace recovery key");
+    } catch (error) { showMessage("recovery-message", error.message, "error"); }
+  });
+  document.getElementById("copy-recovery").addEventListener("click", async () => {
+    try { await navigator.clipboard.writeText(recoveryKey); showMessage("recovery-message", "Copied. Save it in your password manager.", "success"); }
+    catch { showMessage("recovery-message", "Select the key and copy it manually.", "error"); }
+  });
+  document.getElementById("sign-out").addEventListener("click", async () => {
+    try { await postJSON("/api/logout", {}); window.location.reload(); }
+    catch (error) { showMessage("recovery-message", error.message, "error"); }
+  });
   const form = document.getElementById("join-form");
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -1844,6 +1929,7 @@ function initJoinForm() {
       });
       if (result.csrf_token) csrfToken = result.csrf_token;
       controlState.session = result.cluster || { joined: true };
+      if (result.recovery_key) showRecoveryKey(result.recovery_key);
       controlState.mode = "cluster";
       controlState.hydrated = true;
       // Stay on this page: it now shows the instruction and token they need next.
@@ -1885,6 +1971,8 @@ function renderTerminalPanel(session) {
   text("network-token", session.network_token);
   text("owner-link", `${window.location.origin}${session.owner_link || `/?owner=${session.network_token}`}`);
   steps.hidden = false;
+  document.getElementById("recovery-panel").hidden = false;
+  text("create-recovery", session.has_recovery_key ? "Replace recovery key" : "Create recovery key");
 }
 
 // --- hosted cluster: intake dialogue ------------------------------------------

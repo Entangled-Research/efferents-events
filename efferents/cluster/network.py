@@ -51,6 +51,12 @@ def _write_json(path: Path, data: dict) -> None:
     os.replace(tmp, path)
 
 
+def participant_wheel() -> Path | None:
+    configured = os.environ.get("EFFERENTS_INSTALL_WHEEL")
+    path = Path(configured) if configured else None
+    return path if path and path.is_file() and path.suffix == ".whl" else None
+
+
 class NetworkHub:
     def __init__(self, cfg: ClusterConfig, tracks: dict[str, Track]):
         self.cfg = cfg
@@ -107,16 +113,22 @@ class NetworkHub:
                 "ANTHROPIC_API_KEY": owner.token,
                 "ANTHROPIC_BASE_URL": f"{url}/proxy/anthropic",
             }
+        wheel = participant_wheel()
+        bundle = ({"wheel_url": f"{url}/api/network/package", "filename": wheel.name,
+                   "sha256": hashlib.sha256(wheel.read_bytes()).hexdigest()} if wheel else {})
         return {
             "hub_url": url,
             "owner": owner.public(),
             "install": {
+                **bundle,
                 "repo_url": self.cfg.network.repo_url,
                 "ref": self.cfg.network.install_ref,
                 "pip_spec": f"git+{self.cfg.network.repo_url}.git@{self.cfg.network.install_ref}",
             },
             "env": {
                 **model_env,
+                "EFFERENTS_GENERATE_EVAL_SUITE": "1",
+                "EFFERENTS_OWNER_EVAL_SYNC": "1",
                 "EFFERENTS_NETWORK_URL": url,
                 "EFFERENTS_NETWORK_TOKEN": owner.token,
                 "OMP_NUM_THREADS": "1",
@@ -220,6 +232,14 @@ class NetworkHub:
             "last_activity": payload.get("last_activity"),
             "halt_reason": (str(payload.get("halt_reason"))[:200] if payload.get("halt_reason") else None),
         }
+        if "owner_evals" in payload:
+            from efferents.cluster.eval_snapshot import validate
+            try:
+                snapshot = validate(payload["owner_evals"], lab_id)
+            except (ValueError, TypeError) as exc:
+                raise ControlError("Invalid eval snapshot", status=422) from exc
+            snapshot["synced_at"] = beat["ts"]
+            _write_json(d / "owner-evals.json", snapshot)
         _write_json(d / "heartbeat.json", beat)
         edges = payload.get("edges")
         if isinstance(edges, dict):
@@ -383,11 +403,19 @@ class NetworkHub:
             })
         return rows
 
-    def lab_view(self, lab_id: str, kind: str) -> Any:
+    def lab_view(self, lab_id: str, kind: str, *, owner_id: str | None = None) -> Any:
         """Read-only views of a remote lab for the observer panel."""
         reg = self.registration(lab_id)
         d = self.lab_dir(lab_id)
         beat = _read_json(d / "heartbeat.json")
+        if owner_id is not None and kind in {"runs", "evidence", "verdict"}:
+            snapshot = _read_json(d / "owner-evals.json")
+            if isinstance(snapshot.get(kind), dict):
+                result = snapshot[kind]
+                result["synced_at"] = snapshot.get("synced_at")
+                return result
+        access = {"status": "not_synced",
+                  "message": "No evaluation snapshot has synced. The owner should check the lab connection and network token."}
         if kind == "control":
             return {
                 "connected": True, "lab_id": lab_id, "domain": reg.get("domain"),
@@ -406,7 +434,7 @@ class NetworkHub:
         if kind == "runs":
             head = beat.get("headline") or {}
             return {"headline": {"column": head.get("column", "metric"), "direction": head.get("direction", "min")},
-                    "runs": [], "series": [],
+                    "runs": [], "series": [], "access": access,
                     "history": {"total": int(beat.get("runs") or 0), "best": head.get("best"), "best_run_id": None}}
         if kind == "papers":
             from efferents.dashboard.reader import read_papers  # noqa: PLC0415
@@ -418,7 +446,8 @@ class NetworkHub:
             return [{"timestamp": e["ts"], "title": f"paper accepted: {e['campaign_id']}",
                      "body": e.get("headline") or ""} for e in entries[:20]]
         if kind == "evidence":
-            return {"panels": [], "constraints": [], "comparison": {"axis": None, "labels": {}, "order": []},
+            return {"suite": access,
+                    "panels": [], "constraints": [], "comparison": {"axis": None, "labels": {}, "order": []},
                     "records": [], "artifact_count": 0}
         if kind == "verdict":
             v = beat.get("verdict") or {}

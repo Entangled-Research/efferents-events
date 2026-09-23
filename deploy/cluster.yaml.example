@@ -53,7 +53,7 @@ sync:
   max_reviews_per_tick: 10
 
 session:
-  max_age_hours: 12
+  max_age_hours: 48
   secure_cookies: true              # set false only for plain-http rehearsals
   trust_proxy: true                 # X-Forwarded-For from the reverse proxy
 

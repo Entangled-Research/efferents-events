@@ -50,6 +50,7 @@ class ClusterContext:
         factory = client_factory or (lambda budget: make_client(budget=budget))
         self.intake = IntakeStore(cfg, self.tracks, client_factory=factory)
         self.join_limiter = RateLimiter(5, 60.0)
+        self.login_limiter = RateLimiter(10, 60.0)
         self.message_limiter = RateLimiter(12, 60.0)
         self.mutation_limiter = RateLimiter(30, 60.0)
         self._spend_lock = threading.Lock()
@@ -115,6 +116,7 @@ class ClusterContext:
                 "owner": owner.public(),
                 "owner_link": f"/?owner={owner.token}",
                 "network_token": owner.token,
+                "has_recovery_key": bool(owner.recovery_hash),
                 "proxy_spend_usd": round(self.proxy.spend(owner.owner_id), 4),
                 "proxy_cap_usd": self.cfg.proxy.cap_per_owner_usd,
                 "install_ref": self.cfg.network.install_ref,

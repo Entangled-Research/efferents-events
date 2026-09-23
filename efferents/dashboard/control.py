@@ -20,7 +20,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
-import json
 from typing import Callable
 
 from efferents import daemon

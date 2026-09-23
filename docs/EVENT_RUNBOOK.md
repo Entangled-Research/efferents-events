@@ -59,3 +59,24 @@ C=/srv/efferents/cluster
 4. Give each participant their lab directory (`labs/<id>`): hypothesis,
    charter, run ledger, papers, and the reviews other labs wrote about them.
 5. Destroy the droplet, or at least `ufw deny 80,443/tcp`.
+
+
+### Returning participants
+
+The Connect a lab page has a returning-user sign-in form. A valid network token
+or owner link restores the current identity in a new browser. New signups receive
+a recovery key, shown once; existing participants can create one while signed in.
+Save it in a password manager. Only its SHA-256 hash is stored on the hub.
+
+A recovery key works after the 48-hour token window and renews the same token for
+48 hours. It preserves the owner ID, original join date, labs and budget ledgers,
+so running labs need no token replacement. Replacing a recovery key invalidates
+the previous key. Signing out removes only the browser cookie. Recovery and key
+replacement write audit events without credentials. Invalid owner links now show
+a recovery prompt. A name or event code alone does not recover an account.
+
+Email recovery is not configured. Do not collect unverified email addresses as
+proof of identity or claim that email-based signup abuse prevention is active.
+Join-code gating and rate limits remain in force; returning users must not create
+extra identities to reset budgets. Lost-key cases require organizer-assisted
+identity verification before issuing a replacement recovery key.

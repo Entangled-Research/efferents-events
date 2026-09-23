@@ -1,13 +1,14 @@
 """Participant identities: join code + chosen name → owner token cookie.
 
 Owners are stored in one JSON file the server owns (mode 0600). The token is
-the only credential; it travels in an HttpOnly cookie and in the owner link
-(``/?owner=<token>``) a participant keeps to come back as themselves.
+a short-lived credential sent in an HttpOnly cookie or owner link. A separate
+hashed recovery key restores the identity and renews access after expiration.
 """
 
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 import secrets
 import threading
@@ -30,6 +31,8 @@ class Owner:
     joined_at: str
     labs: list[str] = field(default_factory=list)
     ip: str | None = None
+    recovery_hash: str | None = None
+    renewed_at: str | None = None
 
     def public(self) -> dict:
         return {"id": self.owner_id, "name": self.name, "labs": list(self.labs)}
@@ -47,7 +50,7 @@ def validate_name(name: str) -> str:
 
 
 class OwnerStore:
-    def __init__(self, path: Path, *, max_age_hours: float = 12.0):
+    def __init__(self, path: Path, *, max_age_hours: float = 48.0):
         self.path = Path(path)
         self.max_age = timedelta(hours=float(max_age_hours))
         self._lock = threading.RLock()
@@ -67,6 +70,8 @@ class OwnerStore:
                     owner_id=oid, name=raw["name"], token=raw["token"],
                     joined_at=raw.get("joined_at", ""), labs=list(raw.get("labs") or []),
                     ip=raw.get("ip"),
+                    recovery_hash=raw.get("recovery_hash"),
+                    renewed_at=raw.get("renewed_at"),
                 )
             except (KeyError, TypeError):
                 continue
@@ -105,7 +110,7 @@ class OwnerStore:
         if self.max_age.total_seconds() <= 0:
             return False
         try:
-            joined = datetime.fromisoformat(owner.joined_at)
+            joined = datetime.fromisoformat(owner.renewed_at or owner.joined_at)
         except ValueError:
             return False
         return datetime.now(timezone.utc) - joined > self.max_age
@@ -118,7 +123,7 @@ class OwnerStore:
             taken = {o.name.casefold() for o in self._owners.values()}
             if name.casefold() in taken:
                 raise ControlError(
-                    f"The name {name!r} is taken; add an initial or a number.", status=409
+                    f"The name {name!r} already has an identity. Use Sign in with your saved key or token; otherwise ask the organizer for help.", status=409
                 )
             owner = Owner(
                 owner_id=secrets.token_hex(4),
@@ -130,6 +135,32 @@ class OwnerStore:
             self._owners[owner.owner_id] = owner
             self._save()
             return owner
+
+    def create_recovery_key(self, owner_id: str) -> str:
+        """Issue a durable high-entropy credential; only its hash is persisted."""
+        with self._lock:
+            owner = self._owners[owner_id]
+            key = "er_" + secrets.token_urlsafe(32)
+            owner.recovery_hash = hashlib.sha256(key.encode()).hexdigest()
+            self._save()
+            return key
+
+    def recover(self, credential: str) -> Owner:
+        credential = credential.strip()
+        if not credential or len(credential) > 512:
+            raise ControlError("Invalid or expired sign-in credential. Use your saved recovery key.", status=401)
+        with self._lock:
+            digest = hashlib.sha256(credential.encode()).hexdigest()
+            for owner in self._owners.values():
+                if owner.recovery_hash and secrets.compare_digest(owner.recovery_hash, digest):
+                    # Keep identity, ownership, spend and the lab's configured token.
+                    owner.renewed_at = datetime.now(timezone.utc).isoformat()
+                    self._save()
+                    return owner
+            owner = self.by_token(credential)
+            if owner is not None:
+                return owner
+        raise ControlError("Invalid or expired sign-in credential. Use your saved recovery key.", status=401)
 
     def add_lab(self, owner_id: str, lab_id: str) -> None:
         with self._lock:
