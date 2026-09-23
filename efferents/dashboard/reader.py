@@ -486,16 +486,30 @@ def paper_dirs(lab_root: Path) -> list[Path]:
 
 
 def read_papers(lab_root: Path) -> list[dict]:
+    from efferents.agents.federation import parse_journal_entries
+    from efferents.journal.reviews import PERSONAS, review_scores
+
     lab_root = Path(lab_root)
     paths: list[Path] = []
     seen: set[str] = set()
+    accepted: set[tuple[str, str]] = set()
     for d in paper_dirs(lab_root):
         if d.exists():
+            journal = d / "journal.md"
+            if journal.is_file():
+                for entry in parse_journal_entries(journal.read_text()):
+                    if (entry.get("lab_id")
+                            and set(review_scores(entry["body"])) == set(PERSONAS)):
+                        accepted.add((entry["lab_id"], entry["campaign_id"]))
             for p in sorted(d.glob("*.md")):
                 if p.name not in seen:
                     seen.add(p.name)
                     paths.append(p)
-    return [c.model_dump() for c in render_feed(paths)]
+    cards = [c.model_dump() for c in render_feed(paths)]
+    for card in cards:
+        if (card["lab_id"], card["campaign_id"]) in accepted:
+            card["status"] = "accepted"
+    return cards
 
 
 def read_activity(lab_root: Path, n: int = 20) -> list[dict]:

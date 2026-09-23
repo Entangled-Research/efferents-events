@@ -82,6 +82,28 @@ def test_read_papers_reads_paper_dir(tmp_path, smoke_lab_config):
     assert len(papers) == 1
     assert papers[0]["campaign_id"] == "camp-1"
     assert papers[0]["title"] == "Title"
+    assert papers[0]["status"] == "preprint"
+
+
+def test_journal_acceptance_upgrades_preprint_card_without_rewriting_paper(
+    tmp_path, smoke_lab_config,
+):
+    paper_dir = tmp_path / "paper"
+    paper_dir.mkdir()
+    paper = paper_dir / "camp-1.md"
+    original = (
+        "---\nlab_id: smoke-fixture\ncampaign_id: camp-1\n"
+        "novelty_claim: A bounded finding.\npublished_at: 2026-06-09\n"
+        "status: preprint\n---\n\n# Title\n"
+    )
+    paper.write_text(original)
+    (paper_dir / "journal.md").write_text(
+        "# Journal\n\n## 2026-06-09 12:00 UTC — camp-1\n"
+        "**Lab**: smoke-fixture\n"
+        "**Scores**: critical=5, neutral=5, optimistic=3 (mean=4.3)\n"
+    )
+    assert reader.read_papers(tmp_path)[0]["status"] == "accepted"
+    assert paper.read_text() == original
 
 
 def test_read_papers_empty_when_no_dir(tmp_path, smoke_lab_config):

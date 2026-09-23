@@ -303,7 +303,7 @@ def test_remote_paper_register_requires_accepted_journal_entry(hub):
 
     _request(port, "/api/network/labs/ada-lab/journal", method="POST",
              payload={"journal": journal, "papers": {
-                 "accepted-one": paper("accepted-one", "accepted"),
+                 "accepted-one": paper("accepted-one", "preprint"),
                  "unreviewed-one": paper("unreviewed-one", "accepted"),
                  "draft-one": paper("draft-one", "draft"),
                  "rejected-one": paper("rejected-one", "rejected"),
@@ -311,6 +311,7 @@ def test_remote_paper_register_requires_accepted_journal_entry(hub):
     status, papers, _ = _request(port, "/api/labs/ada-lab/papers", headers=viewer_headers)
     assert status == 200
     assert [paper["campaign_id"] for paper in papers] == ["accepted-one"]
+    assert papers[0]["status"] == "accepted"
 
 
 def test_bind_and_proxy(hub):
