@@ -2059,6 +2059,7 @@ td.status-insufficient_data {
 }
 
 .living-network .network-journals,
+.living-network .network-nodes,
 .living-network .network-ideas {
   pointer-events: none;
 }
@@ -2215,7 +2216,7 @@ td.status-insufficient_data {
 .exchange-record details summary { cursor: pointer; font: 12px/1.5 var(--mono); margin: 9px 0; }
 .published-manuscript-text { max-height: 520px; overflow: auto; border: 1px solid var(--line); background: var(--panel); padding: 12px; white-space: pre-wrap; overflow-wrap: anywhere; font: 11px/1.55 var(--mono); }
 .shared-journal-node { padding: 0; }
-.shared-journal-link { display: grid; align-content: center; gap: 4px; width: 100%; height: 100%; box-sizing: border-box; padding: 8px 14px; color: inherit; text-decoration: none; }
+.shared-journal-link { display: grid; align-content: center; gap: 4px; width: 100%; height: 100%; box-sizing: border-box; padding: 8px 14px; color: inherit; text-decoration: none; pointer-events: auto; }
 .shared-journal-link:focus-visible, .shared-journal-link:hover { outline: 2px solid var(--signal); outline-offset: 2px; }
 .journal-directory-meta { margin: 0 16px 12px; }
 .journal-publication-list { margin: 0; padding: 0 16px 16px 42px; }
@@ -2791,7 +2792,7 @@ pre.instruction-line {
 }
 /* Labs are isolated; only reviewed papers cross the journal boundary. */
 .network-lab-boundary, .network-review-board { position: absolute; transform: translateX(-50%); box-sizing: border-box; background: var(--panel); border: 1px solid var(--signal); padding: 12px; }
-.network-lab-boundary { height: 244px; }
+.network-lab-boundary { height: 244px; pointer-events: auto; }
 .network-lab-boundary .lab-identity { display: flex; justify-content: space-between; align-items: center; padding: 0 0 8px; }
 .network-lab-boundary .lab-identity strong { font-size: 14px; }
 .network-lab-boundary .lab-identity[aria-pressed="true"] { color: var(--signal); text-decoration: underline; text-underline-offset: 4px; }
