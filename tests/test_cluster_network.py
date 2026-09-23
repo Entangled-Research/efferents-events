@@ -6,6 +6,7 @@ import io
 import json
 import tarfile
 import threading
+from datetime import datetime, timedelta, timezone
 from email.message import Message
 
 import pytest
@@ -62,6 +63,13 @@ def hub(tmp_path, monkeypatch):
 
 def _bearer(body):
     return {"Authorization": f"Bearer {body['cluster']['network_token']}"}
+
+
+def test_stopped_remote_lab_does_not_become_stale(hub):
+    _, ctx, *_ = hub
+    old = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+    assert ctx.hub._status({"ts": old, "status": "stopped"}) == "stopped"
+    assert ctx.hub._status({"ts": old, "status": "running"}) == "stale"
 
 
 def test_intake_md_and_config(hub):

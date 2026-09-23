@@ -315,6 +315,9 @@ class NetworkHub:
     def _status(self, beat: dict) -> str:
         if not beat:
             return "registered"
+        # A deliberate stop is durable; silence only makes an active daemon stale.
+        if beat.get("status") == "stopped":
+            return "stopped"
         try:
             age = (datetime.now(timezone.utc) - datetime.fromisoformat(beat["ts"])).total_seconds()
         except (KeyError, ValueError):
