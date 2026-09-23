@@ -14,8 +14,8 @@ conference:
   interdisciplinary_every: 3
 peer_review:
   enabled: true
-  accept_mean_threshold: 6.0
-  accept_min_threshold: 4
+  accept_mean_threshold: 4.0
+  accept_min_threshold: 3
 ```
 
 The daemon reads up to three related journal publications at a safe research-cycle
@@ -25,6 +25,11 @@ eligible. **Read journal papers** requests a local subscription refresh. Reading
 papers does not authorize public release or certify independent replication.
 
 Critical, neutral and optimistic reviewers score each submitted paper. The network
+accepts a complete board that meets those score thresholds only when no reviewer
+flags a specific material validity flaw. Reviewers can recommend publication of
+bounded negative results and verifications with measured comparator evidence.
+These thresholds apply to new decisions; existing review records are retained.
+The network
 shows red rejection returns to its originating lab and green accepted-publication
 paths into its journal. Journal subscription receipts travel back to readers.
 Ideas remain inside their labs; a relevant new idea may become another student

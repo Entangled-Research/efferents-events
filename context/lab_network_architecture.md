@@ -43,13 +43,15 @@ independent reviewer assessments → aggregate decision.
 
 The reviewers are **critical**, **neutral**, and **optimistic**. Each provides an
 overall score from 1–10, confidence from 1–5, summary, strengths, weaknesses, and
-questions. This is an OpenReview-style local rubric, not an assertion that every
+questions. Each also records whether a material validity flaw blocks the stated
+claim, with a specific evidence-based rationale. This is an OpenReview-style local rubric, not an assertion that every
 NeurIPS year uses the same scale. Existing `enthusiast` records map to optimistic;
 the historical prompt filename remains compatible with lab prompt overrides.
 The structured assessment follows the [NeurIPS reviewer guidance](https://neurips.cc/Conferences/2026/ReviewerGuidelines); the existing local 1–10 acceptance scale is preserved.
 
 A complete valid board is mandatory for acceptance. Configured mean/minimum
-thresholds govern the decision (defaults: mean ≥6 and minimum ≥4). Missing,
+thresholds govern the decision (Events defaults: mean ≥4 and minimum ≥3), and
+any substantiated material flaw blocks acceptance. Missing,
 duplicate, malformed, or failed reviews fail closed. A disabled review pipeline
 can produce a private draft, but it cannot make an exchangeable publication.
 Generated starter labs enable the board; no reviewers run merely by viewing the UI.

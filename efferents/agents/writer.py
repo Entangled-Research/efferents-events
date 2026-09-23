@@ -4,7 +4,8 @@ accepted bundle.
 
 The live entry point is `write_phase_a_paper`, driven by the orchestrator
 (`efferents start` -> Orchestrator -> writer.write_phase_a_paper). It:
-  1. mechanically gates on novelty + headline-metric gain (should_publish),
+  1. mechanically gates on novelty + headline-metric gain, or an explicitly
+     declared bounded negative/verification finding (should_publish),
   2. composes the paper (Sonnet, via compose_paper) -> paper/<campaign_id>.md,
   3. (if peer review enabled) runs the 3-reviewer board + rebuttal + decision,
   4. writes side-cars, appends to journal.md / rejected.md, auto-commits on
@@ -42,12 +43,13 @@ class GateInputs:
     existing_lab_claims: list[str] = field(default_factory=list)
     refutation_of_corroborated: str | None = None
     direction: str = "min"
+    finding_kind: str = "improvement"
 
 
 def should_publish(
     inputs: GateInputs, *, gain_threshold: float = 0.05
 ) -> tuple[bool, str]:
-    """Apply the novelty + significant-gain gate.
+    """Apply the novelty + evidence gate.
 
     Pass conditions (either is sufficient to satisfy the gain half):
       - candidate_value strictly better than baseline by at least
@@ -55,6 +57,8 @@ def should_publish(
         lower-is-better metrics, "max" for higher-is-better metrics).
       - refutation_of_corroborated is set (refuting a previously-
         corroborated claim is publishable without gain).
+      - an explicitly declared negative_result or verification has measured
+        candidate and comparator values; reviewers judge its bounded claim.
 
     Novelty must always pass: non-empty stripped claim, not a duplicate
     of existing lab claims (case-insensitive exact match).
@@ -67,6 +71,13 @@ def should_publish(
 
     if inputs.refutation_of_corroborated:
         return (True, "refutation path")
+
+    if inputs.finding_kind not in {"improvement", "negative_result", "verification"}:
+        return (False, f"unknown finding_kind: {inputs.finding_kind!r}")
+    if inputs.finding_kind != "improvement":
+        if not all(math.isfinite(v) for v in (inputs.baseline_value, inputs.candidate_value)):
+            return (False, "finding requires finite measured candidate and comparator")
+        return (True, f"{inputs.finding_kind} path; measured comparison for review")
 
     if inputs.baseline_value <= 0:
         return (False, "non-positive baseline_value; cannot compute relative gain")
@@ -196,6 +207,9 @@ def compose_paper(
         f"Hypothesis hash: {campaign['hypothesis_hash']}\n"
         f"Metrics: {metric_provenance}\n"
         f"Novelty: {novelty_claim}\n"
+        f"Finding kind: {campaign.get('finding_kind') or 'improvement'}\n"
+        "If this is a negative result or verification, state only the bounded "
+        "finding supported by the cited measurements; do not imply a metric gain.\n"
         f"Write the paper body now."
     )
     response = client.messages.create(
@@ -255,7 +269,9 @@ def write_phase_a_paper(
     """Gate-check, compose, peer-review, and commit a paper for a campaign.
 
     Pipeline:
-      1. Mechanical pre-gate: novelty + ≥`gain_threshold` metric improvement
+      1. Mechanical pre-gate: novelty + ≥`gain_threshold` metric improvement,
+         or an explicitly declared negative/verification finding with a
+         measured comparator
          (agents/writer.py:should_publish). If it fails, log and return None.
       2. Compose the paper artifact (configured Writer model via compose_paper) and write to
          paper/<campaign_id>.md.
@@ -409,6 +425,7 @@ def write_phase_a_paper(
         existing_lab_claims=existing_claims,
         refutation_of_corroborated=campaign.get("refutation_of_corroborated"),
         direction=direction,
+        finding_kind=campaign.get("finding_kind") or "improvement",
     )
 
     ok, reason = should_publish(gate_inputs, gain_threshold=gain_threshold)
