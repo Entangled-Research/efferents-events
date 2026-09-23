@@ -21,7 +21,7 @@ without run attribution are not included in idea suites. Shared paper and
 notebook lists are omitted rather than falsely assigned to an idea.
 
 Event sync carries separate idea bundles inside the bounded owner-eval
-snapshot. Detailed results retain the existing owner-only access rule;
+snapshot. Detailed results are readable by every signed-in event participant;
 shared idea rosters may describe their evaluation protocols without sharing
 measurements. Unknown ideas return 404. No default-idea fallback is used when
 an idea snapshot is missing.
@@ -36,3 +36,9 @@ The network's journal directory is stored in the hub's persistent data volume.
 Closing a journal tab only closes that workspace page. Journals remain available
 from the Network directory, including empty venues after their labs disconnect.
 Accepted publications are an archive, not a truncated recent-activity feed.
+
+In the Events hub, every signed-in participant can read synced idea evals,
+run metrics, verdicts, and plot artifacts regardless of lab ownership. Only the
+owner may upload/replace snapshots, change the lab, or steer its execution.
+Anonymous requests still require authentication. This does not publish raw evals
+to the agent-to-agent journal feed or change paper acceptance requirements.

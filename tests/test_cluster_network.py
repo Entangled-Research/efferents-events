@@ -239,7 +239,7 @@ def test_register_heartbeat_push_pull_and_portfolio(hub):
     assert {(e["kind"], e["source"], e["target"]) for e in portfolio["edges"]} >= {("cited", "ada-lab", "bob-lab")}
 
 
-def test_owner_eval_snapshot_ingest_and_owner_scoped_reads(hub):
+def test_eval_snapshot_shared_reads_and_owner_only_writes(hub):
     import base64
     import hashlib
 
@@ -281,8 +281,8 @@ def test_owner_eval_snapshot_ingest_and_owner_scoped_reads(hub):
     status, second, _ = _request(port, "/api/labs/ada-lab/ideas/second", headers=ada_headers)
     assert status == 200 and second["runs"]["runs"] == []
     assert second["suite"]["title"] == "New suite"
-    status, private, _ = _request(port, "/api/labs/ada-lab/ideas/primary", headers=bob_headers)
-    assert status == 200 and private["detail_unavailable"] is True and "runs" not in private
+    status, shared, _ = _request(port, "/api/labs/ada-lab/ideas/primary", headers=bob_headers)
+    assert status == 200 and shared == first
     assert _request(port, "/api/labs/ada-lab/ideas/missing", headers=ada_headers)[0] == 404
     saved = json.loads((ctx.hub.lab_dir("ada-lab") / "owner-evals.json").read_text())
     assert saved["images"][digest] == snapshot["images"][digest]
@@ -295,8 +295,7 @@ def test_owner_eval_snapshot_ingest_and_owner_scoped_reads(hub):
     assert status == 200 and owner_runs["runs"] == [{"run_id": "run-1"}]
     assert owner_runs["synced_at"] == saved["synced_at"]
     status, viewer_runs, _ = _request(port, "/api/labs/ada-lab/runs", headers=bob_headers)
-    assert status == 200 and viewer_runs["remote_detail_unavailable"] is True
-    assert viewer_runs["runs"] == []
+    assert status == 200 and viewer_runs == owner_runs
 
     status, _, image_headers = _request(
         port, f"/api/labs/ada-lab/artifacts/{digest}", headers=ada_headers,
@@ -305,7 +304,13 @@ def test_owner_eval_snapshot_ingest_and_owner_scoped_reads(hub):
     status, _, _ = _request(
         port, f"/api/labs/ada-lab/artifacts/{digest}", headers=bob_headers,
     )
-    assert status == 403
+    assert status == 200
+    assert _request(port, f"/api/labs/ada-lab/artifacts/{digest}")[0] == 401
+    assert _request(port, "/api/labs/ada-lab/ideas/primary")[0] == 401
+    for action, payload in [("heartbeat", {"owner_evals": snapshot}), ("journal", {"journal": "replacement"})]:
+        assert _request(port, f"/api/network/labs/ada-lab/{action}", method="POST",
+                        payload=payload, headers=_bearer(bob))[0] == 403
+    assert json.loads((ctx.hub.lab_dir("ada-lab") / "owner-evals.json").read_text()) == saved
 
 
 def test_remote_paper_register_requires_accepted_journal_entry(hub):

@@ -490,15 +490,15 @@ class NetworkHub:
             if idea is None:
                 raise ControlError("Unknown idea.", status=404)
             snapshot = _read_json(d / "owner-evals.json")
-            if owner_id is not None and owner_id == reg.get("owner_id"):
+            if owner_id is not None:
                 view = snapshot.get("ideas", {}).get(student_id)
                 if isinstance(view, dict):
                     return copy.deepcopy(view)
-            # Public roster and protocol metadata never include private run data.
+            # Joined participants share read-only evals; ingestion and steering
+            # remain owner-only. No snapshot means awaiting sync, not no results.
             plan = copy.deepcopy(idea.get("eval_suite") or {})
-            plan.update(status="private" if owner_id != reg.get("owner_id") else "not_synced",
-                        message="Detailed results are available to this lab’s owner." if owner_id != reg.get("owner_id")
-                        else "This idea’s eval results have not synced yet.")
+            plan.update(status="not_synced",
+                        message="This idea’s eval results have not synced yet.")
             return {"student_id": student_id, "name": idea.get("name", student_id),
                     "focus": idea.get("focus", ""), "suite": plan, "detail_unavailable": True}
         if kind == "control":
@@ -516,8 +516,8 @@ class NetworkHub:
                     "budget": {"spent": float(beat.get("spend_usd") or 0.0),
                                "cap": float(beat.get("cap_usd") or self.cfg.labs.total_cap_usd)},
                     "hypothesis": beat.get("hypothesis") or {"question": "", "claim": "", "falsifier": "", "student": ""}}
-        owner_can_read = owner_id is not None and owner_id == reg.get("owner_id")
-        if owner_can_read and kind in {"runs", "evidence", "verdict"}:
+        participant_can_read = owner_id is not None
+        if participant_can_read and kind in {"runs", "evidence", "verdict"}:
             snapshot = _read_json(d / "owner-evals.json")
             view = snapshot.get(kind)
             if isinstance(view, dict):

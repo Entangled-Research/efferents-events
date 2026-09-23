@@ -141,7 +141,7 @@ class ClusterHandler(DashboardHandler):
         if artifact:
             owner = self._require_joined()
             lab_id, digest = artifact.groups()
-            self.cluster.hub.require_owner(owner, lab_id)
+            self.cluster.hub.registration(lab_id)
             snapshot_path = self.cluster.hub.lab_dir(lab_id) / "owner-evals.json"
             snapshot = json.loads(snapshot_path.read_text()) if snapshot_path.is_file() else {}
             encoded = snapshot.get("images", {}).get(digest)
