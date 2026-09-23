@@ -406,25 +406,39 @@ class NetworkHub:
         if kind == "runs":
             head = beat.get("headline") or {}
             return {"headline": {"column": head.get("column", "metric"), "direction": head.get("direction", "min")},
-                    "runs": [], "series": [],
+                    "runs": [], "series": [], "remote_detail_unavailable": True,
                     "history": {"total": int(beat.get("runs") or 0), "best": head.get("best"), "best_run_id": None}}
         if kind == "papers":
             from efferents.dashboard.reader import read_papers  # noqa: PLC0415
+            from efferents.journal.reviews import PERSONAS, review_scores  # noqa: PLC0415
             fake_root = d / "lab"  # read_papers scans <root>.parent/paper
-            return read_papers(fake_root)
+            journal = d / "paper" / "journal.md"
+            accepted = {
+                entry["campaign_id"]
+                for entry in federation.parse_journal_entries(
+                    journal.read_text() if journal.is_file() else "")
+                if entry.get("lab_id") == lab_id
+                and set(review_scores(entry["body"])) == set(PERSONAS)
+            }
+            return [paper for paper in read_papers(fake_root)
+                    if paper.get("status") == "accepted" and paper.get("campaign_id") in accepted]
         if kind == "activity":
+            from efferents.journal.reviews import PERSONAS, review_scores  # noqa: PLC0415
             journal = d / "paper" / "journal.md"
             entries = federation.parse_journal_entries(journal.read_text()) if journal.is_file() else []
             return [{"timestamp": e["ts"], "title": f"paper accepted: {e['campaign_id']}",
-                     "body": e.get("headline") or ""} for e in entries[:20]]
+                     "body": e.get("headline") or ""} for e in entries
+                    if e.get("lab_id") == lab_id
+                    and set(review_scores(e["body"])) == set(PERSONAS)][:20]
         if kind == "evidence":
             return {"panels": [], "constraints": [], "comparison": {"axis": None, "labels": {}, "order": []},
-                    "records": [], "artifact_count": 0}
+                    "records": [], "artifact_count": 0, "remote_detail_unavailable": True}
         if kind == "verdict":
             v = beat.get("verdict") or {}
             return {"verdict": v.get("status", "undecided"), "line": v.get("line", "verdict: undecided"),
                     "n_runs": int(beat.get("runs") or 0), "axes": [], "comparison": {"axis": None, "labels": {}},
-                    "columns": [], "buckets": [], "paired": [], "falsifiers": []}
+                    "columns": [], "buckets": [], "paired": [], "falsifiers": [],
+                    "remote_detail_unavailable": True}
         raise ControlError("Unknown lab view.", status=404)
 
     def sync_labs(self) -> list[dict]:

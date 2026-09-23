@@ -169,6 +169,15 @@ def test_register_heartbeat_push_pull_and_portfolio(hub):
     assert rows["ada-lab"]["status"] == "running" and rows["ada-lab"]["headline"]["best"] == 0.09
     status, state, _ = _request(port, "/api/labs/ada-lab/state", headers=bob_hdrs)
     assert status == 200 and state["budget"]["spent"] == 0.42
+    status, runs, _ = _request(port, "/api/labs/ada-lab/runs", headers=bob_hdrs)
+    assert status == 200 and runs["remote_detail_unavailable"] is True
+    assert runs["history"]["total"] == 7 and runs["history"]["best"] == 0.09
+    assert runs["runs"] == []  # a heartbeat count is not a run ledger
+    status, verdict, _ = _request(port, "/api/labs/ada-lab/verdict", headers=bob_hdrs)
+    assert status == 200 and verdict["remote_detail_unavailable"] is True
+    assert verdict["n_runs"] == 7 and verdict["falsifiers"] == []
+    status, evidence, _ = _request(port, "/api/labs/ada-lab/evidence", headers=bob_hdrs)
+    assert status == 200 and evidence["remote_detail_unavailable"] is True
     status, control, _ = _request(port, "/api/labs/ada-lab/control", headers=ada_hdrs)
     assert control["remote"] is True and control["owner_name"] == "Ada"
     status, body, _ = _request(port, "/api/labs/ada-lab/steer", method="POST",
@@ -177,7 +186,8 @@ def test_register_heartbeat_push_pull_and_portfolio(hub):
 
     # Journal push lands in the hub and, after a sync, in the feed.
     journal = ("# Journal\n\n<!-- ENTRIES BELOW -->\n\n## 2026-09-20 14:00 UTC — c1\n"
-               "**Lab**: ada-lab\n**Headline**: Loss fell under 0.1\n")
+               "**Lab**: ada-lab\n**Headline**: Loss fell under 0.1\n"
+               "**Scores**: critical=6, neutral=7, optimistic=8 (mean=7.0)\n")
     status, pushed, _ = _request(port, "/api/network/labs/ada-lab/journal", method="POST",
                                  payload={"journal": journal, "papers": {"c1": "# paper c1\n"}}, headers=A)
     assert pushed["entries_added"] == 1 and pushed["papers_stored"] == 1
@@ -190,7 +200,7 @@ def test_register_heartbeat_push_pull_and_portfolio(hub):
     status, feed, _ = _request(port, "/api/network/feed", headers=B)
     assert "Loss fell under 0.1" in feed["raw"]
     status, papers, _ = _request(port, "/api/labs/ada-lab/papers", headers=bob_hdrs)
-    assert status == 200
+    assert status == 200 and papers == []  # no fabricated accepted card from a raw draft
     status, activity, _ = _request(port, "/api/labs/ada-lab/activity", headers=bob_hdrs)
     assert activity[0]["title"].endswith("c1")
 
@@ -210,6 +220,36 @@ def test_register_heartbeat_push_pull_and_portfolio(hub):
              payload={**reg, "lab_id": "bob-lab", "host": "bobs-pc"}, headers=B)
     status, portfolio, _ = _request(port, "/api/labs", headers=bob_hdrs)
     assert {(e["kind"], e["source"], e["target"]) for e in portfolio["edges"]} >= {("cited", "ada-lab", "bob-lab")}
+
+
+def test_remote_paper_register_requires_accepted_journal_entry(hub):
+    port, *_ = hub
+    owner, _ = _join(port, "Ada")
+    _, viewer_headers = _join(port, "Bob")
+    auth = _bearer(owner)
+    _request(port, "/api/network/labs", method="POST",
+             payload={"lab_id": "ada-lab", "domain": "synthetic", "hypothesis": VALID_HYP},
+             headers=auth)
+    journal = ("# Journal\n\n<!-- ENTRIES BELOW -->\n\n"
+               "## 2026-09-20 14:00 UTC — accepted-one\n"
+               "**Lab**: ada-lab\n**Headline**: Reviewed result\n"
+               "**Scores**: critical=6, neutral=7, optimistic=8 (mean=7.0)\n")
+
+    def paper(campaign, status):
+        return (f"---\nlab_id: ada-lab\ncampaign_id: {campaign}\n"
+                f"novelty_claim: Result\npublished_at: '2026-09-20'\n"
+                f"status: {status}\n---\n\n# Result\n")
+
+    _request(port, "/api/network/labs/ada-lab/journal", method="POST",
+             payload={"journal": journal, "papers": {
+                 "accepted-one": paper("accepted-one", "accepted"),
+                 "unreviewed-one": paper("unreviewed-one", "accepted"),
+                 "draft-one": paper("draft-one", "draft"),
+                 "rejected-one": paper("rejected-one", "rejected"),
+             }}, headers=auth)
+    status, papers, _ = _request(port, "/api/labs/ada-lab/papers", headers=viewer_headers)
+    assert status == 200
+    assert [paper["campaign_id"] for paper in papers] == ["accepted-one"]
 
 
 def test_bind_and_proxy(hub):

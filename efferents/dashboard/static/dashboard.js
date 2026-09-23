@@ -57,6 +57,8 @@ function renderBudget() {
     "budget",
     ownerEventBudget
       ? `your event spend · $${budget.spent.toFixed(2)} / $${budget.cap.toFixed(2)} cap`
+      : route === "observe" && controlState.remote
+        ? `lab spend · $${budget.spent.toFixed(2)} / $${budget.cap.toFixed(2)} lab cap`
       : `${isNetwork ? "all labs" : "this lab"} · $${budget.spent.toFixed(2)} / $${budget.cap.toFixed(2)} daily`,
   );
   document.getElementById("budget-fill").style.width = `${percent}%`;
@@ -329,6 +331,7 @@ function renderSteering(records) {
 function renderControl(info) {
   if (info.csrf_token) csrfToken = info.csrf_token;
   controlState = { ...controlState, ...info };
+  controlState.remote = Boolean(info.remote);
   const connected = Boolean(info.connected);
   const pausedDemo = Boolean(info.paused_demo);
   controlState.connected = connected;
@@ -1077,6 +1080,23 @@ function renderRuns(data) {
   const directionLabel = direction === "max" ? "higher is better" : "lower is better";
   const runs = Array.isArray(data.runs) ? data.runs : [];
   const history = data.history || {};
+  if (data.remote_detail_unavailable) {
+    text("metric-label", headline.column || "Headline metric");
+    text("metric-direction", directionLabel);
+    text("run-metric-header", headline.column || "Result");
+    text("run-count", `${Number(history.total || 0)} total · details on lab’s laptop`);
+    text("metric-best", formatMetric(history.best));
+    for (const id of ["metric-latest", "metric-eligible", "metric-median", "metric-iqr",
+      "metric-best-run", "metric-delta", "metric-range"]) text(id, "—");
+    document.getElementById("metric-best-run").title = "";
+    document.querySelector("#runs tbody").innerHTML =
+      '<tr><td colspan="5"><div class="empty-state">Run ledger stays on the lab’s laptop</div></td></tr>';
+    const trend = document.getElementById("trend");
+    trend.replaceChildren();
+    trend.setAttribute("aria-label", "Run trend stays on the lab’s laptop");
+    text("trend-caption", "Run trend stays on the lab’s laptop");
+    return;
+  }
   const observedRuns = runs.filter((run) => hasMetricValue(run.value));
   const eligibleRuns = observedRuns.filter((run) => run.eligible !== false);
   const eligibleValues = eligibleRuns.map((run) => Number(run.value));
@@ -1455,7 +1475,9 @@ function renderVerdict(data) {
   line.classList.toggle("falsified", data?.verdict === "falsified");
 
   const falsifierBody = document.querySelector("#falsifiers tbody");
-  falsifierBody.innerHTML = falsifiers.length
+  falsifierBody.innerHTML = data?.remote_detail_unavailable
+    ? '<tr><td colspan="4" class="empty-state">Falsifier evaluations stay on the lab’s laptop</td></tr>'
+    : falsifiers.length
     ? falsifiers.map((f) =>
       `<tr><td>${esc(f.id)}</td><td>${esc(f.bucket)}</td>` +
       `<td class="status-${esc(f.status)}">${esc(f.status === "insufficient_data" ? "insufficient" : f.status)}</td>` +
@@ -1511,16 +1533,21 @@ function renderVerdict(data) {
       });
       return `<tr>${cells.join("")}</tr>`;
     }).join("")
-    : `<tr><td colspan="${head.length}" class="empty-state">No succeeded runs</td></tr>`;
+    : `<tr><td colspan="${head.length}" class="empty-state">${data?.remote_detail_unavailable
+      ? "Bucket evidence stays on the lab’s laptop" : "No succeeded runs"}</td></tr>`;
 }
 
 function renderPapers(papers) {
   const records = Array.isArray(papers) ? papers : [];
   const element = document.getElementById("papers");
-  text("paper-count", `${records.length} ${records.length === 1 ? "record" : "records"}`);
+  text("paper-count", controlState.remote
+    ? `${records.length} accepted ${records.length === 1 ? "paper" : "papers"}`
+    : `${records.length} ${records.length === 1 ? "record" : "records"}`);
 
   if (!records.length) {
-    element.innerHTML = '<div class="empty-state">No cleared papers</div>';
+    element.innerHTML = controlState.remote
+      ? '<div class="empty-state">No accepted papers at the hub · drafts and rejected reviews stay on the lab’s laptop</div>'
+      : '<div class="empty-state">No cleared papers</div>';
     return;
   }
 

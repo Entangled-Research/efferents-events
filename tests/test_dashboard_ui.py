@@ -52,3 +52,11 @@ def test_event_network_shows_per_lab_spend_and_keeps_owner_cap_separate():
     assert "!clusterNetwork && portfolioState.labs.length > 0" in JS
     assert "network-lab-spend-track" in CSS
     assert ".network-lab-spend.over-cap .network-lab-spend-track span { background: var(--terracotta); }" in CSS
+
+
+def test_remote_observer_labels_private_detail_and_lifetime_budget():
+    assert "data.remote_detail_unavailable" in JS
+    assert "Run ledger stays on the lab’s laptop" in JS
+    assert "Falsifier evaluations stay on the lab’s laptop" in JS
+    assert "No accepted papers at the hub" in JS
+    assert "lab spend · $${budget.spent.toFixed(2)} / $${budget.cap.toFixed(2)} lab cap" in JS
