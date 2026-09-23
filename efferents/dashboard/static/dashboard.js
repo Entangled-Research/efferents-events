@@ -252,28 +252,10 @@ function renderRoute() {
   if (route === "network" && networkWasHidden) renderNetwork();
 }
 
-// The labs rail pops in and out from the topbar. Collapsed by default so the
-// network gets the full width; the choice is a per-browser convenience.
-let labRailOpen = readStored("efferents-lab-rail", false) === true;
-
-function applyLabRail(route) {
-  const available = !["connect", "join"].includes(route) && portfolioState.labs.length > 0;
-  const toggle = document.getElementById("lab-rail-toggle");
-  const showRail = available && labRailOpen;
-  toggle.hidden = !available;
-  toggle.setAttribute("aria-expanded", String(showRail));
-  text("lab-rail-toggle-count", String(portfolioState.labs.length).padStart(2, "0"));
-  document.getElementById("lab-rail").hidden = !showRail;
-  document.getElementById("workspace-frame").classList.toggle("with-lab-rail", showRail);
-}
-
-function initLabRailToggle() {
-  document.getElementById("lab-rail-toggle").addEventListener("click", () => {
-    labRailOpen = !labRailOpen;
-    writeStored("efferents-lab-rail", labRailOpen);
-    applyLabRail(currentRoute());
-    if (currentRoute() === "network") renderNetwork();
-  });
+// Lab navigation lives in the workspace tabs below the topbar.
+function applyLabRail() {
+  document.getElementById("lab-rail").hidden = true;
+  document.getElementById("workspace-frame").classList.remove("with-lab-rail");
 }
 
 function initRouting() {
@@ -2146,7 +2128,6 @@ function initIntakeView() {
 }
 
 initRouting();
-initLabRailToggle();
 initMapPanZoom();
 initPanelToggles();
 initIntakeTabs();
