@@ -37,3 +37,18 @@ def test_script_is_external():
 def test_side_panels_collapse():
     assert HTML.count("data-panel-toggle") == 2
     assert ".panel.collapsed" in CSS
+
+
+def test_event_network_shows_per_lab_spend_and_keeps_owner_cap_separate():
+    assert "function labSpendMarkup(lab)" in JS
+    assert "if (!isCluster() || !lab.budget) return \"\";" in JS
+    assert "LAB MODEL SPEND · ESTIMATE" in JS
+    assert "lab cap`" in JS
+    assert "Above lab cap" in JS
+    assert "proxy_spend_usd" in JS
+    assert "proxy_cap_usd" in JS
+    assert "your event spend" in JS
+    assert "clusterNetwork && isJoined()" in JS
+    assert "!clusterNetwork && portfolioState.labs.length > 0" in JS
+    assert "network-lab-spend-track" in CSS
+    assert ".network-lab-spend.over-cap .network-lab-spend-track span { background: var(--terracotta); }" in CSS

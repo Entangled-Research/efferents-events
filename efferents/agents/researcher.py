@@ -160,7 +160,7 @@ def _format_recent_runs(rows: list[dict[str, Any]], db_path) -> str:
 
 
 def _read_default_config() -> str:
-    p = Path(_lab.get_config().executor.config_template)
+    p = Path("config/default.yaml")
     return p.read_text() if p.exists() else "(missing)"
 
 
@@ -635,7 +635,7 @@ def _shared_static_block(*, vision: str, decisions: str, charter: str = "") -> s
         "## Vision\n\n" + vision
         + "\n\n## Decisions\n\n" + decisions
         + charter_block
-        + "\n\n## Current executor config template\n\n"
+        + "\n\n## Default config (config/default.yaml)\n\n"
         + "Use ONLY keys that appear in this YAML when emitting `config_overrides`. "
         + "Dotted paths must match this structure exactly (e.g., `eval.centering`, "
         + "not `data.centering`).\n\n```yaml\n"
@@ -1283,6 +1283,9 @@ def propose(
                 student_id=student_id,
                 headline_metric=_hm,
                 headline_direction=_hd,
+                finding_kind=(new_campaign.get("finding_kind")
+                              if new_campaign.get("finding_kind") in
+                              ("negative_result", "verification") else None),
             )
             new_campaign_id = campaign_id
             notebook_append(

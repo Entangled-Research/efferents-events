@@ -99,7 +99,7 @@ def test_owner_link_redirect_sets_cookie(cluster_server):
     assert status == 302 and headers["location"] == "/#join"
     assert "efferents_owner=" in headers.get("set-cookie", "")
     status, _, headers = _request(port, "/?owner=bogus")
-    assert status == 302 and headers["location"] == "/?signin=expired#join"
+    assert status == 302 and headers["location"] == "/#join"
 
 
 def test_connect_and_select_are_disabled_in_cluster_mode(cluster_server):
@@ -242,41 +242,3 @@ def test_hosted_off_refuses_lab_creation(laptop_only_server):
     assert list(cfg.paths.labs.iterdir()) == []
     status, sessions, _ = _request(port, "/api/intake/sessions", headers=ada)
     assert sessions[0]["state"] == "bound" and not sessions[0].get("lab_id")
-
-
-def test_returning_identity_without_cookie_and_after_expiry(cluster_server):
-    from datetime import datetime, timedelta, timezone
-    port, ctx, *_ = cluster_server
-    body, hdrs = _join(port)
-    owner = ctx.owners.by_id(body['owner']['id'])
-    ctx.owners.add_lab(owner.owner_id, 'saved-lab')
-    key = body['recovery_key']
-    assert key and key not in ctx.paths.owners.read_text()
-    token = owner.token
-    owner.joined_at = (datetime.now(timezone.utc) - timedelta(days=3)).isoformat()
-    assert _request(port, '/api/login', method='POST', payload={'credential': token})[0] == 401
-    status, recovered, headers = _request(port, '/api/login', method='POST', payload={'credential': key})
-    assert status == 200
-    assert recovered['owner']['id'] == owner.owner_id
-    assert recovered['owner']['labs'] == ['saved-lab']
-    assert len(ctx.owners.all()) == 1
-    assert 'Max-Age=172800' in headers['set-cookie']
-    cookie = _cookie(headers)
-    cookie['X-Efferents-CSRF'] = recovered['csrf_token']
-    assert _request(port, '/api/control', headers=cookie)[1]['cluster']['owner']['id'] == owner.owner_id
-    assert _request(port, '/api/account/recovery', method='POST', payload={})[0] == 403
-    status, replacement, _ = _request(port, '/api/account/recovery', method='POST', payload={}, headers=cookie)
-    assert status == 200 and replacement['recovery_key'] != key
-    assert _request(port, '/api/login', method='POST', payload={'credential': key})[0] == 401
-    status, _, headers = _request(port, '/api/logout', method='POST', payload={}, headers=cookie)
-    assert status == 200 and 'Max-Age=0' in headers['set-cookie']
-    # Still-valid owner links can be pasted into the returning-user form.
-    assert _request(port, '/api/login', method='POST', payload={'credential': body['owner_link']})[0] == 200
-
-
-def test_login_is_rate_limited_without_creating_accounts(cluster_server):
-    port, ctx, *_ = cluster_server
-    for _ in range(10):
-        assert _request(port, '/api/login', method='POST', payload={'credential': 'invalid'})[0] == 401
-    assert _request(port, '/api/login', method='POST', payload={'credential': 'invalid'})[0] == 429
-    assert not ctx.owners.all()

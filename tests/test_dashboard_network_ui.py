@@ -19,6 +19,9 @@ def test_portfolio_and_map_present():
         assert banned not in HTML, banned
     assert 'getJSON("/api/labs")' in JS
     assert '"/api/labs/select"' not in JS  # selection is per browser, never server-wide
+    assert 'id="lab-rail-toggle"' not in HTML
+    assert 'id="lab-tabs"' in HTML
+    assert 'getElementById("lab-tabs")' in JS and 'data-tab="${esc(labId)}"' in JS
 
 
 def test_map_is_pan_zoom_viewport():

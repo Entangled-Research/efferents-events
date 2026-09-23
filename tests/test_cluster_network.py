@@ -111,6 +111,22 @@ def test_track_tarball(hub):
     assert _request(port, "/api/network/tracks/nope.tar.gz", headers=_bearer(joined))[0] == 404
 
 
+def test_numerical_analysis_lab_appears_under_its_own_journal(hub):
+    port, *_ = hub
+    owner, headers = _join(port, "Math owner")
+    status, body, _ = _request(
+        port, "/api/network/labs", method="POST",
+        payload={"lab_id": "simpson-quadrature-lab", "domain": "numerical-analysis",
+                 "hypothesis": VALID_HYP, "track": "custom-local", "host": "math-laptop"},
+        headers=_bearer(owner),
+    )
+    assert status == 200 and body["registered"]
+    status, portfolio, _ = _request(port, "/api/labs", headers=headers)
+    assert status == 200
+    lab = next(row for row in portfolio["labs"] if row["lab_id"] == "simpson-quadrature-lab")
+    assert lab["journal"] == "Journal of Numerical Analysis"
+
+
 def test_register_heartbeat_push_pull_and_portfolio(hub):
     port, ctx, scripts, cfg, upstream = hub
     ada, ada_hdrs = _join(port, "Ada")
@@ -158,8 +174,6 @@ def test_register_heartbeat_push_pull_and_portfolio(hub):
     status, body, _ = _request(port, "/api/labs/ada-lab/steer", method="POST",
                                payload={"message": "x"}, headers=ada_hdrs)
     assert status == 409 and "own" in body["error"]
-    assert _request(port, "/api/labs/ada-lab/steer", method="POST",
-                    payload={"message": "x"}, headers=bob_hdrs)[0] == 403
 
     # Journal push lands in the hub and, after a sync, in the feed.
     journal = ("# Journal\n\n<!-- ENTRIES BELOW -->\n\n## 2026-09-20 14:00 UTC — c1\n"

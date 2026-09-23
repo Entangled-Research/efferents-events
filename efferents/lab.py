@@ -37,13 +37,14 @@ CODE_REPO: str = ""
 # Peer-review gate. Applied AFTER the mechanical should_publish gate
 # (novelty + significant gain). When enabled, papers enter a 3-reviewer
 # board (critical / neutral / enthusiast); only papers with
-# mean score ≥ PEER_REVIEW_ACCEPT_MEAN_THRESHOLD and
-# min score ≥ PEER_REVIEW_ACCEPT_MIN_THRESHOLD are accepted.
+# no reviewer flags a documented material flaw, mean score ≥
+# PEER_REVIEW_ACCEPT_MEAN_THRESHOLD, and min score ≥
+# PEER_REVIEW_ACCEPT_MIN_THRESHOLD are accepted.
 # ---------------------------------------------------------------------------
 PEER_REVIEW_ENABLED: bool = False
 PEER_REVIEW_GAIN_THRESHOLD: float = 0.05
-PEER_REVIEW_ACCEPT_MEAN_THRESHOLD: float = 6.0
-PEER_REVIEW_ACCEPT_MIN_THRESHOLD: int = 4
+PEER_REVIEW_ACCEPT_MEAN_THRESHOLD: float = 4.0
+PEER_REVIEW_ACCEPT_MIN_THRESHOLD: int = 3
 
 
 # ---------------------------------------------------------------------------
@@ -105,6 +106,11 @@ from typing import Literal  # noqa: E402
 class Headline:
     column: str
     direction: Literal["max", "min"]
+    # Optional within-run comparator for first-campaign publication evidence.
+    comparator_column: str | None = None
+    # Aggregate both sides over the same eligible runs. None retains the
+    # historical best-run gate.
+    aggregate: Literal["min", "max"] | None = None
 
 
 @dataclass(frozen=True)
@@ -544,6 +550,20 @@ def _build_labconfig(
             f"metrics.headline.column {headline_col!r} must match [A-Za-z_][A-Za-z0-9_]* "
             f"(SQL identifier rules)"
         )
+    comparator_col = headline_raw.get("comparator_column")
+    if comparator_col is not None and (
+        not isinstance(comparator_col, str) or not _COL_NAME_RE.match(comparator_col)
+    ):
+        raise SubmissionError(
+            "metrics.headline.comparator_column must match [A-Za-z_][A-Za-z0-9_]*"
+        )
+    if comparator_col == headline_col:
+        raise SubmissionError("metrics.headline.comparator_column must differ from column")
+    headline_aggregate = headline_raw.get("aggregate")
+    if headline_aggregate is not None and headline_aggregate not in ("min", "max"):
+        raise SubmissionError("metrics.headline.aggregate must be min or max")
+    if headline_aggregate is not None and comparator_col is None:
+        raise SubmissionError("metrics.headline.aggregate requires comparator_column")
 
     panels_list = []
     for i, p in enumerate(metrics_raw.get("panels") or []):
@@ -737,8 +757,8 @@ def _build_labconfig(
     flat_digest_epsilon = float(metrics_raw.get("flat_digest_epsilon", 0.005))
     max_open_campaigns = int(raw.get("max_open_campaigns_per_student", 2))
     gain_threshold = float(peer_review_raw.get("gain_threshold", 0.05))
-    accept_mean = float(peer_review_raw.get("accept_mean_threshold", 6.0))
-    accept_min = int(peer_review_raw.get("accept_min_threshold", 4))
+    accept_mean = float(peer_review_raw.get("accept_mean_threshold", 4.0))
+    accept_min = int(peer_review_raw.get("accept_min_threshold", 3))
     if run_timeout_s <= 0 or smoke_timeout_s <= 0:
         raise SubmissionError("executor timeouts must be positive")
     if daily_cap_usd < 0:
@@ -785,7 +805,10 @@ def _build_labconfig(
             env_passthrough=env_passthrough,
         ),
         metrics=Metrics(
-            headline=Headline(column=headline_col, direction=headline_dir),
+            headline=Headline(
+                column=headline_col, direction=headline_dir,
+                comparator_column=comparator_col, aggregate=headline_aggregate,
+            ),
             panels=panels,
             constraints=constraints,
             flat_digest_epsilon=flat_digest_epsilon,
@@ -871,8 +894,8 @@ class LabConfig:
     ))
     peer_review_enabled: bool = False
     peer_review_gain_threshold: float = 0.05
-    peer_review_accept_mean_threshold: float = 6.0
-    peer_review_accept_min_threshold: int = 4
+    peer_review_accept_mean_threshold: float = 4.0
+    peer_review_accept_min_threshold: int = 3
     prompts_dir: Path | None = None
     # From hypothesis.md frontmatter: the running claim's slug and, when it
     # replaced an earlier claim, the slug it supersedes.

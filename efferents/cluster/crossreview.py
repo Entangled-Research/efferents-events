@@ -23,6 +23,7 @@ from efferents.agents.state import parse_json_loose
 from efferents.cluster.budget import usage_from_response
 from efferents.cluster.config import ClusterConfig, ClusterPaths, write_event
 from efferents.cluster.edges import citation_edges, reproduction_edges
+from efferents.journals import journal_for_domain
 
 PROMPT_PATH = Path(__file__).resolve().parents[1] / "agents" / "prompts" / "cross_lab_reviewer.md"
 _FRONT_RE = re.compile(r"\A---\n(.*?)\n---\n", re.DOTALL)
@@ -68,6 +69,8 @@ def select_reviewers(entry: dict, labs: list[dict], *, n: int, same_domain_first
     candidates = [
         lab for lab in labs
         if lab["lab_id"] != author
+        and journal_for_domain(lab.get("domain") or "unspecified") ==
+            journal_for_domain(entry.get("domain") or "unspecified")
         and ((lab["lab_root"] / "runs.sqlite").exists() or int(lab.get("runs") or 0) > 0)
         and counts.get(lab["lab_id"], 0) < 3
     ]

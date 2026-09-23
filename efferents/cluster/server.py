@@ -21,7 +21,7 @@ from efferents.dashboard.server import LAB_ID_PATTERN, DashboardHandler, make_se
 _SESSION_ROUTE = re.compile(r"^/api/intake/sessions/(?P<sid>s_[0-9a-f]{12})(?:/(?P<verb>[a-z]+))?$")
 _NET_LAB_ROUTE = re.compile(rf"^/api/network/labs/(?P<lab_id>{LAB_ID_PATTERN})/(?P<verb>[a-z]+)$")
 _NET_TRACK_ROUTE = re.compile(r"^/api/network/tracks/(?P<track_id>[A-Za-z0-9][A-Za-z0-9._-]{0,63})\.tar\.gz$")
-_LAB_VIEW_ROUTE = re.compile(rf"^/api/labs/(?P<lab_id>{LAB_ID_PATTERN})/(?P<kind>control|state|runs|papers|activity|evidence|verdict)$")
+_LAB_VIEW_ROUTE = re.compile(rf"^/api/labs/(?P<lab_id>{LAB_ID_PATTERN})/(?P<kind>control|state|runs|papers|activity|evidence|verdict|ideas/[A-Za-z0-9_-]+)$")
 _NETWORK_BODY = 1024 * 1024
 
 
@@ -139,7 +139,7 @@ class ClusterHandler(DashboardHandler):
             return True
         artifact = re.fullmatch(r"/api/labs/([A-Za-z0-9._-]+)/artifacts/([a-f0-9]{64})", path)
         if artifact:
-            self._require_joined()
+            owner = self._require_joined()
             lab_id, digest = artifact.groups()
             self.cluster.hub.registration(lab_id)
             snapshot_path = self.cluster.hub.lab_dir(lab_id) / "owner-evals.json"
@@ -197,7 +197,8 @@ class ClusterHandler(DashboardHandler):
         if path == "/api/network/config":
             return self._send_json(hub.config_payload(owner, self._base_url()))
         if path == "/api/network/feed":
-            return self._send_bytes(hub.feed().encode(), "text/markdown; charset=utf-8")
+            lab_id = parse_qs(urlsplit(self.path).query).get("lab_id", [None])[0]
+            return self._send_bytes(hub.subscribed_feed(owner, lab_id).encode(), "text/markdown; charset=utf-8")
         m = _NET_TRACK_ROUTE.match(path)
         if m:
             return self._send_bytes(hub.track_tarball(m.group("track_id")), "application/gzip")

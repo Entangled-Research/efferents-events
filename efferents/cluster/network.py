@@ -11,6 +11,7 @@ State per remote lab lives under ``network/labs/<lab_id>/``:
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import io
 import json
@@ -31,6 +32,7 @@ from efferents.dashboard.control import ControlError
 _LAB_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 _CAMPAIGN_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 _MAX_TEXT = 200_000
+_MAX_PUBLISHED_MANUSCRIPT = 100_000
 
 
 def _now() -> str:
@@ -49,12 +51,6 @@ def _write_json(path: Path, data: dict) -> None:
     tmp = path.with_suffix(path.suffix + ".tmp")
     tmp.write_text(json.dumps(data, indent=2))
     os.replace(tmp, path)
-
-
-def participant_wheel() -> Path | None:
-    configured = os.environ.get("EFFERENTS_INSTALL_WHEEL")
-    path = Path(configured) if configured else None
-    return path if path and path.is_file() and path.suffix == ".whl" else None
 
 
 class NetworkHub:
@@ -113,22 +109,16 @@ class NetworkHub:
                 "ANTHROPIC_API_KEY": owner.token,
                 "ANTHROPIC_BASE_URL": f"{url}/proxy/anthropic",
             }
-        wheel = participant_wheel()
-        bundle = ({"wheel_url": f"{url}/api/network/package", "filename": wheel.name,
-                   "sha256": hashlib.sha256(wheel.read_bytes()).hexdigest()} if wheel else {})
         return {
             "hub_url": url,
             "owner": owner.public(),
             "install": {
-                **bundle,
                 "repo_url": self.cfg.network.repo_url,
                 "ref": self.cfg.network.install_ref,
                 "pip_spec": f"git+{self.cfg.network.repo_url}.git@{self.cfg.network.install_ref}",
             },
             "env": {
                 **model_env,
-                "EFFERENTS_GENERATE_EVAL_SUITE": "1",
-                "EFFERENTS_OWNER_EVAL_SYNC": "1",
                 "EFFERENTS_NETWORK_URL": url,
                 "EFFERENTS_NETWORK_TOKEN": owner.token,
                 "OMP_NUM_THREADS": "1",
@@ -195,6 +185,7 @@ class NetworkHub:
                                    f"{self.cfg.labs.max_per_owner}.", status=409)
             reg = {
                 "lab_id": lab_id,
+                "display_name": existing.get("display_name"),
                 "owner_id": owner.owner_id,
                 "owner_name": owner.name,
                 "domain": str(payload.get("domain") or "unspecified")[:120],
@@ -232,15 +223,18 @@ class NetworkHub:
             "last_activity": payload.get("last_activity"),
             "halt_reason": (str(payload.get("halt_reason"))[:200] if payload.get("halt_reason") else None),
         }
-        if "owner_evals" in payload:
+        owner_evals = payload.get("owner_evals")
+        snapshot = None
+        if owner_evals is not None:
             from efferents.cluster.eval_snapshot import validate
             try:
-                snapshot = validate(payload["owner_evals"], lab_id)
+                snapshot = validate(owner_evals, lab_id)
             except (ValueError, TypeError) as exc:
                 raise ControlError("Invalid eval snapshot", status=422) from exc
             snapshot["synced_at"] = beat["ts"]
-            _write_json(d / "owner-evals.json", snapshot)
         _write_json(d / "heartbeat.json", beat)
+        if snapshot is not None:
+            _write_json(d / "owner-evals.json", snapshot)
         edges = payload.get("edges")
         if isinstance(edges, dict):
             _write_json(d / "edges.json", {
@@ -277,6 +271,10 @@ class NetworkHub:
         if journal_text.strip():
             entries = federation.parse_journal_entries(journal_text)
             for e in entries:
+                if e.get("lab_id") and e["lab_id"] != lab_id:
+                    raise ControlError("A lab may submit only its own journal entries.", status=403)
+                if not _CAMPAIGN_RE.fullmatch(str(e["campaign_id"])):
+                    raise ControlError("Invalid publication campaign id.", status=400)
                 if not e.get("lab_id"):
                     e["lab_id"] = lab_id
             path = d / "journal.md"
@@ -315,6 +313,21 @@ class NetworkHub:
         hub = self.paths.shared_journal / "journal.md"
         return hub.read_text() if hub.is_file() else ""
 
+    def subscribed_feed(self, owner: Owner, lab_id: str | None = None) -> str:
+        from efferents.cluster import subscriptions
+        if lab_id is None:
+            owned = [item["registration"]["lab_id"] for item in self.list_labs()
+                     if item["registration"].get("owner_id") == owner.owner_id]
+            if len(owned) != 1:
+                raise ControlError("Specify the owned lab_id for its journal feed.", status=400)
+            lab_id = owned[0]
+        self.require_owner(owner, lab_id)
+        directory = self.paths.shared_journal / "subscriptions" / lab_id
+        content = subscriptions.feed(directory)
+        subscriptions.acknowledge(directory, {subscriptions.publication_id(entry)
+            for entry in federation.parse_journal_entries(content)})
+        return content
+
     def reviews_for(self, owner: Owner, lab_id: str) -> str:
         self.require_owner(owner, lab_id)
         path = self.lab_dir(lab_id) / "paper" / "incoming_reviews.md"
@@ -335,6 +348,9 @@ class NetworkHub:
     def _status(self, beat: dict) -> str:
         if not beat:
             return "registered"
+        # A deliberate stop is durable; silence only makes an active daemon stale.
+        if beat.get("status") == "stopped":
+            return "stopped"
         try:
             age = (datetime.now(timezone.utc) - datetime.fromisoformat(beat["ts"])).total_seconds()
         except (KeyError, ValueError):
@@ -349,11 +365,14 @@ class NetworkHub:
         from efferents.journal.reviews import review_scores, is_publication
         from efferents.journals import journal_for_domain
         findings = []
-        domains = {item["registration"]["lab_id"]: item["registration"].get("domain")
-                   for item in self.list_labs()}
+        accepted_papers_by_lab: dict[str, set[str]] = {}
+        labs = {item["registration"]["lab_id"]: item
+                for item in self.list_labs()}
         for entry in parse_journal_entries(self.feed()):
             lab_id = entry.get("lab_id")
-            domain = domains.get(lab_id) or "unspecified"
+            registered = labs.get(lab_id)
+            domain = (registered["registration"].get("domain")
+                      if registered is not None else None) or "unspecified"
             row = {"id": f"journal:{lab_id}:{entry['campaign_id']}",
                    "lab_id": lab_id, "campaign_id": entry["campaign_id"],
                    "kind": "publication", "publication_status": "accepted",
@@ -362,8 +381,64 @@ class NetworkHub:
                    "title": entry.get("headline") or entry["campaign_id"],
                    "body": entry["body"][:4000], "at": entry.get("ts")}
             if is_publication(row):
+                # Only include manuscript text if the canonical paper file is
+                # independently recognized as accepted for this exact lab and
+                # campaign by the same journal parser used in the lab view.
+                # This keeps stray drafts/rejections and mismatched manifests
+                # out of the public network payload.
+                from efferents.dashboard.reader import read_papers
+                from efferents.journal.feed import render_feed
+                if registered is not None:
+                    lab_dir = registered["dir"]
+                    campaign_id = entry["campaign_id"]
+                    paper_path = (lab_dir / "paper" / f"{campaign_id}.md"
+                                  if _CAMPAIGN_RE.fullmatch(str(campaign_id)) else None)
+                    if lab_id not in accepted_papers_by_lab:
+                        accepted_papers_by_lab[lab_id] = {
+                            paper["campaign_id"] for paper in read_papers(lab_dir / "lab")
+                            if paper.get("status") == "accepted" and paper.get("lab_id") == lab_id
+                        }
+                    accepted = campaign_id in accepted_papers_by_lab[lab_id]
+                else:
+                    accepted = False
+                    paper_path = None
+                    campaign_id = entry["campaign_id"]
+                if accepted and paper_path is not None and paper_path.is_file():
+                    try:
+                        if paper_path.stat().st_size <= _MAX_PUBLISHED_MANUSCRIPT:
+                            paper_cards = render_feed([paper_path])
+                            source_card = paper_cards[0] if paper_cards else None
+                            # A journal entry can promote a preprint to publication,
+                            # but a draft or explicitly rejected artifact never leaves
+                            # the lab even if an unrelated/stale entry has matching IDs.
+                            if (source_card is not None
+                                    and source_card.lab_id == lab_id
+                                    and source_card.campaign_id == campaign_id
+                                    and source_card.status in {"preprint", "accepted"}):
+                                manuscript = paper_path.read_text()
+                            else:
+                                manuscript = ""
+                            if manuscript and len(manuscript.encode("utf-8")) <= _MAX_PUBLISHED_MANUSCRIPT:
+                                row["manuscript"] = manuscript
+                    except (OSError, UnicodeError):
+                        pass
                 findings.append(row)
-        return {"findings": findings[-150:]}
+        from efferents.cluster.subscriptions import observations
+        # Journal identity belongs to durable hub state, not a live lab's heartbeat
+        # or a bounded activity feed. Keep empty venues discoverable after a lab leaves.
+        catalog_path = self.paths.shared_journal / "directory.json"
+        with self._lock:
+            catalog = _read_json(catalog_path)
+            updated = dict(catalog)
+            for item in labs.values():
+                domain = item["registration"].get("domain") or "unspecified"
+                updated[journal_for_domain(domain)] = {"name": journal_for_domain(domain)}
+            for row in findings:
+                updated[row["journal"]] = {"name": row["journal"]}
+            if updated != catalog:
+                _write_json(catalog_path, updated)
+        return {"findings": findings, "journals": list(updated.values()),
+                "observations": observations(self.paths.shared_journal / "subscriptions")}
 
     def portfolio_rows(self) -> list[dict]:
         from efferents.journals import journal_for_domain
@@ -375,6 +450,7 @@ class NetworkHub:
                 if (lab["dir"] / "paper").is_dir() else 0
             rows.append({
                 "lab_id": reg["lab_id"],
+                "display_name": reg.get("display_name"),
                 "domain": reg.get("domain"),
                 "journal": journal_for_domain(reg.get("domain") or "unspecified"),
                 "subdomain": None,
@@ -408,14 +484,23 @@ class NetworkHub:
         reg = self.registration(lab_id)
         d = self.lab_dir(lab_id)
         beat = _read_json(d / "heartbeat.json")
-        if owner_id is not None and kind in {"runs", "evidence", "verdict"}:
+        if kind.startswith("ideas/"):
+            student_id = kind.removeprefix("ideas/")
+            idea = next((i for i in beat.get("ideas", []) if i.get("id") == student_id), None)
+            if idea is None:
+                raise ControlError("Unknown idea.", status=404)
             snapshot = _read_json(d / "owner-evals.json")
-            if isinstance(snapshot.get(kind), dict):
-                result = snapshot[kind]
-                result["synced_at"] = snapshot.get("synced_at")
-                return result
-        access = {"status": "not_synced",
-                  "message": "No evaluation snapshot has synced. The owner should check the lab connection and network token."}
+            if owner_id is not None:
+                view = snapshot.get("ideas", {}).get(student_id)
+                if isinstance(view, dict):
+                    return copy.deepcopy(view)
+            # Joined participants share read-only evals; ingestion and steering
+            # remain owner-only. No snapshot means awaiting sync, not no results.
+            plan = copy.deepcopy(idea.get("eval_suite") or {})
+            plan.update(status="not_synced",
+                        message="This idea’s eval results have not synced yet.")
+            return {"student_id": student_id, "name": idea.get("name", student_id),
+                    "focus": idea.get("focus", ""), "suite": plan, "detail_unavailable": True}
         if kind == "control":
             return {
                 "connected": True, "lab_id": lab_id, "domain": reg.get("domain"),
@@ -431,29 +516,50 @@ class NetworkHub:
                     "budget": {"spent": float(beat.get("spend_usd") or 0.0),
                                "cap": float(beat.get("cap_usd") or self.cfg.labs.total_cap_usd)},
                     "hypothesis": beat.get("hypothesis") or {"question": "", "claim": "", "falsifier": "", "student": ""}}
+        participant_can_read = owner_id is not None
+        if participant_can_read and kind in {"runs", "evidence", "verdict"}:
+            snapshot = _read_json(d / "owner-evals.json")
+            view = snapshot.get(kind)
+            if isinstance(view, dict):
+                result = copy.deepcopy(view)
+                result["synced_at"] = snapshot.get("synced_at")
+                return result
         if kind == "runs":
             head = beat.get("headline") or {}
             return {"headline": {"column": head.get("column", "metric"), "direction": head.get("direction", "min")},
-                    "runs": [], "series": [], "access": access,
+                    "runs": [], "series": [], "remote_detail_unavailable": True,
                     "history": {"total": int(beat.get("runs") or 0), "best": head.get("best"), "best_run_id": None}}
         if kind == "papers":
             from efferents.dashboard.reader import read_papers  # noqa: PLC0415
+            from efferents.journal.reviews import PERSONAS, review_scores  # noqa: PLC0415
             fake_root = d / "lab"  # read_papers scans <root>.parent/paper
-            return read_papers(fake_root)
+            journal = d / "paper" / "journal.md"
+            accepted = {
+                entry["campaign_id"]
+                for entry in federation.parse_journal_entries(
+                    journal.read_text() if journal.is_file() else "")
+                if entry.get("lab_id") == lab_id
+                and set(review_scores(entry["body"])) == set(PERSONAS)
+            }
+            return [paper for paper in read_papers(fake_root)
+                    if paper.get("status") == "accepted" and paper.get("campaign_id") in accepted]
         if kind == "activity":
+            from efferents.journal.reviews import PERSONAS, review_scores  # noqa: PLC0415
             journal = d / "paper" / "journal.md"
             entries = federation.parse_journal_entries(journal.read_text()) if journal.is_file() else []
             return [{"timestamp": e["ts"], "title": f"paper accepted: {e['campaign_id']}",
-                     "body": e.get("headline") or ""} for e in entries[:20]]
+                     "body": e.get("headline") or ""} for e in entries
+                    if e.get("lab_id") == lab_id
+                    and set(review_scores(e["body"])) == set(PERSONAS)][:20]
         if kind == "evidence":
-            return {"suite": access,
-                    "panels": [], "constraints": [], "comparison": {"axis": None, "labels": {}, "order": []},
-                    "records": [], "artifact_count": 0}
+            return {"panels": [], "constraints": [], "comparison": {"axis": None, "labels": {}, "order": []},
+                    "records": [], "artifact_count": 0, "remote_detail_unavailable": True}
         if kind == "verdict":
             v = beat.get("verdict") or {}
             return {"verdict": v.get("status", "undecided"), "line": v.get("line", "verdict: undecided"),
                     "n_runs": int(beat.get("runs") or 0), "axes": [], "comparison": {"axis": None, "labels": {}},
-                    "columns": [], "buckets": [], "paired": [], "falsifiers": []}
+                    "columns": [], "buckets": [], "paired": [], "falsifiers": [],
+                    "remote_detail_unavailable": True}
         raise ControlError("Unknown lab view.", status=404)
 
     def sync_labs(self) -> list[dict]:
