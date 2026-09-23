@@ -727,13 +727,32 @@ function renderJournal() {
   return true;
 }
 
+// Parse only the inline markup supported by the publication reader. Each text
+// fragment is escaped before adding our own tags; code spans are opaque so Python
+// powers, underscores and placeholders never become emphasis or HTML.
+function renderPublicationInline(value) {
+  const source = String(value);
+  const tokens = /\\([!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~])|(`+)([^\n]*?[^`])\2(?!`)|\*\*(\S(?:[^\n]*?\S)?)\*\*|__(\S(?:[^\n]*?\S)?)__|\*(\S(?:[^*\n]*?\S)?)\*/g;
+  let result = "", position = 0, match;
+  while ((match = tokens.exec(source))) {
+    result += esc(source.slice(position, match.index));
+    if (match[1] !== undefined) result += esc(match[1]);
+    else if (match[2] !== undefined) result += `<code>${esc(match[3])}</code>`;
+    else if (match[4] !== undefined || match[5] !== undefined) {
+      result += `<strong>${renderPublicationInline(match[4] ?? match[5])}</strong>`;
+    } else result += `<em>${renderPublicationInline(match[6])}</em>`;
+    position = tokens.lastIndex;
+  }
+  return result + esc(source.slice(position));
+}
+
 function renderMarkdownSafe(markdown) {
   const source = String(markdown || "").replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, "");
   const lines = source.split(/\r?\n/);
   const out = [];
   let paragraph = [], listType = "", tableRows = [], code = null;
   const flushParagraph = () => {
-    if (paragraph.length) out.push(`<p>${paragraph.map(esc).join("<br>")}</p>`);
+    if (paragraph.length) out.push(`<p>${paragraph.map(renderPublicationInline).join("<br>")}</p>`);
     paragraph = [];
   };
   const flushList = () => { if (listType) out.push(`</${listType}>`); listType = ""; };
@@ -741,7 +760,7 @@ function renderMarkdownSafe(markdown) {
     if (!tableRows.length) return;
     const rows = tableRows.filter(row => !/^\|?\s*:?-{3,}/.test(row));
     out.push(`<div class="markdown-table-wrap"><table>${rows.map((row, index) =>
-      `<${index === 0 ? "thead" : "tbody"}><tr>${row.replace(/^\||\|$/g, "").split("|").map(cell => `<${index === 0 ? "th" : "td"}>${esc(cell.trim())}</${index === 0 ? "th" : "td"}>`).join("")}</tr>${index === 0 ? "</thead>" : "</tbody>"}`
+      `<${index === 0 ? "thead" : "tbody"}><tr>${row.replace(/^\||\|$/g, "").split("|").map(cell => `<${index === 0 ? "th" : "td"}>${renderPublicationInline(cell.trim())}</${index === 0 ? "th" : "td"}>`).join("")}</tr>${index === 0 ? "</thead>" : "</tbody>"}`
     ).join("")}</table></div>`);
     tableRows = [];
   };
@@ -761,13 +780,13 @@ function renderMarkdownSafe(markdown) {
     if (heading) {
       flushParagraph(); flushList();
       const level = Math.min(heading[1].length + 1, 6);
-      out.push(`<h${level}>${esc(heading[2])}</h${level}>`);
+      out.push(`<h${level}>${renderPublicationInline(heading[2])}</h${level}>`);
     } else if (/^\s*[-*+]\s+/.test(line)) {
       flushParagraph(); if (listType !== "ul") { flushList(); listType = "ul"; out.push("<ul>"); }
-      out.push(`<li>${esc(line.replace(/^\s*[-*+]\s+/, ""))}</li>`);
+      out.push(`<li>${renderPublicationInline(line.replace(/^\s*[-*+]\s+/, ""))}</li>`);
     } else if (/^\s*\d+[.)]\s+/.test(line)) {
       flushParagraph(); if (listType !== "ol") { flushList(); listType = "ol"; out.push("<ol>"); }
-      out.push(`<li>${esc(line.replace(/^\s*\d+[.)]\s+/, ""))}</li>`);
+      out.push(`<li>${renderPublicationInline(line.replace(/^\s*\d+[.)]\s+/, ""))}</li>`);
     } else if (!line.trim()) { flushParagraph(); flushList(); }
     else { flushList(); paragraph.push(line); }
   }
