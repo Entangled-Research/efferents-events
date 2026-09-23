@@ -69,6 +69,7 @@ def test_stopped_remote_lab_does_not_become_stale(hub):
     _, ctx, *_ = hub
     old = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
     assert ctx.hub._status({"ts": old, "status": "stopped"}) == "stopped"
+    assert ctx.hub._status({"ts": old, "status": "crashed"}) == "crashed"
     assert ctx.hub._status({"ts": old, "status": "running"}) == "stale"
 
 

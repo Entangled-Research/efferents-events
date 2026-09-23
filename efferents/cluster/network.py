@@ -395,8 +395,8 @@ class NetworkHub:
         if not beat:
             return "registered"
         # A deliberate stop is durable; silence only makes an active daemon stale.
-        if beat.get("status") == "stopped":
-            return "stopped"
+        if beat.get("status") in {"stopped", "crashed"}:
+            return beat["status"]
         try:
             age = (datetime.now(timezone.utc) - datetime.fromisoformat(beat["ts"])).total_seconds()
         except (KeyError, ValueError):
