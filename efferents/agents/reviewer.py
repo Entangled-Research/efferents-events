@@ -79,7 +79,7 @@ def review(
     client: anthropic.Anthropic,
     budget: BudgetTracker,
     model: str | None = None,
-    max_tokens: int = 2048,
+    max_tokens: int | None = None,
 ) -> Review:
     """Single peer review of one paper artifact by one persona."""
     if persona not in PERSONAS:
@@ -87,6 +87,9 @@ def review(
     chosen = model or model_for("reviewer")
     if chosen is None:
         raise RuntimeError("No model configured for Reviewer")
+    if max_tokens is None:
+        from efferents.agents.model_client import default_text_output_tokens
+        max_tokens = default_text_output_tokens(chosen)
 
     paper_md = paper_path.read_text()
     system = [{

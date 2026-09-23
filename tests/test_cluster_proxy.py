@@ -138,7 +138,9 @@ def test_azure_openai_proxy_routes_and_prices(tmp_path, monkeypatch):
 
     px = ModelProxy(cfg, opener=opener)
     request = json.dumps({"model": "gpt-5.6-luna", "max_tokens": 200,
-                          "messages": [{"role": "user", "content": "hello"}],
+                          "messages": [{"role": "user", "content": "hello"},
+                                       {"role": "assistant", "content": None},
+                                       {"role": "user", "content": "Retry JSON"}],
                           "tools": [{"type": "function", "function": {"name": "do_it"}}]}).encode()
     status, _, _ = px.forward(owner_id="o1", path="/v1/chat/completions", body=request,
                               headers={"authorization": "Bearer participant", "cookie": "secret"},
@@ -151,6 +153,7 @@ def test_azure_openai_proxy_routes_and_prices(tmp_path, monkeypatch):
     sent = json.loads(seen[0].data)
     assert sent["max_completion_tokens"] == 200 and "max_tokens" not in sent
     assert sent["reasoning_effort"] == "none"
+    assert sent["messages"][1] == {"role": "assistant", "content": ""}
     assert px.spend("o1") > 0
     assert json.loads((cfg.paths.root / "proxy" / "o1" / "budget.jsonl").read_text().splitlines()[0])["model"] == "openai/gpt-5.6-luna"
 

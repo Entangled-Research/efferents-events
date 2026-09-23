@@ -123,6 +123,12 @@ class ModelProxy:
                     request.setdefault("reasoning", {"effort": "high"})
             elif request.get("messages") is None or not isinstance(request["messages"], list):
                 raise ProxyError(400, "messages must be an array", "invalid_request_error")
+            if not responses_api:
+                # Older participant wheels emit null for tool-only or empty
+                # retry turns. Azure requires string content even in that case.
+                for message in request["messages"]:
+                    if isinstance(message, dict) and message.get("role") == "assistant" and message.get("content") is None:
+                        message["content"] = ""
             if any(term in body.lower() for term in (b'"image_url"', b'"input_audio"', b'"file_id"')):
                 raise ProxyError(400, "only text and function tools are supported", "invalid_request_error")
             if model.startswith("gpt-5.6-") and not responses_api:
