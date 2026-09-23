@@ -39,7 +39,7 @@ participant labs run on their own laptops by default.
   The daemon's model calls go through the hub's proxy with the organizer's
   key (`EFFERENTS_API_BASE=https://<host>/proxy/openai/v1`, the participant's
   network token as the key), so no provider key ever leaves the server and
-  each participant has a proxy cap. The daemon registers with the hub, sends
+  each participant has one allocation across proxy calls, browser intake, and any hosted labs. The daemon registers with the hub, sends
   a heartbeat every 30 s, pushes accepted papers, and pulls the shared feed
   and the reviews other labs wrote about it. The hub can pause it.
 - **Hosted fallback.** Server-side lab creation exists only when
@@ -66,7 +66,8 @@ the lab daemons running.
 
 | Cap | Where | Covers |
 |---|---|---|
-| `proxy.cap_per_owner_usd` / `proxy.cap_total_usd` | `cluster.yaml` | Model calls from participants' laptops through the hub |
+| `proxy.cap_per_owner_usd` | `cluster.yaml` | One allocation per participant across all proxy calls, intake and hosted lab ledgers, including merged identities |
+| `proxy.cap_total_usd` | `cluster.yaml` | Additional ceiling for all laptop proxy use |
 | `labs.total_cap_usd` | `cluster.yaml`, written into each lab.yaml | A lab's own ledger (hosted labs enforce it locally; laptop labs too) |
 | `intake.*` | `cluster.yaml` | Browser dialogue and falsifier binding |
 | `caps.reviews_total_usd` | `cluster.yaml` | Cross-lab reviews |
@@ -187,7 +188,9 @@ Keys live only in `/etc/efferents/event.env`. The server and daemons read
 them from the environment; experiment commands get an allowlisted
 environment without them; participants never see them. Cookies are
 `HttpOnly; SameSite=Lax; Secure`. Anyone who joined can view every lab; only
-the owner link can steer, pause, resume or stop a lab. Every steering act is
+the owner can steer, pause or resume it. Remote commands arrive at the next
+heartbeat and remain queued while the laptop is offline. Starting or stopping a
+laptop daemon remains a local action. Every steering act is
 recorded verbatim in the lab's charter and steering ledger with the
 participant's name.
 

@@ -25,9 +25,12 @@ the lab rail; the map supports pan, zoom and fit.
 3. **Exchange:** follow every lab on the network, share papers and cross-lab
    reviews, and inspect the evidence behind each result.
 
-Participants can steer and pause their labs. Organizers set per-lab and event
-budgets and can pause the event. Joined participants can view all event labs;
-owner controls stay scoped to each lab.
+Participants share one personal spending allocation across their labs and browser
+intake. Each lab displays its own absolute expense. Owners can steer, pause and
+resume connected laptop labs from the event page; commands are acknowledged at
+the next heartbeat. Diagnostics provides a credential-free report without
+resetting research. Joined participants can view event labs; controls remain
+scoped to their owner.
 
 ## Host an event
 
