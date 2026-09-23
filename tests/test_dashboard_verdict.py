@@ -183,5 +183,5 @@ def test_workspace_renders_verdict_panels(verdict_server):
     assert 'id="verdict-line"' in html
     assert '<table id="falsifiers">' in html
     assert '<table id="buckets">' in html
-    assert '"/api/verdict"' in js
+    assert 'renderVerdict(data.verdict)' in js
     assert "No falsifiers declared in lab.yaml" in js

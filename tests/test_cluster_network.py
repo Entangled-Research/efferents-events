@@ -262,12 +262,28 @@ def test_owner_eval_snapshot_ingest_and_owner_scoped_reads(hub):
         "verdict": {"verdict": "survives"},
         "images": {digest: base64.b64encode(png).decode("ascii")},
     }
+    snapshot["ideas"] = {
+        "primary": {"student_id": "primary", "name": "Original", "hypothesis": {"claim": "A"},
+                    "suite": {"title": "Original suite", "status": "configured"},
+                    "runs": snapshot["runs"], "evidence": snapshot["evidence"], "verdict": snapshot["verdict"]},
+        "second": {"student_id": "second", "name": "New", "hypothesis": {"claim": "B"},
+                   "suite": {"title": "New suite", "status": "configured"},
+                   "runs": {"runs": []}, "evidence": {"records": []}, "verdict": {"verdict": "undecided"}},
+    }
     status, _, _ = _request(
         port, "/api/network/labs/ada-lab/heartbeat", method="POST",
-        payload={"status": "running", "runs": 1, "owner_evals": snapshot}, headers=auth,
+        payload={"status": "running", "runs": 1, "owner_evals": snapshot, "ideas": [{"id": "primary"}, {"id": "second"}]}, headers=auth,
     )
     assert status == 200
 
+    status, first, _ = _request(port, "/api/labs/ada-lab/ideas/primary", headers=ada_headers)
+    assert status == 200 and first["runs"]["runs"] == [{"run_id": "run-1"}]
+    status, second, _ = _request(port, "/api/labs/ada-lab/ideas/second", headers=ada_headers)
+    assert status == 200 and second["runs"]["runs"] == []
+    assert second["suite"]["title"] == "New suite"
+    status, private, _ = _request(port, "/api/labs/ada-lab/ideas/primary", headers=bob_headers)
+    assert status == 200 and private["detail_unavailable"] is True and "runs" not in private
+    assert _request(port, "/api/labs/ada-lab/ideas/missing", headers=ada_headers)[0] == 404
     saved = json.loads((ctx.hub.lab_dir("ada-lab") / "owner-evals.json").read_text())
     assert saved["images"][digest] == snapshot["images"][digest]
     assert saved["evidence"]["records"][0]["artifacts"][0]["url"] == (

@@ -16,6 +16,7 @@ def build(lab_root: Path, cfg) -> dict:
     evidence, catalog = reader._evidence_payload(lab_root, cfg)
     evidence = copy.deepcopy(evidence)
     records, images, seen = [], {}, set()
+    artifact_map = {}
     for record in evidence['records']:
         artifacts = []
         for artifact in record.get('artifacts', []):
@@ -31,8 +32,10 @@ def build(lab_root: Path, cfg) -> dict:
                 continue
             seen.add(key)
             images[digest] = base64.b64encode(raw).decode()
-            artifacts.append({'kind': artifact.get('kind', 'image'), 'token': digest,
-                              'url': f'/api/labs/{cfg.lab_id}/artifacts/{digest}'})
+            packed = {'kind': artifact.get('kind', 'image'), 'token': digest,
+                      'url': f'/api/labs/{cfg.lab_id}/artifacts/{digest}'}
+            artifacts.append(packed)
+            artifact_map[(record['run_id'], artifact['token'])] = packed
         if artifacts:
             records.append({**record, 'artifacts': artifacts})
         if len(records) >= 12:
@@ -42,6 +45,21 @@ def build(lab_root: Path, cfg) -> dict:
     result = {'runs': reader.read_runs(lab_root, n=60, cfg=cfg),
               'evidence': evidence, 'verdict': reader.read_verdict(lab_root, cfg),
               'images': images}
+    from efferents.dashboard.ideas import read_idea
+    result['ideas'] = {}
+    for student in cfg.students:
+        view = read_idea(lab_root, cfg, student['id'])
+        # Reuse already-bounded, hashed images for the same run. No image or
+        # unscoped evidence from a sibling idea is introduced into the view.
+        scoped_records = []
+        for record in view['evidence']['records']:
+            artifacts = [artifact_map[(record['run_id'], a['token'])]
+                         for a in record['artifacts'] if (record['run_id'], a['token']) in artifact_map]
+            if artifacts:
+                scoped_records.append({**record, 'artifacts': artifacts})
+        view['evidence']['records'] = scoped_records[:12]
+        view['evidence']['artifact_count'] = sum(len(record['artifacts']) for record in view['evidence']['records'])
+        result['ideas'][student['id']] = view
     if len(json.dumps(result).encode()) > MAX_SNAPSHOT:
         raise ValueError('Owner eval snapshot exceeds byte limit')
     return result
@@ -77,5 +95,19 @@ def validate(raw: object, lab_id: str) -> dict:
              'url': f'/api/labs/{lab_id}/artifacts/{a["token"]}'}
             for a in record.get('artifacts', [])
             if isinstance(a, dict) and isinstance(a.get('token'), str) and a['token'] in verified]
+    ideas = raw.get('ideas', {})
+    if not isinstance(ideas, dict) or len(ideas) > 100:
+        raise ValueError('Invalid idea eval map')
+    result['ideas'] = {}
+    for student_id, view in ideas.items():
+        if not isinstance(view, dict) or view.get('student_id') != student_id:
+            raise ValueError('Idea eval identity mismatch')
+        # Recursive sanitization applies the same image URL restrictions to
+        # each idea as to the legacy default-idea snapshot.
+        clean = validate({**{k: view.get(k, {}) for k in ('runs', 'evidence', 'verdict')}, 'images': verified}, lab_id)
+        metadata = {k: copy.deepcopy(view.get(k)) for k in ('student_id', 'name', 'focus', 'hypothesis', 'campaign_ids', 'suite')}
+        if not isinstance(metadata['suite'], dict) or not isinstance(metadata['hypothesis'], dict):
+            raise ValueError('Invalid idea metadata')
+        result['ideas'][student_id] = {**metadata, **{k: clean[k] for k in ('runs', 'evidence', 'verdict')}}
     result['images'] = verified
     return result

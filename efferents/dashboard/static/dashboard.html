@@ -342,6 +342,18 @@ efferents stop  --submission .</pre>
         <span id="observe-lab-meta">Waiting for local state</span>
       </header>
 
+      <section id="lab-ideas-directory" class="panel" aria-labelledby="lab-ideas-title">
+        <header class="panel-header"><h1 id="lab-ideas-title">Ideas</h1><span>Each idea has its own eval suite</span></header>
+        <div id="lab-ideas-list"></div>
+      </section>
+      <div id="idea-evaluation" hidden>
+        <nav id="idea-breadcrumb" aria-label="Idea navigation"></nav>
+        <section class="panel idea-suite-panel" aria-labelledby="idea-suite-title">
+          <header class="panel-header"><h1 id="idea-suite-title">Eval suite</h1></header>
+          <p id="idea-suite-status" role="status"></p>
+          <div id="idea-suite-plan"></div>
+        </section>
+        <div id="idea-results" hidden>
       <section class="overview-grid" aria-label="Current research state">
         <article class="panel hypothesis-panel">
           <header class="panel-header">
@@ -525,6 +537,8 @@ efferents stop  --submission .</pre>
           </section>
         </aside>
       </section>
+      </div>
+      </div>
     </section>
 
     <section id="network-view" class="app-view" data-route-view="network" hidden>

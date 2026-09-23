@@ -471,6 +471,23 @@ class NetworkHub:
         reg = self.registration(lab_id)
         d = self.lab_dir(lab_id)
         beat = _read_json(d / "heartbeat.json")
+        if kind.startswith("ideas/"):
+            student_id = kind.removeprefix("ideas/")
+            idea = next((i for i in beat.get("ideas", []) if i.get("id") == student_id), None)
+            if idea is None:
+                raise ControlError("Unknown idea.", status=404)
+            snapshot = _read_json(d / "owner-evals.json")
+            if owner_id is not None and owner_id == reg.get("owner_id"):
+                view = snapshot.get("ideas", {}).get(student_id)
+                if isinstance(view, dict):
+                    return copy.deepcopy(view)
+            # Public roster and protocol metadata never include private run data.
+            plan = copy.deepcopy(idea.get("eval_suite") or {})
+            plan.update(status="private" if owner_id != reg.get("owner_id") else "not_synced",
+                        message="Detailed results are available to this lab’s owner." if owner_id != reg.get("owner_id")
+                        else "This idea’s eval results have not synced yet.")
+            return {"student_id": student_id, "name": idea.get("name", student_id),
+                    "focus": idea.get("focus", ""), "suite": plan, "detail_unavailable": True}
         if kind == "control":
             return {
                 "connected": True, "lab_id": lab_id, "domain": reg.get("domain"),

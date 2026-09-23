@@ -59,7 +59,7 @@ def test_evidence_panels_present():
     for needle in ('id="metric-eligible"', 'id="metric-median"', 'id="metric-iqr"',
                    'id="evidence-panel"'):
         assert needle in HTML, needle
-    assert '"/api/evidence"' in JS
+    assert 'renderEvidence(data.evidence)' in JS
     assert ".evidence-gallery" in CSS
 
 
