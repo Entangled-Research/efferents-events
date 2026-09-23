@@ -383,7 +383,7 @@ class NetworkHub:
             })
         return rows
 
-    def lab_view(self, lab_id: str, kind: str) -> Any:
+    def lab_view(self, lab_id: str, kind: str, *, owner_id: str | None = None) -> Any:
         """Read-only views of a remote lab for the observer panel."""
         reg = self.registration(lab_id)
         d = self.lab_dir(lab_id)
