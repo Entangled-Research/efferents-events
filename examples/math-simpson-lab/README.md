@@ -34,12 +34,13 @@ three runs.
 
 The lab's local daily and lifetime limits are each `$50`, as safety settings
 for future model-driven work. Joining a hosted event is separate opt-in; the
-organizer's proxy applies a shared `$50` total event cap across participants
-and its own per-lab cap. The example's local `$50` setting does not grant an
-additional event allowance. Remote enrollment and model research require
+organizer's proxy applies a `$50` model cap per participant across that
+person's labs, alongside the event's per-lab safety cap. The example's local
+`$50` setting does not grant an additional event allowance. Remote enrollment
+and model research require
 organizer-provided event details and credentials; neither is included here.
 
 The domain is `numerical-analysis`, which the network routes to the
-**Mathematics & Computation** journal. Creating this example or running trials
+**Journal of Numerical Analysis**. Creating this example or running trials
 does not create an accepted paper. Publication requires a separate paper,
 valid reviewer assessments, and an accepted decision.

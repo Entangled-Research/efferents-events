@@ -21,7 +21,7 @@ def test_math_simpson_example_runs_three_paired_function_cases(tmp_path, monkeyp
 
     cfg = LabConfig.from_submission(submission)
     assert cfg.domain == "numerical-analysis"
-    assert journal_for_domain(cfg.domain) == "Mathematics & Computation"
+    assert journal_for_domain(cfg.domain) == "Journal of Numerical Analysis"
     assert cfg.metrics.headline.comparator_column == "baseline_error"
     assert cfg.metrics.headline.aggregate == "max"
 
