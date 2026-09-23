@@ -214,3 +214,57 @@ def test_azure_success_without_usage_is_charged_conservatively(tmp_path, monkeyp
     px.forward(owner_id="o1", path="/v1/chat/completions", body=body,
                headers={}, api_key="key", provider="openai")
     assert px.spend("o1") > 0
+
+
+def test_uncertain_transport_failure_keeps_durable_budget_hold(tmp_path, monkeypatch):
+    from efferents.cluster.budget import SpendCoordinator
+    cfg = make_cluster(tmp_path, monkeypatch)
+    monkeypatch.setenv("EFFERENTS_AZURE_OPENAI_ENDPOINT", "https://resource.openai.azure.com/openai/v1")
+    def lost_response(req, timeout=0):
+        raise TimeoutError("response lost after request")
+    px = ModelProxy(cfg, opener=lost_response)
+    body = json.dumps({"model": "gpt-4.1-nano", "max_tokens": 50,
+                       "messages": [{"role": "user", "content": "hi"}]}).encode()
+    with pytest.raises(ProxyError) as caught:
+        px.forward(owner_id="o1", path="/v1/chat/completions", body=body,
+                   headers={}, api_key="key", provider="openai")
+    assert caught.value.status == 502
+    holds = SpendCoordinator(cfg).reservations("o1")
+    assert len(holds) == 1 and holds[0]["held_usd"] > 0
+    assert px.spend("o1") == 0
+
+
+def test_confirmed_proxy_error_releases_durable_hold(tmp_path, monkeypatch):
+    from efferents.cluster.budget import SpendCoordinator
+    cfg = make_cluster(tmp_path, monkeypatch)
+    monkeypatch.setenv("EFFERENTS_AZURE_OPENAI_ENDPOINT", "https://resource.openai.azure.com/openai/v1")
+    px = ModelProxy(cfg, opener=lambda req, timeout=0: FakeResponse({"error": "rate limited"}, status=429))
+    body = json.dumps({"model": "gpt-4.1-nano", "max_tokens": 50,
+                       "messages": [{"role": "user", "content": "hi"}]}).encode()
+    status, _, _ = px.forward(owner_id="o1", path="/v1/chat/completions", body=body,
+                              headers={}, api_key="key", provider="openai")
+    assert status == 429
+    assert SpendCoordinator(cfg).reservations("o1") == []
+    assert px.spend("o1") == 0
+
+
+def test_anthropic_cannot_bypass_allocation_with_unbounded_or_unpriced_calls(tmp_path, monkeypatch):
+    cfg = make_cluster(tmp_path, monkeypatch)
+    calls = []
+    px = ModelProxy(cfg, opener=lambda req, timeout=0: calls.append(req))
+    for max_tokens in (-100, 0, True, "100", 32769):
+        with pytest.raises(ProxyError) as caught:
+            px.forward(owner_id="o1", path="/v1/messages", body=_request(max_tokens=max_tokens),
+                       headers={}, api_key="key")
+        assert caught.value.status == 400
+    with pytest.raises(ProxyError):
+        px.forward(owner_id="o1", path="/v1/messages", body=_request(model="unpriced-imaginary-model"),
+                   headers={}, api_key="key")
+    assert calls == []
+
+
+def test_anthropic_missing_usage_still_settles_conservative_charge(tmp_path, monkeypatch):
+    cfg = make_cluster(tmp_path, monkeypatch)
+    px = ModelProxy(cfg, opener=lambda req, timeout=0: FakeResponse({"model": "unknown-model", "content": []}))
+    px.forward(owner_id="o1", path="/v1/messages", body=_request(), headers={}, api_key="key")
+    assert px.spend("o1") > 0

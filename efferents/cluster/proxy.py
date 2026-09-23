@@ -19,7 +19,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-from efferents.agents.budget import BudgetExhausted, BudgetTracker, CallUsage, estimate_call_cost_usd
+from efferents.agents.budget import BudgetExhausted, BudgetTracker, CallUsage, cost_usd, estimate_call_cost_usd
 from efferents.cluster.budget import coordinator
 from efferents.cluster.config import ClusterConfig, is_frozen, write_event
 
@@ -135,7 +135,9 @@ class ModelProxy:
             model = f"openai/{model}"
             body = json.dumps(request).encode("utf-8")
         else:
-            max_tokens = int(request.get("max_tokens") or 0)
+            max_tokens = request.get("max_tokens")
+            if not isinstance(max_tokens, int) or isinstance(max_tokens, bool) or not 1 <= max_tokens <= _OPENAI_MAX_OUTPUT:
+                raise ProxyError(400, "max output tokens must be 1–32768", "invalid_request_error")
         est_in = max(1, len(body) // 3) if provider == "openai" else _estimate_input_tokens(request)
         if provider == "openai":
             upstream = os.environ.get("EFFERENTS_AZURE_OPENAI_ENDPOINT", "").rstrip("/")
@@ -153,6 +155,9 @@ class ModelProxy:
         owner_tracker = self.tracker(owner_id)
         cluster_tracker = self.cluster_tracker()
         estimate = estimate_call_cost_usd(model, max_tokens, est_in)
+        if estimate <= 0:
+            raise ProxyError(400, "Model pricing is unavailable; this request cannot be budgeted.",
+                             "invalid_request_error")
         with self._guard:
             try:
                 owner_tracker.reserve(model, max_tokens, est_in)
@@ -181,6 +186,7 @@ class ModelProxy:
             self._pending_owner[owner_id] = self._pending_owner.get(owner_id, 0.0) + estimate
             self._pending_total += estimate
         req = urllib.request.Request(upstream + upstream_path, data=body, headers=out_headers, method="POST")
+        settled = False
         try:
             try:
                 with self._open(req, timeout=600) as resp:
@@ -200,10 +206,14 @@ class ModelProxy:
                 self._record(owner_id, model, payload, owner_tracker, cluster_tracker,
                              provider=provider, fallback_input=est_in,
                              fallback_output=max_tokens, responses_api=responses_api,
-                             streaming=bool(request.get("stream")))
+                             streaming=bool(request.get("stream")), reservation_id=reservation)
+            settled = True
             return status, payload, resp_headers
         finally:
-            coordinator(self.cfg).release(reservation)
+            # A transport failure can happen after the provider accepted a paid
+            # request. Keep the hold until its billing can be inspected.
+            if settled:
+                coordinator(self.cfg).release(reservation)
             with self._guard:
                 self._pending_owner[owner_id] -= estimate
                 self._pending_total -= estimate
@@ -211,7 +221,8 @@ class ModelProxy:
     def _record(self, owner_id: str, model: str, payload: bytes, owner_tracker: BudgetTracker,
                 cluster_tracker: BudgetTracker, *, provider: str = "anthropic",
                 fallback_input: int = 0, fallback_output: int = 0,
-                responses_api: bool = False, streaming: bool = False) -> None:
+                responses_api: bool = False, streaming: bool = False,
+                reservation_id: str | None = None) -> None:
         if responses_api and streaming:
             completed = None
             for line in payload.splitlines():
@@ -233,10 +244,10 @@ class ModelProxy:
         usage_raw = data.get("usage") or {}
         if not isinstance(usage_raw, dict):
             usage_raw = {}
-        if provider == "openai" and not usage_raw:
+        if not usage_raw:
             # A successful response without usage must not become a free call.
-            usage_raw = {("input_tokens" if responses_api else "prompt_tokens"): fallback_input,
-                         ("output_tokens" if responses_api else "completion_tokens"): fallback_output}
+            usage_raw = {("input_tokens" if responses_api or provider != "openai" else "prompt_tokens"): fallback_input,
+                         ("output_tokens" if responses_api or provider != "openai" else "completion_tokens"): fallback_output}
         cached = 0
         if responses_api:
             cached = int((usage_raw.get("input_tokens_details") or {}).get("cached_tokens", 0) or 0)
@@ -248,9 +259,11 @@ class ModelProxy:
             cache_read_input_tokens=cached or int(usage_raw.get("cache_read_input_tokens", 0) or 0),
         )
         served = model if provider == "openai" else str(data.get("model") or model)
+        if cost_usd(served, CallUsage(1, 1)) <= 0:
+            served = model
         with self._lock(owner_id):
-            owner_tracker.record(agent="proxy", model=served, usage=usage, notes=f"owner={owner_id}")
-            cluster_tracker.record(agent="proxy", model=served, usage=usage, notes=f"owner={owner_id}")
+            owner_tracker.record(agent="proxy", model=served, usage=usage, notes=f"owner={owner_id} reservation={reservation_id or 'none'}")
+            cluster_tracker.record(agent="proxy", model=served, usage=usage, notes=f"owner={owner_id} reservation={reservation_id or 'none'}")
 
 
 def proxy_spend_total(paths) -> float:

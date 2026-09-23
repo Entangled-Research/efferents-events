@@ -11,7 +11,7 @@ from functools import partial
 from typing import Any
 
 from efferents.agents.model_client import make_client
-from efferents.cluster.budget import cluster_spend, owner_spend
+from efferents.cluster.budget import cluster_spend, owner_budget
 from efferents.cluster.config import (
     ClusterConfig,
     daemon_env,
@@ -118,7 +118,7 @@ class ClusterContext:
                 "owner_link": f"/?owner={owner.token}",
                 "network_token": owner.token,
                 "has_recovery_key": bool(owner.recovery_hash),
-                "owner_budget": owner_spend(self.cfg, owner.owner_id),
+                "owner_budget": owner_budget(self.cfg, owner.owner_id),
                 "proxy_spend_usd": round(self.proxy.spend(owner.owner_id), 4),
                 "proxy_cap_usd": self.cfg.proxy.cap_per_owner_usd,
                 "install_ref": self.cfg.network.install_ref,
@@ -163,7 +163,7 @@ class ClusterContext:
             write_event(self.paths, "accounts_merged", owner_id=target.owner_id,
                         source_ids=source_ids, labs=sorted(set(updated)), reason=reason)
             return {"owner": target.public(), "labs": sorted(set(updated)),
-                    "owner_budget": owner_spend(self.cfg, target.owner_id)}
+                    "owner_budget": owner_budget(self.cfg, target.owner_id)}
 
     # --- lab creation from an intake session -----------------------------------
 

@@ -137,6 +137,12 @@ class ClusterHandler(DashboardHandler):
             raise ControlError("Organizer authentication required.", status=403)
 
     def _extra_get(self, path: str) -> bool:
+        if path == "/api/admin/budget/reservations":
+            from efferents.cluster.budget import coordinator
+            self._require_admin()
+            self._send_json({"reservations": coordinator(self.cluster.cfg).reservations(),
+                             "recovery": "Inspect the provider's request and billing records before releasing a held reservation. Holds never expire automatically."})
+            return True
         if path in ("/api/diagnostics", "/api/admin/diagnostics"):
             from efferents.cluster.diagnostics import diagnostics
             if path.startswith("/api/admin/"):
@@ -303,6 +309,9 @@ class ClusterHandler(DashboardHandler):
             try:
                 binding = propose_falsifiers(hypothesis, track, client=client,
                                              model=self.cluster.cfg.model, budget=budget)
+            except Exception as exc:
+                budget.finish_error(exc)
+                raise
             finally:
                 budget.release()
             return self._send_json(binding.to_dict())

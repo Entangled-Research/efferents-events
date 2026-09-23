@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 import json
 import re
 
-from efferents.cluster.budget import owner_spend
+from efferents.cluster.budget import coordinator, owner_budget
 from efferents.cluster.config import control_flag
 
 
@@ -71,9 +71,10 @@ def diagnostics(context, owner=None) -> dict:
               "labs": labs,
               "sessions": [session for item in owners for session in context.intake.list_sessions(item)],
               "recovery_hint": "Keep the existing lab folder and account. Share this report with the organizer; retrying a failed request or refreshing does not reset research."}
+    result["budget_reservations"] = coordinator(context.cfg).reservations(owner.owner_id if owner else None)
     if owner:
-        result.update(owner=owner.public(), owner_budget=owner_spend(context.cfg, owner.owner_id))
+        result.update(owner=owner.public(), owner_budget=owner_budget(context.cfg, owner.owner_id))
     else:
-        result["owners"] = [{**item.public(), "budget": owner_spend(context.cfg, item.owner_id)}
+        result["owners"] = [{**item.public(), "budget": owner_budget(context.cfg, item.owner_id)}
                             for item in owners]
     return result

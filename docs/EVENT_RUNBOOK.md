@@ -117,3 +117,14 @@ session, preserves old lab tokens as aliases, reassigns existing hosted/remote
 lab metadata, preserves intake sessions and spend, and writes an audit event.
 The operation is idempotent; source accounts remain archived as identity aliases.
 Use this live API instead of editing `owners.json` while the server is running.
+
+
+Budget reservations are written to `budget-reservations.json` before a model
+request leaves the hub. Confirmed responses settle and release the hold;
+transport failures or a process restart retain uncertain holds conservatively.
+Diagnostics shows `reserved_usd` separately from completed `spent_usd`, and both
+reduce remaining allocation. Operators can inspect all holds at authenticated
+`GET /api/admin/budget/reservations`; they do not expire automatically. Check
+provider request/billing records before an operator releases a hold. Completed
+ledger records carry the reservation ID for reconciliation. A hold is not a
+claim that the provider actually charged its full estimate.

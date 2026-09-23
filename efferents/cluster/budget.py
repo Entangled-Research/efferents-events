@@ -3,7 +3,12 @@ and the cluster-wide spend total the keeper enforces."""
 
 from __future__ import annotations
 
+from contextlib import contextmanager
+from datetime import datetime, timezone
+import fcntl
 import json
+import math
+import os
 import secrets
 import threading
 from pathlib import Path
@@ -34,13 +39,17 @@ class DualBudget:
             estimate = self.primary.reserve(model, max_tokens, input_estimate)
             self.secondary.reserve(model, max_tokens, input_estimate)
             if self.cfg is not None:
-                self.release()
+                # A second reserve before record means a failed provider/fallback.
+                # Its billing is uncertain; keep that hold rather than erasing it.
+                self._reservation = None
                 self._reservation = coordinator(self.cfg).reserve(
                     self.owner_id, estimate, family="intake")
             return estimate
 
     def record(self, *, agent: str, model: str, usage: CallUsage, notes: str | None = None) -> dict:
         with self._lock:
+            if self._reservation:
+                notes = f"{notes or ''} reservation={self._reservation}".strip()
             rec = self.primary.record(agent=agent, model=model, usage=usage, notes=notes)
             self.secondary.record(agent=agent, model=model, usage=usage, notes=notes)
             self.release()
@@ -50,6 +59,22 @@ class DualBudget:
         if self._reservation is not None:
             coordinator(self.cfg).release(self._reservation)
             self._reservation = None
+
+    def retain(self) -> None:
+        """Detach an uncertain call; its durable hold requires operator review."""
+        self._reservation = None
+
+    def finish_error(self, exc: Exception) -> None:
+        """Release known rejected calls; retain requests with uncertain billing."""
+        current, seen = exc, set()
+        while current is not None and id(current) not in seen:
+            seen.add(id(current))
+            code = getattr(current, "status_code", None) or getattr(current, "code", None)
+            if isinstance(current, BudgetExhausted) or (isinstance(code, int) and 400 <= code <= 599):
+                self.release()
+                return
+            current = current.__cause__ or current.__context__
+        self.retain()
 
     def spend_primary(self) -> float:
         with self._lock:
@@ -152,9 +177,48 @@ class SpendCoordinator:
         self.cfg = cfg
         self.lock = threading.RLock()
         self.pending: dict[str, tuple[str, str, float]] = {}
+        self.created_at: dict[str, str] = {}
+        self.path = cfg.paths.root / "budget-reservations.json"
+
+    @contextmanager
+    def _transaction(self):
+        # The hub is normally one process. The file lock also prevents an
+        # overlapping release/restart or an operator process from losing holds.
+        with self.lock:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            with self.path.with_suffix(".lock").open("a") as lock:
+                fcntl.flock(lock, fcntl.LOCK_EX)
+                try:
+                    data = json.loads(self.path.read_text()) if self.path.exists() else {}
+                    self.pending = {}
+                    for key, record in data.get("pending", {}).items():
+                        oid, family, estimate = record
+                        estimate = float(estimate)
+                        if family not in {"intake", "proxy"} or not math.isfinite(estimate) or estimate < 0:
+                            raise ValueError("Invalid persisted event budget reservation")
+                        self.pending[key] = (oid, family, estimate)
+                    self.created_at = data.get("created_at", {})
+                    yield
+                finally:
+                    fcntl.flock(lock, fcntl.LOCK_UN)
+
+    def _save(self):
+        temp = self.path.with_suffix(".tmp")
+        temp.write_text(json.dumps({"version": 1, "pending": self.pending,
+                                    "created_at": self.created_at}, indent=2))
+        os.chmod(temp, 0o600)
+        temp.replace(self.path)
+
+    def reservations(self, owner_id: str | None = None) -> list[dict]:
+        with self._transaction():
+            ids = _owner_ids(self.cfg, owner_id) if owner_id else None
+            return [{"id": key, "owner_id": oid, "family": family,
+                     "held_usd": estimate, "created_at": self.created_at.get(key)}
+                    for key, (oid, family, estimate) in self.pending.items()
+                    if ids is None or oid in ids]
 
     def reserve(self, owner_id: str, estimate: float, *, family: str) -> str:
-        with self.lock:
+        with self._transaction():
             ids = _owner_ids(self.cfg, owner_id)
             total = owner_spend(self.cfg, owner_id, precision=None)["spent_usd"]
             pending = sum(value for oid, _, value in self.pending.values() if oid in ids)
@@ -167,6 +231,12 @@ class SpendCoordinator:
             if cluster + cluster_pending + estimate > self.cfg.caps.cluster_total_usd:
                 raise BudgetExhausted("event total", spend=cluster + cluster_pending,
                                       cap=self.cfg.caps.cluster_total_usd, estimate=estimate)
+            if family == "proxy":
+                proxy = cluster_spend(self.cfg.paths, precision=None)["proxy"]
+                proxy_pending = sum(value for _, f, value in self.pending.values() if f == family)
+                if proxy + proxy_pending + estimate > self.cfg.proxy.cap_total_usd:
+                    raise BudgetExhausted("event proxy", spend=proxy + proxy_pending,
+                                          cap=self.cfg.proxy.cap_total_usd, estimate=estimate)
             if family == "intake":
                 owner_intake = owner_spend(self.cfg, owner_id, precision=None)["breakdown"]["intake"]
                 family_pending = sum(value for oid, f, value in self.pending.values()
@@ -180,11 +250,15 @@ class SpendCoordinator:
                                           cap=self.cfg.intake.cap_total_usd, estimate=estimate)
             key = secrets.token_hex(16)
             self.pending[key] = (ids[0], family, estimate)
+            self.created_at[key] = datetime.now(timezone.utc).isoformat()
+            self._save()
             return key
 
     def release(self, key: str) -> None:
-        with self.lock:
+        with self._transaction():
             self.pending.pop(key, None)
+            self.created_at.pop(key, None)
+            self._save()
 
 
 _COORDINATORS: dict[str, SpendCoordinator] = {}
@@ -197,3 +271,11 @@ def coordinator(cfg: ClusterConfig) -> SpendCoordinator:
         value = _COORDINATORS.setdefault(key, SpendCoordinator(cfg))
         value.cfg = cfg
         return value
+
+
+def owner_budget(cfg: ClusterConfig, owner_id: str) -> dict:
+    result = owner_spend(cfg, owner_id)
+    held = sum(row["held_usd"] for row in coordinator(cfg).reservations(owner_id))
+    result["reserved_usd"] = round(held, 4)
+    result["remaining_usd"] = round(max(0.0, result["cap_usd"] - result["spent_usd"] - held), 4)
+    return result

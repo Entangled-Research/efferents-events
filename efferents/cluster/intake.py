@@ -303,6 +303,10 @@ class IntakeStore:
                 self._ingest_draft(session, client, budget, reply["draft"])
             self._save(session)
             return self.payload(session)
+        except Exception as exc:
+            if "budget" in locals():
+                budget.finish_error(exc)
+            raise
         finally:
             if "budget" in locals():
                 budget.release()
@@ -446,6 +450,10 @@ class IntakeStore:
                         session_id=session_id, track=track.id,
                         n_rules=len(binding.falsifiers))
             return self.payload(session)
+        except Exception as exc:
+            if "budget" in locals():
+                budget.finish_error(exc)
+            raise
         finally:
             if "budget" in locals():
                 budget.release()
@@ -499,6 +507,10 @@ class IntakeStore:
                 track=decision.get("track_id"), confidence=decision.get("confidence"),
             )
             return self.payload(session)
+        except Exception as exc:
+            if "budget" in locals():
+                budget.finish_error(exc)
+            raise
         finally:
             if "budget" in locals():
                 budget.release()

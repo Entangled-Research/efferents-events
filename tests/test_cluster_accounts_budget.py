@@ -153,3 +153,35 @@ def test_diagnostics_scrubs_provider_and_owner_tokens_and_reports_eval_sync(tmp_
     assert report["labs"][0]["eval_sync_error"] == "InvalidSnapshot"
     assert report["labs"][0]["eval_synced_at"] == "2026-09-23T22:00:00+00:00"
     assert report["labs"][0]["eval_snapshot_present"] is True
+
+
+def test_pending_reservations_survive_process_restart_and_share_exact_cap(tmp_path, monkeypatch):
+    from efferents.cluster.budget import SpendCoordinator, owner_budget
+    cfg = make_cluster(tmp_path, monkeypatch, proxy={"cap_per_owner_usd": 1, "cap_total_usd": 2},
+                       caps={"cluster_total_usd": 10})
+    owner = OwnerStore(cfg.paths.owners).join("Ada")
+    original = SpendCoordinator(cfg)
+    key = original.reserve(owner.owner_id, .600009, family="proxy")
+    restarted = SpendCoordinator(cfg)
+    assert restarted.reservations(owner.owner_id)[0]["id"] == key
+    with pytest.raises(BudgetExhausted):
+        restarted.reserve(owner.owner_id, .4, family="proxy")
+    report = owner_budget(cfg, owner.owner_id)
+    assert report["spent_usd"] == 0 and report["reserved_usd"] == .6
+    restarted.release(key)
+    assert original.reservations(owner.owner_id) == []
+    assert restarted.reserve(owner.owner_id, 1, family="proxy")
+
+
+def test_intake_rejected_call_releases_but_transport_uncertainty_holds(tmp_path, monkeypatch):
+    cfg = make_cluster(tmp_path, monkeypatch)
+    budget = owner_intake_budget(cfg, "owner")
+    budget.reserve("openai/gpt-5.6-luna", 200, 100)
+    rejected = RuntimeError("provider rejected")
+    rejected.status_code = 429
+    budget.finish_error(rejected)
+    assert coordinator(cfg).reservations("owner") == []
+    budget.reserve("openai/gpt-5.6-luna", 200, 100)
+    budget.finish_error(TimeoutError("response lost"))
+    budget.release()  # request cleanup must not erase the uncertain hold
+    assert len(coordinator(cfg).reservations("owner")) == 1
