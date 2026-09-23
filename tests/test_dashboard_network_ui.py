@@ -27,7 +27,7 @@ def test_portfolio_and_map_present():
 def test_network_tabs_show_visible_labs_without_opening_observers():
     assert 'route === "network"' in JS
     assert '? portfolioState.labs.map((lab) => lab.lab_id)' in JS
-    assert 'strip.hidden = !["network", "observe"].includes(route) || visibleTabIds.length === 0;' in JS
+    assert 'strip.hidden = !["network", "publication", "journal", "observe"].includes(route) || visibleTabIds.length === 0;' in JS
     assert 'route === "observe" ? `<span class="tab-close"' in JS
 
 
@@ -68,8 +68,10 @@ def test_verdict_belongs_to_idea():
     assert "Idea verdict" in HTML
 
 
-def test_journal_panel_minimal():
-    for removed in ("Journal publications", "Labs communicate only", "exchange-count",
+def test_journal_directory_and_exchange_panel():
+    for removed in ("Labs communicate only", "exchange-count",
                     "exchange-explanation"):
         assert removed not in HTML and removed not in JS, removed
     assert 'id="exchange-panel"' in HTML
+    assert 'id="journal-view"' in HTML
+    assert 'id="journal-publication-list"' in HTML
