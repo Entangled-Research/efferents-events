@@ -309,8 +309,15 @@ class Orchestrator:
                                            by="event hub", action="pause")
                     self._network_paused = True
                 elif not wants_pause and self._network_paused:
-                    _steer.record_steering(self.paths.root, text="hub lifted the pause",
-                                           by="event hub", action="resume")
+                    owner_actions = [record.get("action") for record in _steer.read_steering(self.paths.root)
+                                     if record.get("by") != "event hub"
+                                     and record.get("action") in {"pause", "resume"}]
+                    keep_owner_pause = bool(owner_actions and owner_actions[-1] == "pause")
+                    _steer.record_steering(
+                        self.paths.root,
+                        text=("hub lifted its pause; the owner's pause remains" if keep_owner_pause
+                              else "hub lifted the pause"),
+                        by="event hub", action="pause" if keep_owner_pause else "resume")
                     self._network_paused = False
             except Exception as e:
                 notebook_append(self.paths.notebook,
@@ -341,6 +348,21 @@ class Orchestrator:
                 notebook_append(self.paths.notebook,
                                 f"## {now_iso()} — hub pull failed: {type(e).__name__}: "
                                 f"{self.network.last_error or e}\n")
+
+    def _enforce_network_pause(self) -> None:
+        """Apply owner directions without letting a resume lift a hub pause.
+
+        Run every step, including between heartbeats: a local CLI resume and a
+        remote browser resume must both defer to the resource provider's pause.
+        """
+        if not self._network_paused:
+            return
+        pending = [record.get("action") for record in _steer.pending_steering(self.paths.root)
+                   if record.get("action") in {"pause", "resume"}]
+        needs_pause = pending[-1] != "pause" if pending else not _steer.owner_paused(self.paths.root)
+        if needs_pause:
+            _steer.record_steering(self.paths.root, text="The event hub pause is still active.",
+                                   by="event hub", action="pause")
 
     def _handle_signal(self, signum: int, _frame: Any) -> None:
         self._stop = True
@@ -728,6 +750,7 @@ class Orchestrator:
         never gets called to drain proposed_changes.md.
         """
         self._maybe_network()
+        self._enforce_network_pause()
         if _steer.step_hook(self):  # owner steering; True while paused by owner
             return {"event": "owner_paused", "added": 0}
         from efferents.agents.routing import refresh_students

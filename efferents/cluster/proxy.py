@@ -21,7 +21,7 @@ from pathlib import Path
 
 from efferents.agents.budget import BudgetExhausted, BudgetTracker, CallUsage, cost_usd, estimate_call_cost_usd
 from efferents.cluster.budget import coordinator
-from efferents.cluster.config import ClusterConfig, is_frozen, write_event
+from efferents.cluster.config import ClusterConfig, control_flag, is_frozen, write_event
 
 UPSTREAM_DEFAULT = "https://api.anthropic.com"
 PROXY_PREFIX = "/proxy/anthropic"
@@ -95,6 +95,8 @@ class ModelProxy:
             raise ProxyError(404, "unknown proxy path", "not_found_error")
         if is_frozen(self.paths):
             raise ProxyError(402, "the event budget is frozen", "budget_frozen")
+        if control_flag(self.paths, "pause_all"):
+            raise ProxyError(402, "the organizer paused event model spending", "event_paused")
         try:
             request = json.loads(body.decode("utf-8")) if body else {}
         except ValueError as e:

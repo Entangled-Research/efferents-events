@@ -185,3 +185,15 @@ def test_intake_rejected_call_releases_but_transport_uncertainty_holds(tmp_path,
     budget.finish_error(TimeoutError("response lost"))
     budget.release()  # request cleanup must not erase the uncertain hold
     assert len(coordinator(cfg).reservations("owner")) == 1
+
+
+def test_organizer_pause_also_blocks_browser_intake_without_a_hold(tmp_path, monkeypatch):
+    from efferents.cluster.config import set_control_flag
+    from efferents.dashboard.control import ControlError
+    cfg = make_cluster(tmp_path, monkeypatch)
+    set_control_flag(cfg.paths, "pause_all", "review event spending")
+    budget = owner_intake_budget(cfg, "owner")
+    with pytest.raises(ControlError) as caught:
+        budget.reserve("openai/gpt-5.6-luna", 200, 100)
+    assert caught.value.status == 409 and "progress is saved" in str(caught.value)
+    assert coordinator(cfg).reservations() == []

@@ -268,3 +268,15 @@ def test_anthropic_missing_usage_still_settles_conservative_charge(tmp_path, mon
     px = ModelProxy(cfg, opener=lambda req, timeout=0: FakeResponse({"model": "unknown-model", "content": []}))
     px.forward(owner_id="o1", path="/v1/messages", body=_request(), headers={}, api_key="key")
     assert px.spend("o1") > 0
+
+
+def test_organizer_pause_blocks_proxy_before_any_provider_call(tmp_path, monkeypatch):
+    from efferents.cluster.budget import SpendCoordinator
+    cfg = make_cluster(tmp_path, monkeypatch)
+    calls = []
+    px = ModelProxy(cfg, opener=lambda req, timeout=0: calls.append(req))
+    set_control_flag(cfg.paths, "pause_all", "Organizer paused the event")
+    with pytest.raises(ProxyError) as caught:
+        px.forward(owner_id="o1", path="/v1/messages", body=_request(), headers={}, api_key="key")
+    assert caught.value.status == 402 and caught.value.kind == "event_paused"
+    assert not calls and SpendCoordinator(cfg).reservations() == []

@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from efferents.agents.budget import BudgetExhausted, BudgetTracker, CallUsage, read_jsonl
-from efferents.cluster.config import ClusterConfig, ClusterPaths
+from efferents.cluster.config import ClusterConfig, ClusterPaths, control_flag, is_frozen
 
 
 class DualBudget:
@@ -36,6 +36,9 @@ class DualBudget:
 
     def reserve(self, model: str, max_tokens: int | None, input_estimate: int = 0) -> float:
         with self._lock:
+            if self.cfg is not None and (is_frozen(self.cfg.paths) or control_flag(self.cfg.paths, "pause_all")):
+                from efferents.dashboard.control import ControlError
+                raise ControlError("The organizer paused event model spending. Your intake progress is saved.", status=409)
             estimate = self.primary.reserve(model, max_tokens, input_estimate)
             self.secondary.reserve(model, max_tokens, input_estimate)
             if self.cfg is not None:

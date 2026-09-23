@@ -18,6 +18,7 @@ class FakeHub:
     def __init__(self):
         self.calls = []
         self.pause = False
+        self.commands = []
         self.feed = ""
         self.reviews = ""
 
@@ -28,7 +29,7 @@ class FakeHub:
         if path == "/api/network/labs":
             return self._json({"registered": True, "lab_id": body["lab_id"], "heartbeat_s": 5, "pull_s": 9})
         if path.endswith("/heartbeat"):
-            return self._json({"ok": True, "pause": self.pause, "message": "paused by hub" if self.pause else None})
+            return self._json({"ok": True, "pause": self.pause, "commands": self.commands, "message": "paused by hub" if self.pause else None})
         if path.endswith("/journal"):
             return self._json({"ok": True, "entries_added": len(body.get("papers", {})), "papers_stored": 0})
         if path.startswith("/api/network/feed?"):
@@ -139,3 +140,72 @@ def test_unconfigured_daemon_has_no_network(tmp_path, monkeypatch):
     o = orch.Orchestrator(lab_dir=sub / "lab", context_dir=sub / "context", dry_run=True)
     assert o.network is None
     o._maybe_network()  # no-op
+
+
+def test_owner_resumes_cannot_override_an_active_hub_pause(tmp_path, monkeypatch):
+    from efferents.agents import orchestrator as orch
+    from efferents import steer
+    sub = tmp_path / "sub"
+    shutil.copytree(SMOKE, sub, ignore=shutil.ignore_patterns("lab", "__pycache__"))
+    (sub / "lab").mkdir()
+    lab_mod.set_config(LabConfig.from_submission(sub))
+    hub = FakeHub()
+    hub.pause = True
+    monkeypatch.setenv("EFFERENTS_NETWORK_URL", "https://hub.test")
+    monkeypatch.setenv("EFFERENTS_NETWORK_TOKEN", "tok")
+    monkeypatch.setattr(nc.NetworkClient, "__init__",
+                        lambda self, url=None, token=None, opener=None: _init(self, url, token, hub.opener))
+    monkeypatch.setattr(orch, "notify_all", lambda **kw: None)
+    o = orch.Orchestrator(lab_dir=sub / "lab", context_dir=sub / "context", dry_run=True,
+                          submission_dir=sub)
+    monkeypatch.setattr(o, "_interruptible_sleep", lambda *_: None)
+    assert o.step()["event"] == "owner_paused"
+    hub.commands = [{"id": "cmd_resume", "action": "resume", "text": "Continue my research",
+                     "by": "participant:Ada", "mode": "auto", "ts": "2026-09-23T22:00:00Z"}]
+    o.network._last_heartbeat = 0
+    assert o.step()["event"] == "owner_paused"
+    records = steer.read_steering(sub / "lab")
+    owner_resume = next(record for record in records if record.get("remote_command_id") == "cmd_resume")
+    assert owner_resume["ack"] and owner_resume["action"] == "resume"
+    assert records[-1]["action"] == "pause" and records[-1]["by"] == "event hub"
+    assert steer.owner_paused(sub / "lab")
+    # A local resume between heartbeats is also recorded and held behind the hub pause.
+    steer.steer(sub, lab_root=sub / "lab", text="resume from laptop", by="Ada", action="resume")
+    assert o.step()["event"] == "owner_paused"
+    assert steer.owner_paused(sub / "lab")
+    # Only a later hub response lifting its pause lets its halt clear.
+    hub.pause = False
+    hub.commands = []
+    o.network._last_heartbeat = 0
+    o._maybe_network()
+    o._enforce_network_pause()
+    steer.apply_pending(o)
+    assert steer.owner_paused(sub / "lab") is None
+
+
+def test_lifting_hub_pause_preserves_the_owners_independent_pause(tmp_path, monkeypatch):
+    from efferents.agents import orchestrator as orch
+    from efferents import steer
+    sub = tmp_path / "sub"
+    shutil.copytree(SMOKE, sub, ignore=shutil.ignore_patterns("lab", "__pycache__"))
+    (sub / "lab").mkdir()
+    lab_mod.set_config(LabConfig.from_submission(sub))
+    hub = FakeHub()
+    monkeypatch.setenv("EFFERENTS_NETWORK_URL", "https://hub.test")
+    monkeypatch.setenv("EFFERENTS_NETWORK_TOKEN", "tok")
+    monkeypatch.setattr(nc.NetworkClient, "__init__",
+                        lambda self, url=None, token=None, opener=None: _init(self, url, token, hub.opener))
+    monkeypatch.setattr(orch, "notify_all", lambda **kw: None)
+    o = orch.Orchestrator(lab_dir=sub / "lab", context_dir=sub / "context", dry_run=True,
+                          submission_dir=sub)
+    monkeypatch.setattr(o, "_interruptible_sleep", lambda *_: None)
+    steer.steer(sub, lab_root=sub / "lab", text="Hold my research for review", by="Ada", action="pause")
+    assert o.step()["event"] == "owner_paused"
+    hub.pause = True
+    o.network._last_heartbeat = 0
+    assert o.step()["event"] == "owner_paused"
+    hub.pause = False
+    o.network._last_heartbeat = 0
+    assert o.step()["event"] == "owner_paused"
+    assert o._network_paused is False
+    assert "owner's pause remains" in steer.read_steering(sub / "lab")[-1]["text"]
