@@ -221,7 +221,7 @@ def test_register_heartbeat_push_pull_and_portfolio(hub):
     summary = sync.sync_once(cfg, reviews=False)
     assert summary["new_entries"] == 1
     status, feed, _ = _request(port, "/api/network/feed", headers=B)
-    assert status == 400  # No owned lab: never return the unrestricted hub.
+    assert status == 200 and "Loss fell under 0.1" in feed["raw"]  # Bob gets his own subscription.
     status, _, _ = _request(port, "/api/network/feed?lab_id=ada-lab", headers=B)
     assert status == 403
     status, own_feed, _ = _request(port, "/api/network/feed?lab_id=ada-lab", headers=A)
@@ -395,9 +395,9 @@ def test_network_evidence_includes_only_same_lab_accepted_manuscripts(hub):
     by_campaign = {item["campaign_id"]: item for item in findings}
     assert by_campaign["accepted-one"]["body"].startswith("## 2026-09-20")
     assert by_campaign["accepted-one"]["manuscript"].startswith("---\nlab_id: ada-lab")
-    assert "mismatch-one" in by_campaign and "manuscript" not in by_campaign["mismatch-one"]
+    assert "mismatch-one" not in by_campaign
     assert "large-one" in by_campaign and "manuscript" not in by_campaign["large-one"]
-    assert "explicit-rejection" in by_campaign and "manuscript" not in by_campaign["explicit-rejection"]
+    assert "explicit-rejection" not in by_campaign
     assert "rejected-one" not in by_campaign
 
 

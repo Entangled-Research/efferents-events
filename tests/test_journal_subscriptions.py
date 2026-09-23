@@ -1,5 +1,3 @@
-import json
-
 from efferents.agents.conference import _rows
 from efferents.cluster import subscriptions, sync
 from efferents.cluster.network import NetworkHub
@@ -73,3 +71,52 @@ def test_collect_requires_manuscript_and_never_exports_a_draft(tmp_path, monkeyp
     manuscript.write_text(manuscript.read_text().replace("status: draft", "status: preprint"))
     assert len(sync.collect(cfg, labs)) == 1
     assert "Private draft" in (cfg.paths.shared_journal / "manuscripts" / "source-lab__p1.md").read_text()
+
+
+def test_network_client_ack_follows_storage_and_hub_validates_source_hash(tmp_path, monkeypatch):
+    import json
+    from efferents.network_client import NetworkClient
+    from efferents.journal.provenance import campaign_citations, record_execution
+    from tests.test_network_client import FakeHub
+
+    cfg = make_cluster(tmp_path, monkeypatch)
+    hub = NetworkHub(cfg, {})
+    owner = Owner("owner-a", "ChemistryNerd", "token-a", "2026-09-23")
+    hub.register(owner, {"lab_id": "chem-lab", "domain": "chemistry",
+                         "hypothesis": "falsifiability_gate: passed"})
+    directory = cfg.paths.shared_journal / "subscriptions" / "chem-lab"
+    source = _entry("source-lab")
+    source["body"] += "**Journal**: Chemistry\n**Domain**: chemistry\n"
+    subscriptions.visit(directory, "chem-lab", "chemistry", [source],
+                        {"source-lab": "chemistry"}, now=60, interval=60)
+    local = tmp_path / "participant"
+    lab_root = local / "lab"
+    lab_root.mkdir(parents=True)
+    paper_dir = local / "paper"
+    transport = FakeHub()
+
+    def opener(request, timeout=20):
+        if request.get_method() == "GET":
+            assert not subscriptions.observations(directory.parent)
+            return transport._text(hub.subscribed_feed(owner, "chem-lab"))
+        payload = json.loads(request.data)
+        # The remote ACK may only occur after the full source is readable locally.
+        assert "Measured procedure" in (paper_dir / "external_journal.md").read_text()
+        return transport._json(hub.acknowledge_feed(owner, "chem-lab", payload))
+
+    client = NetworkClient("https://hub.test", "token-a", opener=opener)
+    assert client.pull_feed("chem-lab", paper_dir)["n_added"] == 1
+    receipt = subscriptions.observations(directory.parent)[0]
+    assert receipt["finding_id"] == "journal:source-lab:p1"
+    assert not campaign_citations(lab_root, "chem-campaign")
+    assert record_execution(lab_root, {"name": "paired-test", "campaign_id": "chem-campaign",
+        "external_citations": [{"publication_id": receipt["finding_id"], "why": "Paired validation design"}]},
+        {"ok": True, "rows": [{"run_id": "local-run"}]}) == 1
+    use = campaign_citations(lab_root, "chem-campaign")[0]
+    assert use["source_sha256"] == receipt["source_sha256"]
+    hub.heartbeat(owner, "chem-lab", {"journal_uses": [use]})
+    stored = json.loads((hub.lab_dir("chem-lab") / "journal-uses.json").read_text())["uses"]
+    assert len(stored) == 1 and stored[0]["reproduction_status"] == "unverified"
+    for invalid in ({**use, "source_sha256": "0" * 64}, {**use, "lab_id": "spoofed-author"}):
+        hub.heartbeat(owner, "chem-lab", {"journal_uses": [invalid]})
+        assert json.loads((hub.lab_dir("chem-lab") / "journal-uses.json").read_text())["uses"] == []

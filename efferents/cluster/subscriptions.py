@@ -6,6 +6,7 @@ from pathlib import Path
 
 from efferents.agents.conference import _append, _rows
 from efferents.journal.reviews import PERSONAS, review_scores
+from efferents.journal.provenance import publication_digest
 from efferents.journals import INTERDISCIPLINARY_EVERY, journal_for_domain, related_stem_domains
 
 
@@ -42,6 +43,7 @@ def visit(directory: Path, lab_id: str, domain: str, entries: list[dict],
                     "track": "field" if entry in same else "interdisciplinary", "at": now,
                     "visit": number, "body": entry["body"],
                     "journal": journal_for_domain(domains[entry["lab_id"]]),
+                    "source_sha256": publication_digest(entry["body"]),
                 })
             _append(directory / "attendance.jsonl", {"at": now, "visit": number,
                     "received": [publication_id(entry) for entry in selected]})
@@ -59,14 +61,16 @@ def acknowledge(directory: Path, finding_ids: set[str] | None = None) -> int:
     directory.mkdir(parents=True, exist_ok=True)
     with (directory / ".lock").open("a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
-        seen = {row["finding_id"] for row in _rows(directory / "receipts.jsonl")}
+        seen = {row["finding_id"]: row.get("source_sha256") for row in _rows(directory / "receipts.jsonl")}
         for delivery in _rows(directory / "deliveries.jsonl"):
-            if (delivery["finding_id"] not in seen
+            digest = delivery.get("source_sha256") or publication_digest(delivery["body"])
+            if (seen.get(delivery["finding_id"]) != digest
                     and (finding_ids is None or delivery["finding_id"] in finding_ids)):
                 count += 1
-                seen.add(delivery["finding_id"])
+                seen[delivery["finding_id"]] = digest
                 _append(directory / "receipts.jsonl", {
                     **{k: v for k, v in delivery.items() if k != "body"},
+                    "source_sha256": digest,
                     "kind": "observation", "meaning": "Journal feed received; not a replication",
                 })
 
@@ -74,4 +78,8 @@ def acknowledge(directory: Path, finding_ids: set[str] | None = None) -> int:
 
 
 def observations(root: Path) -> list[dict]:
-    return [row for path in sorted(root.glob("*/receipts.jsonl")) for row in _rows(path)][-200:]
+    latest = {}
+    for path in sorted(root.glob("*/receipts.jsonl")):
+        for row in _rows(path):
+            latest[(row["target"], row["finding_id"])] = row
+    return list(latest.values())[-200:]

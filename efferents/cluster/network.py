@@ -234,6 +234,7 @@ class NetworkHub:
             "review_board": payload.get("review_board") if isinstance(payload.get("review_board"), dict) else {},
             "papers": int(payload.get("papers") or 0),
             "last_activity": payload.get("last_activity"),
+            "eval_sync_error": str(payload["eval_sync_error"])[:200] if payload.get("eval_sync_error") else None,
             "halt_reason": (str(payload.get("halt_reason"))[:200] if payload.get("halt_reason") else None),
         }
         owner_evals = payload.get("owner_evals")
@@ -247,12 +248,14 @@ class NetworkHub:
             snapshot["synced_at"] = beat["ts"]
         if isinstance(payload.get("journal_uses"), list):
             from efferents.agents.conference import _rows
-            received = {row["finding_id"] for row in _rows(
+            received = {row["finding_id"]: row for row in _rows(
                 self.paths.shared_journal / "subscriptions" / lab_id / "receipts.jsonl")}
             uses = []
             for use in payload["journal_uses"][-100:]:
                 if (not isinstance(use, dict) or not isinstance(use.get("publication_id"), str)
                         or use["publication_id"] not in received
+                        or not received[use["publication_id"]].get("source_sha256")
+                        or use.get("source_sha256") != received[use["publication_id"]]["source_sha256"]
                         or use["publication_id"] != f"journal:{use.get('lab_id')}:{use.get('campaign_id')}"
                         or not isinstance(use.get("run_ids"), list)
                         or not use["run_ids"] or not isinstance(use.get("why"), str)):
