@@ -137,11 +137,26 @@ class ClusterHandler(DashboardHandler):
             owner = self._require_joined()
             self._network_get(owner, path)
             return True
+        artifact = re.fullmatch(r"/api/labs/([A-Za-z0-9._-]+)/artifacts/([a-f0-9]{64})", path)
+        if artifact:
+            owner = self._require_joined()
+            lab_id, digest = artifact.groups()
+            self.cluster.hub.require_owner(owner, lab_id)
+            snapshot_path = self.cluster.hub.lab_dir(lab_id) / "owner-evals.json"
+            snapshot = json.loads(snapshot_path.read_text()) if snapshot_path.is_file() else {}
+            encoded = snapshot.get("images", {}).get(digest)
+            if encoded is None:
+                raise ControlError("Unknown eval image", status=404)
+            import base64
+            self._send_bytes(base64.b64decode(encoded), "image/png")
+            return True
         remote = self._remote_lab_id(path)
         if remote is not None:
-            self._require_viewer()
+            owner = self._require_joined()
             lab_id, kind = remote
-            self._send_json(self.cluster.hub.lab_view(lab_id, kind))
+            self._send_json(self.cluster.hub.lab_view(
+                lab_id, kind, owner_id=owner.owner_id,
+            ))
             return True
         if path == "/api/tracks":
             self._require_viewer()

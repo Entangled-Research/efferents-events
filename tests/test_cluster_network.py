@@ -230,6 +230,59 @@ def test_register_heartbeat_push_pull_and_portfolio(hub):
     assert {(e["kind"], e["source"], e["target"]) for e in portfolio["edges"]} >= {("cited", "ada-lab", "bob-lab")}
 
 
+def test_owner_eval_snapshot_ingest_and_owner_scoped_reads(hub):
+    import base64
+    import hashlib
+
+    port, ctx, _, _, _ = hub
+    ada, ada_headers = _join(port, "Ada")
+    bob, bob_headers = _join(port, "Bob")
+    auth = _bearer(ada)
+    reg = {"lab_id": "ada-lab", "domain": "synthetic", "hypothesis": VALID_HYP,
+           "track": "coefficient-sweep", "host": "adas-macbook"}
+    assert _request(port, "/api/network/labs", method="POST", payload=reg,
+                    headers=auth)[0] == 200
+
+    png = b"\x89PNG\r\n\x1a\nsmall-test-image"
+    digest = hashlib.sha256(png).hexdigest()
+    snapshot = {
+        "runs": {"runs": [{"run_id": "run-1"}]},
+        "evidence": {"records": [{"run_id": "run-1", "artifacts": [
+            {"kind": "plot", "token": digest},
+        ]}]},
+        "verdict": {"verdict": "survives"},
+        "images": {digest: base64.b64encode(png).decode("ascii")},
+    }
+    status, _, _ = _request(
+        port, "/api/network/labs/ada-lab/heartbeat", method="POST",
+        payload={"status": "running", "runs": 1, "owner_evals": snapshot}, headers=auth,
+    )
+    assert status == 200
+
+    saved = json.loads((ctx.hub.lab_dir("ada-lab") / "owner-evals.json").read_text())
+    assert saved["images"][digest] == snapshot["images"][digest]
+    assert saved["evidence"]["records"][0]["artifacts"][0]["url"] == (
+        f"/api/labs/ada-lab/artifacts/{digest}"
+    )
+    assert saved["synced_at"]
+
+    status, owner_runs, _ = _request(port, "/api/labs/ada-lab/runs", headers=ada_headers)
+    assert status == 200 and owner_runs["runs"] == [{"run_id": "run-1"}]
+    assert owner_runs["synced_at"] == saved["synced_at"]
+    status, viewer_runs, _ = _request(port, "/api/labs/ada-lab/runs", headers=bob_headers)
+    assert status == 200 and viewer_runs["remote_detail_unavailable"] is True
+    assert viewer_runs["runs"] == []
+
+    status, _, image_headers = _request(
+        port, f"/api/labs/ada-lab/artifacts/{digest}", headers=ada_headers,
+    )
+    assert status == 200 and image_headers["content-type"] == "image/png"
+    status, _, _ = _request(
+        port, f"/api/labs/ada-lab/artifacts/{digest}", headers=bob_headers,
+    )
+    assert status == 403
+
+
 def test_remote_paper_register_requires_accepted_journal_entry(hub):
     port, *_ = hub
     owner, _ = _join(port, "Ada")

@@ -11,6 +11,7 @@ State per remote lab lives under ``network/labs/<lab_id>/``:
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import io
 import json
@@ -220,7 +221,18 @@ class NetworkHub:
             "last_activity": payload.get("last_activity"),
             "halt_reason": (str(payload.get("halt_reason"))[:200] if payload.get("halt_reason") else None),
         }
+        owner_evals = payload.get("owner_evals")
+        snapshot = None
+        if owner_evals is not None:
+            from efferents.cluster.eval_snapshot import validate
+            try:
+                snapshot = validate(owner_evals, lab_id)
+            except (ValueError, TypeError) as exc:
+                raise ControlError("Invalid eval snapshot", status=422) from exc
+            snapshot["synced_at"] = beat["ts"]
         _write_json(d / "heartbeat.json", beat)
+        if snapshot is not None:
+            _write_json(d / "owner-evals.json", snapshot)
         edges = payload.get("edges")
         if isinstance(edges, dict):
             _write_json(d / "edges.json", {
@@ -406,6 +418,14 @@ class NetworkHub:
                     "budget": {"spent": float(beat.get("spend_usd") or 0.0),
                                "cap": float(beat.get("cap_usd") or self.cfg.labs.total_cap_usd)},
                     "hypothesis": beat.get("hypothesis") or {"question": "", "claim": "", "falsifier": "", "student": ""}}
+        owner_can_read = owner_id is not None and owner_id == reg.get("owner_id")
+        if owner_can_read and kind in {"runs", "evidence", "verdict"}:
+            snapshot = _read_json(d / "owner-evals.json")
+            view = snapshot.get(kind)
+            if isinstance(view, dict):
+                result = copy.deepcopy(view)
+                result["synced_at"] = snapshot.get("synced_at")
+                return result
         if kind == "runs":
             head = beat.get("headline") or {}
             return {"headline": {"column": head.get("column", "metric"), "direction": head.get("direction", "min")},
