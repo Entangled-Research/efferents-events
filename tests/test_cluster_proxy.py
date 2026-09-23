@@ -13,6 +13,27 @@ from efferents.cluster.proxy import ModelProxy, ProxyError
 from tests.cluster_helpers import make_cluster
 
 
+@pytest.mark.parametrize("responses_api", [False, True])
+def test_azure_cached_tokens_are_not_charged_at_uncached_rate(tmp_path, monkeypatch, responses_api):
+    from efferents.agents.budget import CallUsage, cost_usd
+    cfg = make_cluster(tmp_path, monkeypatch)
+    monkeypatch.setenv("EFFERENTS_AZURE_OPENAI_ENDPOINT", "https://resource.openai.azure.com/openai/v1")
+    usage = ({"input_tokens": 1000, "output_tokens": 100,
+              "input_tokens_details": {"cached_tokens": 900}} if responses_api else
+             {"prompt_tokens": 1000, "completion_tokens": 100,
+              "prompt_tokens_details": {"cached_tokens": 900}})
+    px = ModelProxy(cfg, opener=lambda req, timeout=0: FakeResponse({"model": "gpt-5.6-sol", "usage": usage}))
+    request = {"model": "gpt-5.6-sol", "max_output_tokens" if responses_api else "max_tokens": 200}
+    request.update({"input": "hello"} if responses_api else {"messages": [{"role": "user", "content": "hello"}]})
+    px.forward(owner_id="o1", path="/v1/responses" if responses_api else "/v1/chat/completions",
+               body=json.dumps(request).encode(), headers={}, api_key="key", provider="openai")
+    expected = cost_usd("openai/gpt-5.6-sol", CallUsage(100, 100, cache_read_input_tokens=900))
+    for path in (cfg.paths.root / "proxy/o1/budget.jsonl", cfg.paths.root / "proxy/budget.jsonl"):
+        record = json.loads(path.read_text())
+        assert record["input_tokens"] == 100 and record["cache_read_input_tokens"] == 900
+        assert record["cost_usd"] == pytest.approx(expected)
+
+
 class FakeResponse(io.BytesIO):
     def __init__(self, payload: dict, status: int = 200):
         super().__init__(json.dumps(payload).encode())

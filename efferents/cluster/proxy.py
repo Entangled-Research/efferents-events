@@ -256,10 +256,12 @@ class ModelProxy:
             # A successful response without usage must not become a free call.
             usage_raw = {("input_tokens" if responses_api or provider != "openai" else "prompt_tokens"): fallback_input,
                          ("output_tokens" if responses_api or provider != "openai" else "completion_tokens"): fallback_output}
-        cached = 0
-        if responses_api:
-            cached = int((usage_raw.get("input_tokens_details") or {}).get("cached_tokens", 0) or 0)
         input_tokens = int(usage_raw.get("input_tokens" if responses_api or provider != "openai" else "prompt_tokens", 0) or 0)
+        cached = 0
+        if provider == "openai":
+            details = usage_raw.get("input_tokens_details" if responses_api else "prompt_tokens_details") or {}
+            if isinstance(details, dict):
+                cached = max(0, min(input_tokens, int(details.get("cached_tokens", 0) or 0)))
         usage = CallUsage(
             input_tokens=max(0, input_tokens - cached),
             output_tokens=int(usage_raw.get("output_tokens" if responses_api or provider != "openai" else "completion_tokens", 0) or 0),

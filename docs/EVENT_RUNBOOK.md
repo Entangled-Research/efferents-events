@@ -113,3 +113,27 @@ reduce remaining allocation. Operators can inspect all holds at authenticated
 provider request/billing records before an operator releases a hold. Completed
 ledger records carry the reservation ID for reconciliation. A hold is not a
 claim that the provider actually charged its full estimate.
+
+### Correcting verified cached-input charges
+
+Chat Completions reports cached input under `prompt_tokens_details.cached_tokens`;
+Responses uses `input_tokens_details.cached_tokens`. Both are subtracted from total
+input before applying the cached rate. Never infer historical cache hits from a
+repeated prompt. Retain the participant usage ledger as a private, hashed archive.
+
+Operator reconciliation uses `python -m efferents.cluster.billing CLUSTER_ROOT MANIFEST`;
+add `--apply` only after the default preview validates every proof. A version-1 JSON
+manifest contains `credits`, each with `owner_id`, `original_sha256`, `usage_record`,
+and `evidence` (`source`, relative `archive`, `file_sha256`, `record_sha256`, one-based
+`line`). The archive must contain the exact usage row. Exact model/token counts,
+compatible historical prices, a unique call within five seconds, and matching
+owner/event-wide charges are required. Keep the manifest and archives private.
+
+Corrections append negative `billing_adjustment` rows to the original owner and
+shared proxy ledgers, retaining all original charges and evidence. Each credit has
+an idempotent `proxy-cache-v1:` adjustment ID, both original row hashes, the verified
+cached count, corrected cost, and proof hashes. Merged identities include their
+original ledgers, so the shared owner and event totals both reflect the credit.
+Interrupted corrections can rerun without duplicate credit; incomplete or malformed
+ledger tails require inspection before retry. Unknown historical usage is not
+credited, and pending reservations remain held until separately reconciled.
