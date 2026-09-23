@@ -24,6 +24,13 @@ def test_portfolio_and_map_present():
     assert 'getElementById("lab-tabs")' in JS and 'data-tab="${esc(labId)}"' in JS
 
 
+def test_network_tabs_show_visible_labs_without_opening_observers():
+    assert 'route === "network"' in JS
+    assert '? portfolioState.labs.map((lab) => lab.lab_id)' in JS
+    assert 'strip.hidden = !["network", "observe"].includes(route) || visibleTabIds.length === 0;' in JS
+    assert 'route === "observe" ? `<span class="tab-close"' in JS
+
+
 def test_map_is_pan_zoom_viewport():
     assert 'id="lab-map"' in HTML and 'tabindex="0"' in HTML
     world = HTML.index('id="network-world"')

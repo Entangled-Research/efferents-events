@@ -419,20 +419,24 @@ function renderLabTabs() {
     openTabs.push(selected.lab_id);
   }
   writeStored("efferents-open-labs", openTabs);
-  strip.hidden = !["network", "observe"].includes(route) || openTabs.length === 0;
+  const visibleTabIds = route === "network"
+    ? portfolioState.labs.map((lab) => lab.lab_id)
+    : openTabs;
+  strip.hidden = !["network", "observe"].includes(route) || visibleTabIds.length === 0;
   const networkActive = route === "network";
   strip.innerHTML =
     `<button class="lab-tab home${networkActive ? " active" : ""}" type="button" ` +
     `data-tab-network aria-current="${networkActive ? "true" : "false"}">` +
     `<span class="tab-name">network</span></button>` +
-    openTabs.map((labId) => {
+    visibleTabIds.map((labId) => {
       const lab = known.get(labId);
       const active = Boolean(lab.selected) && route === "observe";
       return `<button class="lab-tab${active ? " active" : ""}" type="button" ` +
         `data-tab="${esc(labId)}" aria-current="${active ? "true" : "false"}">` +
         `<i class="tab-led ${esc(lab.status || "stopped")}" aria-hidden="true"></i>` +
         `<span class="tab-name">${esc(labDisplayName(labId))}</span>` +
-        `<span class="tab-close" data-close="${esc(labId)}" title="Close tab">×</span></button>`;
+        `${route === "observe" ? `<span class="tab-close" data-close="${esc(labId)}" title="Close tab">×</span>` : ""}` +
+        `</button>`;
     }).join("");
   strip.querySelector("[data-tab-network]").addEventListener("click", () => {
     window.location.hash = "network";
