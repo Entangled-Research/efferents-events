@@ -22,6 +22,12 @@ send the network token to `/api/join`.
 
 Hub: {hub_url}
 
+There is no private/public lab choice in this setup. Do not ask the participant
+for a lab visibility or placement mode during Popper intake or after approval.
+They have already selected this event. If an earlier turn asked that question,
+skip it and continue from the saved research answers. This does not grant
+permission to upload source, datasets, drafts or other private material.
+
 ## 1. Where the lab lives
 
 Ask for a short lab name (`lab_id`, kebab-case, matching
