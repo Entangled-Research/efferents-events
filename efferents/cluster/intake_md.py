@@ -259,6 +259,32 @@ found. The human's lab appears on the event's network map within a minute.
 
 ## 7. Hand off
 
+Append an Efferents operations section to this lab's `AGENTS.md`, preserving
+any existing instructions. Record the absolute submission path and lab ID,
+and these rules so a future coding-agent session can operate the same lab:
+
+- Treat plain-language requests such as "start my lab", "stop my lab",
+  "pause spending", and "prioritise this idea" as requests to execute the
+  corresponding Efferents command. Use this lab's `.venv/bin/efferents` from
+  its existing submission directory. If several labs could match, identify
+  the requested lab before acting.
+- Check `status --submission .` first. Start with `start --submission . --detach`;
+  stop with `stop --submission .`; pause or resume with `steer --submission .
+  --pause` or `--resume`. An owner pause persists across restarts: an explicit
+  request to resume research requires both lifting that owner pause and starting
+  the daemon if stopped. A participant cannot lift an organizer's global pause.
+- Send research directions with `steer --submission . "<instruction>"`.
+  Verify the resulting status or queued steering record before reporting success.
+  Keep evidence, budgets, queues and the existing folder intact.
+- Stopping a daemon does not remove its lab from the event network. There is
+  currently no supported archive/remove command; ask the organizer for removal
+  instead of deleting local or server state.
+
+Tell the human to type these requests into their coding agent's chat, not a
+raw shell prompt. The agent needs terminal permission (for OpenCode, use Build
+mode and approve shell execution if prompted). Do not promise that a web page
+can start a process on an offline laptop.
+
 Report: lab id and path, the hypothesis path, the track, the local workspace
 URL, and the owner controls the human keeps:
 

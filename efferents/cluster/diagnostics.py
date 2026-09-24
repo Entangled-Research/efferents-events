@@ -42,7 +42,7 @@ def diagnostics(context, owner=None) -> dict:
         error = scrub(str(beat.get("halt_reason") or ""), credentials)
         eval_error = scrub(str(beat.get("eval_sync_error") or ""), credentials)
         snapshot = _read(item["dir"] / "owner-evals.json")
-        labs.append({"id": lab_id, "name": reg.get("name") or lab_id,
+        labs.append({"id": lab_id, "name": reg.get("display_name") or reg.get("name") or lab_id,
                      "execution": "participant", "status": status,
                      "last_seen": beat.get("ts"), "spend_usd": beat.get("spend_usd", 0),
                      "runs": beat.get("runs", 0), "pause_reason": context.hub._message_for(lab_id),

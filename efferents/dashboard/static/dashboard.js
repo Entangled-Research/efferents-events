@@ -2350,7 +2350,7 @@ async function refreshDiagnostics() {
         ? `<span>$${Number(budget.reserved_usd).toFixed(2)} reserved pending billing confirmation</span>` : "") +
       `<span>${labs.length} ${labs.length === 1 ? "lab" : "labs"}</span>`;
     document.getElementById("diagnostics-labs").innerHTML = labs.map(lab =>
-      `<article class="diagnostic-lab"><h2><a href="${esc(labHref(lab.id || lab.lab_id))}">${esc(lab.name || lab.display_name || lab.id || lab.lab_id)}</a></h2>` +
+      `<article class="diagnostic-lab"><h2><a href="${esc(labHref(lab.id || lab.lab_id))}">${esc(lab.display_name || (lab.name && lab.name !== (lab.id || lab.lab_id) ? lab.name : labDisplayName(lab.id || lab.lab_id)))}</a></h2>` +
       `<p>${esc(lab.status || "unknown")} · ${esc(lab.execution || "local")} · $${Number(lab.spend_usd || 0).toFixed(2)}</p>` +
       (lab.last_seen ? `<p>Last heartbeat: ${esc(formatTimestamp(lab.last_seen, true))} UTC</p>` : "") +
       (lab.pause_reason ? `<p class="diagnostic-error">${esc(lab.pause_reason)}</p>` : "") +
