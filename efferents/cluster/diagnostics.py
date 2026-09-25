@@ -40,6 +40,8 @@ def diagnostics(context, owner=None) -> dict:
         paused = control_flag(context.paths, f"halt_{lab_id}")
         status = context.hub._status(beat)
         error = scrub(str(beat.get("halt_reason") or ""), credentials)
+        if not beat.get("runs") and not error:
+            error = "No completed experiments reported. Check the existing lab/daemon.log and executor smoke test before interpreting a verdict."
         eval_error = scrub(str(beat.get("eval_sync_error") or ""), credentials)
         snapshot = _read(item["dir"] / "owner-evals.json")
         labs.append({"id": lab_id, "name": reg.get("display_name") or reg.get("name") or lab_id,
@@ -71,6 +73,22 @@ def diagnostics(context, owner=None) -> dict:
               "labs": labs,
               "sessions": [session for item in owners for session in context.intake.list_sessions(item)],
               "recovery_hint": "Keep the existing lab folder and account. Share this report with the organizer; retrying a failed request or refreshing does not reset research."}
+    recent = []
+    event_path = context.paths.root / "events.jsonl"
+    if event_path.exists():
+        from collections import deque
+        with event_path.open() as handle:
+            for line in deque(handle, maxlen=2000):
+                try:
+                    item = json.loads(line)
+                except ValueError:
+                    continue
+                if item.get("owner_id") in ids and item.get("event") in {
+                    "setup_checkpoint", "request_failed", "proxy_failed", "network_register",
+                    "idea_deleted", "lab_deleted",
+                }:
+                    recent.append({key: item[key] for key in ("ts", "event", "stage", "status", "lab_id") if key in item})
+    result["recent_setup_events"] = recent[-50:]
     result["budget_reservations"] = coordinator(context.cfg).reservations(owner.owner_id if owner else None)
     if owner:
         result.update(owner=owner.public(), owner_budget=owner_budget(context.cfg, owner.owner_id))

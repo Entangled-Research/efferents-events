@@ -77,3 +77,29 @@ def test_tested_wheel_is_authenticated_and_hash_pinned(hub, tmp_path, monkeypatc
     assert status == 401
     status, body, _ = _request(port, '/api/network/package', headers=auth)
     assert status == 200 and body['raw'] == 'tested wheel fixture'
+
+
+def test_snapshot_keeps_numeric_rows_without_images_and_deduplicates(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    from efferents.cluster.eval_snapshot import build
+    from efferents.dashboard import reader
+    row = {'run_id': 'numeric', 'metrics': {'score': 3}, 'artifacts': []}
+    monkeypatch.setattr(reader, '_evidence_payload', lambda *a: ({'records': [row, row]}, {}))
+    monkeypatch.setattr(reader, 'read_runs', lambda *a, **kw: {})
+    monkeypatch.setattr(reader, 'read_verdict', lambda *a: {})
+    result = build(tmp_path, SimpleNamespace(lab_id='test', students=[]))
+    assert result['evidence']['records'] == [row]
+    assert result['evidence']['artifact_count'] == 0
+
+
+def test_review_annotation_never_overrides_new_evidence(tmp_path):
+    import json
+    from efferents.cluster.evaluation_review import annotate
+    raw = b'{"runs": {}}'
+    (tmp_path / 'owner-evals.json').write_bytes(raw)
+    (tmp_path / 'evaluation-review.json').write_text(json.dumps({
+        'snapshot_sha256': hashlib.sha256(raw).hexdigest(),
+        'ideas': {'primary': {'reason': 'One case of 100; model call failed'}}}))
+    assert annotate(tmp_path, {'verdict': {'verdict': 'falsified'}})['verdict']['verdict'] == 'undecided'
+    (tmp_path / 'owner-evals.json').write_text('{"runs": {"new": true}}')
+    assert annotate(tmp_path, {'verdict': {'verdict': 'falsified'}})['verdict']['verdict'] == 'falsified'

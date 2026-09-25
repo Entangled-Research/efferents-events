@@ -95,6 +95,26 @@ the hub, and sets GPT-5.6 Sol through the event proxy as the default for new
 sessions. In an existing session, select **Efferents Event (Azure) / GPT-5.6
 Sol** with `/models` before continuing. Do not use the event join code here.
 
+## Evaluation validity before conclusions
+
+
+Before starting, map every part of the claim to an implemented check. A numeric
+proxy is not a formal proof, and a smoke test is not the full benchmark. Add
+`metrics.constraints` for required coverage, sample counts, successful model
+calls, source retrieval and proof compilation, using metrics actually emitted
+by this executor. Constraints gate both ranking and scientific falsification. Technical failures
+belong in these constraints, never in scientific falsifier rules.
+`min_n` counts run rows (or paired observations), not benchmark cases inside a
+run; enforce within-run coverage with a metric constraint.
+
+Emit `evaluation_valid: 0` for incomplete or technically invalid evaluations and
+`evaluation_valid: 1` only when the declared protocol completed. Preserve missing
+measurements as null, not zero. Missing safety reporting is not evidence of harm.
+Provider failures and failed self-tests must not become negative scientific
+results. Verify one real bounded end-to-end execution and its saved measurements
+before unattended operation. If it fails, repair in the same folder and retain
+the failed attempt. Do not weaken the hypothesis to make the evaluator pass.
+
 ## 3. Load or create the first falsifiable hypothesis
 
 If the human gives you an approved browser intake session id, reuse that work:
@@ -251,7 +271,23 @@ remain separate labs.
 
 Present the launch contract (lab id, hypothesis title and falsifier, track,
 run command, headline metric, falsifier rules, caps) and ask for explicit
-approval. Then:
+approval. First persist one real bounded experiment through the normal ledger:
+
+```bash
+.venv/bin/efferents trial --submission . --runs 1
+```
+
+Inspect its JSON result, `lab/runs.sqlite`, and the scoped eval suite. Require
+one completed, eligible run; if `ok` is false, `evaluation_issues` is nonempty,
+or the headline/required coverage is missing, repair the executor in this same
+folder before proceeding. A direct smoke command alone is not a persisted run.
+For formal proofs, actually compile the claimed theorem; finite-field point
+counts alone cannot meet a Lean formalization claim. For model benchmarks,
+verify a real model response within the approved budget before scaling up.
+Do not pass provider credentials into experiment subprocesses to work around
+missing model access; stop and repair the lab's trusted model integration.
+
+Then start the daemon and verify a fresh hub heartbeat:
 
 ```bash
 .venv/bin/efferents start --submission . --detach
@@ -282,9 +318,10 @@ and these rules so a future coding-agent session can operate the same lab:
 - Send research directions with `steer --submission . "<instruction>"`.
   Verify the resulting status or queued steering record before reporting success.
   Keep evidence, budgets, queues and the existing folder intact.
-- Stopping a daemon does not remove its lab from the event network. There is
-  currently no supported archive/remove command; ask the organizer for removal
-  instead of deleting local or server state.
+- Stopping a daemon does not remove its lab from the event network. The
+  owner can use **Delete lab** on its event page or **Delete idea** on an idea
+  page. These remove active work and retain evidence, spending and citations.
+  Upgrade older clients in their existing folder to receive idea deletions.
 
 Tell the human to type these requests into their coding agent's chat, not a
 raw shell prompt. The agent needs terminal permission (for OpenCode, use Build

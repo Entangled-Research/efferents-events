@@ -17,7 +17,11 @@ def build(lab_root: Path, cfg) -> dict:
     evidence = copy.deepcopy(evidence)
     records, images, seen = [], {}, set()
     artifact_map = {}
+    seen_runs = set()
     for record in evidence['records']:
+        if record['run_id'] in seen_runs:
+            continue
+        seen_runs.add(record['run_id'])
         artifacts = []
         for artifact in record.get('artifacts', []):
             path = catalog.get(artifact.get('token'))
@@ -36,8 +40,7 @@ def build(lab_root: Path, cfg) -> dict:
                       'url': f'/api/labs/{cfg.lab_id}/artifacts/{digest}'}
             artifacts.append(packed)
             artifact_map[(record['run_id'], artifact['token'])] = packed
-        if artifacts:
-            records.append({**record, 'artifacts': artifacts})
+        records.append({**record, 'artifacts': artifacts})
         if len(records) >= 12:
             break
     evidence['records'] = records
@@ -47,16 +50,22 @@ def build(lab_root: Path, cfg) -> dict:
               'images': images}
     from efferents.dashboard.ideas import read_idea
     result['ideas'] = {}
+    from efferents.lifecycle import inactive
     for student in cfg.students:
+        if inactive(lab_root, student['id']):
+            continue
         view = read_idea(lab_root, cfg, student['id'])
         # Reuse already-bounded, hashed images for the same run. No image or
         # unscoped evidence from a sibling idea is introduced into the view.
         scoped_records = []
+        scoped_seen = set()
         for record in view['evidence']['records']:
+            if record['run_id'] in scoped_seen:
+                continue
+            scoped_seen.add(record['run_id'])
             artifacts = [artifact_map[(record['run_id'], a['token'])]
                          for a in record['artifacts'] if (record['run_id'], a['token']) in artifact_map]
-            if artifacts:
-                scoped_records.append({**record, 'artifacts': artifacts})
+            scoped_records.append({**record, 'artifacts': artifacts})
         view['evidence']['records'] = scoped_records[:12]
         view['evidence']['artifact_count'] = sum(len(record['artifacts']) for record in view['evidence']['records'])
         result['ideas'][student['id']] = view

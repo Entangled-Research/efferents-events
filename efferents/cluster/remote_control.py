@@ -25,16 +25,18 @@ def _save(path: Path, items: list[dict]) -> None:
 
 def queue_command(hub, owner, lab_id: str, action: str, payload: dict) -> dict:
     hub.require_owner(owner, lab_id)
-    if action not in {"steer", "pause", "resume"}:
+    if action not in {"steer", "pause", "resume", "deleteidea"}:
         raise ControlError("Start and stop the existing daemon on its owner's machine.", status=409)
     text = str(payload.get("message") or payload.get("reason") or "").strip()
     if action != "steer" and not text:
-        text = f"{action} requested by {owner.name}"
+        text = (f"Delete idea {payload.get('idea_id')} requested by {owner.name}; evidence retained"
+                if action == "deleteidea" else f"{action} requested by {owner.name}")
     mode = str(payload.get("mode") or "auto")
     if not text or len(text) > 4000 or "\x00" in text or mode not in STEERING_MODES:
         raise ControlError("Use a steering message of 1–4,000 characters and a valid mode.")
     record = {"id": "cmd_" + secrets.token_hex(12), "action": action, "text": text,
               "mode": mode, "by": f"participant:{owner.name}", "owner_id": owner.owner_id,
+              "idea_id": payload.get("idea_id") if action == "deleteidea" else None,
               "ts": datetime.now(timezone.utc).isoformat(), "delivered_at": None}
     path = hub.lab_dir(lab_id) / "commands.json"
     with hub._lock:
@@ -80,13 +82,18 @@ def apply_commands(submission: Path, lab_root: Path, commands: list[dict]) -> No
     for item in commands:
         identifier = item.get("id")
         action = item.get("action")
-        if not identifier or identifier in seen or action not in {"steer", "pause", "resume"}:
+        if not identifier or identifier in seen or action not in {"steer", "pause", "resume", "deleteidea"}:
             continue
         mode = item.get("mode", "auto")
         if mode not in STEERING_MODES:
             continue
+        if action == "deleteidea":
+            from efferents.lifecycle import remove
+            if not isinstance(item.get("idea_id"), str) or not item["idea_id"]:
+                continue
+            remove(lab_root, by=item["by"], student_id=item["idea_id"])
         steer.steer(submission, lab_root=lab_root, text=item["text"], by=item["by"],
-                    action=None if action == "steer" else action,
+                    action=None if action in {"steer", "deleteidea"} else action,
                     extra={"remote_command_id": identifier, "mode": mode})
         if mode != "auto":
             path = submission / "context" / "research_log.md"

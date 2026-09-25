@@ -137,3 +137,43 @@ original ledgers, so the shared owner and event totals both reflect the credit.
 Interrupted corrections can rerun without duplicate credit; incomplete or malformed
 ledger tails require inspection before retry. Unknown historical usage is not
 credited, and pending reservations remain held until separately reconciled.
+
+### Post-event repairs and deletion
+
+Owners can use **Delete lab** on the lab page or **Delete idea** on an idea's
+page. Both require confirmation and authenticated ownership. Deletion removes
+active network entries; it retains measurements, hypothesis files, spending,
+published papers and their citations. A deleted lab ID cannot be re-registered.
+The owner can create a new lab without the archived lab using an active-lab slot.
+
+Remote deletion takes effect on the laptop at the next heartbeat. Deleted labs
+receive a durable pause; idea deletion is delivered as an idempotent command.
+Until the laptop acknowledges the idea command the hub requests a pause. Upgrade
+older participant installations using the authenticated wheel in the existing
+folder before resuming. If every idea is deleted the lab remains idle. The hub
+cannot terminate an offline laptop's current computation.
+
+Automation can use authenticated `POST /api/network/labs/<id>/delete` with
+`{"confirmed":true}`, or `/deleteidea` with
+`{"confirmed":true,"idea_id":"<student id>"}`. Browser mutations also require
+CSRF. Never remove the state directory to implement these actions.
+
+Diagnostics now includes owner-scoped configuration/package checkpoints and
+registration/control/proxy HTTP failures, without bodies, credentials or raw
+exception text. This starts with the new release; it cannot reconstruct missing
+historical client errors. A zero-run lab includes a local troubleshooting hint.
+
+Scientific evaluations must declare coverage and validity as metric constraints.
+`min_n` refers to run rows or paired observations, not cases inside a run.
+Executors can emit `evaluation_valid: 0` for incomplete/invalid work; such rows,
+failed executions, nonzero exit codes and unmet constraints cannot determine a
+scientific verdict. Keep missing measurements null. Formalization claims require
+a real proof compiler check, and model benchmarks require successful model calls.
+
+An organizer's evidence review can be recorded in a remote lab's
+`evaluation-review.json`: `snapshot_sha256` pins the exact bytes of
+`owner-evals.json`, and `ideas` maps idea IDs to `{reason, by, at}`. The console
+shows a pinned reviewed verdict as undecided with the reason, retaining the raw
+snapshot and reported falsifier statuses. Fresh synced evidence automatically
+invalidates the annotation. This is an explicit correction of interpretation,
+not a rewrite of measurements or a completed repair on a participant's laptop.

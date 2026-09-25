@@ -245,6 +245,13 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 return self._send_json(self.control.run_trial(payload.get("runs", 3)))
             if path == "/api/network/observe":
                 return self._send_json(self.control.observe_peers())
+            if path in {"/api/lab/delete", "/api/lab/deleteidea"}:
+                self._require_viewer()
+                lab = self.control.snapshot()
+                if lab is None:
+                    raise ControlError("Connect a lab first.", status=409)
+                self._require_owner(lab)
+                return self._send_json(self._lab_mutation(lab, path.rsplit("/", 1)[-1], payload))
             if path == "/api/connect":
                 return self._send_json(
                     self.control.connect(str(payload.get("source") or "")),

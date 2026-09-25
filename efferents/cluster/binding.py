@@ -33,7 +33,11 @@ or a PAIRED rule (seed-paired bootstrap CI of the median delta):
 Rules must use only the columns the track reports. A rule FIRES when its
 condition holds; a fired rule means the hypothesis is falsified. Encode the
 hypothesis's own falsifier(s), not generic sanity checks. Prefer one or two
-rules. If the hypothesis truly cannot be expressed over these columns, return
+rules. Never encode missing coverage, failed API calls, invalid output or failed
+source retrieval as scientific falsification. Those are metrics.constraints
+preconditions; an incomplete test remains undecided. min_n counts ledger rows,
+not cases within a run. Do not map a formal-proof claim to a numerical proxy.
+If the hypothesis truly cannot be expressed over these columns, return
 {"falsifiers": [], "rationale": "why", "lab_id": "..."}.
 """
 

@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import Any
 
 from efferents.agents import federation
+from efferents.lifecycle import inactive, remove as remove_active, state as lifecycle_state
 from efferents.cluster.config import ClusterConfig, control_flag, is_frozen, write_event
 from efferents.cluster.owners import Owner
 from efferents.cluster.tracks import Track
@@ -187,10 +188,12 @@ class NetworkHub:
         with self._lock:
             d = self.lab_dir(lab_id)
             existing = _read_json(d / "registration.json")
+            if inactive(d):
+                raise ControlError("This lab was deleted by its owner. Use a new lab id.", status=409)
             if existing and existing.get("owner_id") not in owner.identity_ids:
                 raise ControlError(f"Lab id {lab_id!r} is taken by another participant.", status=409)
             owned = [p.name for p in self.root.iterdir()
-                     if p.is_dir() and _read_json(p / "registration.json").get("owner_id") in owner.identity_ids]
+                     if p.is_dir() and not inactive(p) and _read_json(p / "registration.json").get("owner_id") in owner.identity_ids]
             limit = self.cfg.labs.max_per_owner
             if not existing and limit > 0 and len(owned) >= limit:
                 raise ControlError(f"You already registered {len(owned)} lab(s); the limit is "
@@ -218,9 +221,32 @@ class NetworkHub:
         return {"registered": True, "lab_id": lab_id, "heartbeat_s": self.cfg.network.heartbeat_s,
                 "pull_s": self.cfg.network.pull_s, "liveness_supported": True}
 
+    def delete(self, owner: Owner, lab_id: str, payload: dict, *, idea: bool = False) -> dict:
+        self.require_owner(owner, lab_id)
+        if payload.get("confirmed") is not True:
+            raise ControlError("Confirm deletion first.")
+        d = self.lab_dir(lab_id)
+        sid = payload.get("idea_id") if idea else None
+        if idea:
+            known = {i.get("id") for i in self._heartbeat(d).get("ideas", [])}
+            known.update(lifecycle_state(d).get("ideas", {}))
+            if not isinstance(sid, str) or sid not in known:
+                raise ControlError("Unknown idea.", status=404)
+            from efferents.cluster.remote_control import queue_command
+            if sid not in lifecycle_state(d).get("ideas", {}):
+                queue_command(self, owner, lab_id, "deleteidea", payload)
+        remove_active(d, by=f"participant:{owner.name}", student_id=sid)
+        write_event(self.paths, "idea_deleted" if idea else "lab_deleted",
+                    owner_id=owner.owner_id, lab_id=lab_id, idea_id=sid)
+        return {"ok": True, "deleted": "deleteidea" if idea else "delete",
+                "evidence_retained": True, "delivery": "next heartbeat"}
+
     def heartbeat(self, owner: Owner, lab_id: str, payload: dict) -> dict:
         self.require_owner(owner, lab_id)
         d = self.lab_dir(lab_id)
+        if inactive(d):
+            return {"ok": True, "pause": True, "deleted": True,
+                    "message": "Owner deleted this lab; stop local execution. Evidence retained."}
         if payload.get("liveness_only") is True:
             # A separate file prevents concurrent status/metric overwrites.
             # No command is returned or acknowledged by this report-only path.
@@ -281,10 +307,12 @@ class NetworkHub:
                 "reproduced": [e for e in (edges.get("reproduced") or []) if isinstance(e, dict)][:200],
             })
         from efferents.cluster.remote_control import pending_commands
+        commands = pending_commands(self, owner, lab_id, payload)
         return {
             "ok": True,
-            "commands": pending_commands(self, owner, lab_id, payload),
-            "pause": control_flag(self.paths, "pause_all") or is_frozen(self.paths)
+            "commands": commands,
+            "pause": any(c["action"] == "deleteidea" for c in commands)
+            or control_flag(self.paths, "pause_all") or is_frozen(self.paths)
             or control_flag(self.paths, f"halt_{lab_id}"),
             "frozen": is_frozen(self.paths),
             "message": self._message_for(lab_id),
@@ -391,9 +419,10 @@ class NetworkHub:
         out = []
         for d in sorted(p for p in self.root.iterdir() if p.is_dir()):
             reg = _read_json(d / "registration.json")
-            if not reg:
+            if not reg or inactive(d):
                 continue
             beat = self._heartbeat(d)
+            beat["ideas"] = [i for i in beat.get("ideas", []) if not inactive(d, i.get("id"))]
             out.append({"registration": reg, "heartbeat": beat, "dir": d})
         return out
 
@@ -405,6 +434,13 @@ class NetworkHub:
         if beat and str(live.get("ts") or "") > str(beat.get("ts") or ""):
             beat["snapshot_ts"] = beat.get("ts")
             beat["ts"] = live["ts"]
+        from efferents.cluster.evaluation_review import annotate, review
+        if review(directory):
+            annotate(directory, beat)
+            for idea in beat.get("ideas", []):
+                wrapped = annotate(directory, {"verdict": {}, "suite": idea.get("eval_suite", {})}, idea_id=idea.get("id"))
+                if wrapped.get("evaluation_review"):
+                    idea["verdict"] = "undecided"
         return beat
 
     def _status(self, beat: dict) -> str:
@@ -551,9 +587,13 @@ class NetworkHub:
         """Read-only views of a remote lab for the observer panel."""
         reg = self.registration(lab_id)
         d = self.lab_dir(lab_id)
+        if inactive(d):
+            raise ControlError("Lab deleted by its owner; evidence retained.", status=410)
         beat = self._heartbeat(d)
         if kind.startswith("ideas/"):
             student_id = kind.removeprefix("ideas/")
+            if inactive(d, student_id):
+                raise ControlError("Idea deleted by its owner; evidence retained.", status=410)
             idea = next((i for i in beat.get("ideas", []) if i.get("id") == student_id), None)
             if idea is None:
                 raise ControlError("Unknown idea.", status=404)
@@ -561,7 +601,8 @@ class NetworkHub:
             if owner_id is not None:
                 view = snapshot.get("ideas", {}).get(student_id)
                 if isinstance(view, dict):
-                    return copy.deepcopy(view)
+                    from efferents.cluster.evaluation_review import annotate
+                    return annotate(d, copy.deepcopy(view), idea_id=student_id)
             # Joined participants share read-only evals; ingestion and steering
             # remain owner-only. No snapshot means awaiting sync, not no results.
             plan = copy.deepcopy(idea.get("eval_suite") or {})
@@ -592,6 +633,9 @@ class NetworkHub:
             view = snapshot.get(kind)
             if isinstance(view, dict):
                 result = copy.deepcopy(view)
+                if kind == "verdict":
+                    from efferents.cluster.evaluation_review import annotate
+                    result = annotate(d, {"verdict": result})["verdict"]
                 result["synced_at"] = snapshot.get("synced_at")
                 return result
         if kind == "runs":

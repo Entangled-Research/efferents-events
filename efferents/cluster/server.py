@@ -101,6 +101,16 @@ class ClusterHandler(DashboardHandler):
             secure=cfg.secure_cookies,
         )
 
+    def _send_json(self, obj, *, status: int = 200) -> None:
+        if status >= 400 and self._owner is not None:
+            path = urlsplit(self.path).path
+            stage = ("registration" if path == "/api/network/labs" else
+                     "configuration" if path == "/api/network/config" else "control_or_sync")
+            # No request bodies, raw URLs, exception text or credentials in the audit.
+            write_event(self.cluster.paths, "request_failed", owner_id=self._owner.owner_id,
+                        stage=stage, status=status)
+        super()._send_json(obj, status=status)
+
     def _extra_headers(self) -> None:
         if self._pending_cookie:
             self.send_header("Set-Cookie", self._pending_cookie)
@@ -216,8 +226,10 @@ class ClusterHandler(DashboardHandler):
             wheel = participant_wheel()
             if wheel is None:
                 raise ControlError("No tested participant package on this hub", status=404)
+            write_event(self.cluster.paths, "setup_checkpoint", owner_id=owner.owner_id, stage="package_download")
             return self._send_file(wheel)
         if path == "/api/network/config":
+            write_event(self.cluster.paths, "setup_checkpoint", owner_id=owner.owner_id, stage="config_download")
             return self._send_json(hub.config_payload(owner, self._base_url()))
         if path == "/api/network/feed":
             lab_id = parse_qs(urlsplit(self.path).query).get("lab_id", [None])[0]
@@ -318,6 +330,8 @@ class ClusterHandler(DashboardHandler):
         m = _NET_LAB_ROUTE.match(path)
         if m:
             lab_id, verb = m.group("lab_id"), m.group("verb")
+            if verb in {"delete", "deleteidea"}:
+                return self._send_json(hub.delete(owner, lab_id, payload, idea=verb == "deleteidea"))
             if verb == "receipts":
                 return self._send_json(hub.acknowledge_feed(owner, lab_id, payload))
             if verb == "heartbeat":
@@ -339,8 +353,11 @@ class ClusterHandler(DashboardHandler):
                 api_key=self.cluster.upstream_key(provider), provider=provider,
             )
         except ProxyError as exc:
+            write_event(self.cluster.paths, "proxy_failed", owner_id=owner.owner_id, status=exc.status)
             self._send_bytes(exc.body(), "application/json", status=exc.status)
             return
+        if status >= 400:
+            write_event(self.cluster.paths, "proxy_failed", owner_id=owner.owner_id, status=status)
         extra = {k: v for k, v in resp_headers.items() if k != "content-type"}
         self._send_bytes(payload, resp_headers.get("content-type", "application/json"),
                          status=status, extra_headers=extra)
@@ -371,7 +388,11 @@ class ClusterHandler(DashboardHandler):
             lab_id, action = path.split("/")[3:5]
             if not self.cluster.mutation_limiter.allow(owner.owner_id):
                 raise ControlError("Too many control requests; slow down.", status=429)
-            self._send_json(queue_command(self.cluster.hub, owner, lab_id, action, payload))
+            if action in {"delete", "deleteidea"}:
+                result = self.cluster.hub.delete(owner, lab_id, payload, idea=action == "deleteidea")
+            else:
+                result = queue_command(self.cluster.hub, owner, lab_id, action, payload)
+            self._send_json(result)
             return True
         if not path.startswith("/api/intake/"):
             return False
