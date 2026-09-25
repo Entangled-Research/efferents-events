@@ -4,6 +4,7 @@ let portfolioState = { labs: [], edges: [], findings: [], observations: [], even
 let portfolioHydrated = false;
 let isConnecting = false;
 let runtimeAction = "start";
+let runtimeTarget = null;
 let renderedRoute = "";
 // Which lab this browser is looking at. Selection is per viewer, never a
 // server-side switch, so many browsers can inspect different labs at once.
@@ -425,6 +426,8 @@ function renderControl(info) {
   const mine = controlState.mode !== "cluster" ? !info.remote : Boolean(info.mine);
   document.getElementById("start-lab").hidden = pausedDemo || live || !mine || info.remote;
   document.getElementById("stop-lab").hidden = pausedDemo || !live || !mine || info.remote;
+  document.getElementById("delete-lab").hidden = pausedDemo || !mine;
+  document.getElementById("delete-idea").hidden = pausedDemo || !mine || !routeIdeaId();
   document.getElementById("pause-lab").hidden = pausedDemo || !live || ownerPaused || !mine;
   document.getElementById("resume-lab").hidden = pausedDemo || !ownerPaused || !mine;
   document.getElementById("connect-submit").disabled = pausedDemo;
@@ -489,6 +492,7 @@ let pendingIdeaRoute = "";
 function renderIdeaDirectory() {
   const lab = portfolioState.labs.find(item => item.lab_id === routeLabId());
   const selected = routeIdeaId();
+  document.getElementById("delete-idea").hidden = !selected || !lab || (isCluster() ? !lab.mine : Boolean(lab.remote));
   document.getElementById("lab-ideas-directory").hidden = Boolean(selected);
   document.getElementById("idea-evaluation").hidden = !selected;
   if (!lab) return;
@@ -2241,6 +2245,16 @@ function initSteeringForm() {
 }
 
 const RUNTIME_COPY = {
+  delete: {
+    kicker: "Owner control", title: "Delete lab?",
+    copy: "Remove from the active network and stop new work at the next safe boundary. Offline laptops must reconnect. Evidence, spending and published citations remain archived.",
+    label: "Delete this lab from active research.", button: "Delete lab", progress: "Recording deletion…",
+  },
+  deleteidea: {
+    kicker: "Owner control", title: "Delete idea?",
+    copy: "Remove this idea and stop scheduling its work at the next safe boundary. Existing measurements and citations remain archived. Deleting the last idea leaves the lab idle.",
+    label: "Delete this idea from active research.", button: "Delete idea", progress: "Recording deletion…",
+  },
   start: {
     kicker: "Local execution", title: "Start lab?",
     copy: "Up to 3 agent iterations · local repository commands · configured LLM budget. Missing credit or credentials stops this run.",
@@ -2269,6 +2283,7 @@ const RUNTIME_COPY = {
 
 function openRuntimeDialog(action) {
   runtimeAction = action;
+  runtimeTarget = {labId: selectedLabId, ideaId: routeIdeaId()};
   const copy = RUNTIME_COPY[action] || RUNTIME_COPY.start;
   text("runtime-dialog-kicker", copy.kicker);
   text("runtime-dialog-title", copy.title);
@@ -2290,6 +2305,8 @@ function initRuntimeControls() {
   document.getElementById("stop-lab").addEventListener("click", () => openRuntimeDialog("stop"));
   document.getElementById("pause-lab").addEventListener("click", () => openRuntimeDialog("pause"));
   document.getElementById("resume-lab").addEventListener("click", () => openRuntimeDialog("resume"));
+  document.getElementById("delete-lab").addEventListener("click", () => openRuntimeDialog("delete"));
+  document.getElementById("delete-idea").addEventListener("click", () => openRuntimeDialog("deleteidea"));
   checkbox.addEventListener("change", () => {
     confirm.disabled = !checkbox.checked;
   });
@@ -2298,7 +2315,17 @@ function initRuntimeControls() {
     showMessage("runtime-dialog-message", (RUNTIME_COPY[runtimeAction] || {}).progress || "");
     try {
       const legacy = `/api/lab/${runtimeAction}`;
-      const info = await postJSON(selectedLabId ? labPath(runtimeAction) : legacy, { confirmed: true });
+      const target = runtimeTarget;
+      const path = target.labId ? `/api/labs/${encodeURIComponent(target.labId)}/${runtimeAction}` : legacy;
+      const info = await postJSON(path, { confirmed: true, idea_id: target.ideaId });
+      if (info.deleted) {
+        dialog.close();
+        loadedIdeaRoute = "";
+        await refreshPortfolio();
+        window.location.hash = info.deleted === "delete" ? "#network" : labHref(target.labId);
+        await refresh();
+        return;
+      }
       if (info.queued) {
         showMessage("steer-message-state", `${runtimeAction === "pause" ? "Pause" : "Resume"} queued · delivered on your lab’s next heartbeat`, "success");
         const labId = selectedLabId;
