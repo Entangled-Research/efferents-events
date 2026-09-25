@@ -171,8 +171,9 @@ scientific verdict. Keep missing measurements null. Formalization claims require
 a real proof compiler check, and model benchmarks require successful model calls.
 
 An organizer's evidence review can be recorded in a remote lab's
-`evaluation-review.json`: `snapshot_sha256` pins the exact bytes of
-`owner-evals.json`, and `ideas` maps idea IDs to `{reason, by, at}`. The console
+`evaluation-review.json`: `snapshot_sha256` pins the canonical JSON of
+`owner-evals.json` excluding the volatile `synced_at` field (use
+`efferents.cluster.evaluation_review.fingerprint`), and `ideas` maps idea IDs to `{reason, by, at}`. The console
 shows a pinned reviewed verdict as undecided with the reason, retaining the raw
 snapshot and reported falsifier statuses. Fresh synced evidence automatically
 invalidates the annotation. This is an explicit correction of interpretation,

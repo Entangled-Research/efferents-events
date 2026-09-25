@@ -303,6 +303,9 @@ class Orchestrator:
                 from efferents.cluster.remote_control import apply_commands
                 payload = self._network_heartbeat_payload()
                 reply = self.network.heartbeat(cfg.lab_id, payload)
+                if reply.get("deleted") is True:
+                    from efferents.lifecycle import remove
+                    remove(self.paths.root, by="event hub: owner deleted lab")
                 apply_commands(self.submission_dir, self.paths.root, reply.get("commands") or [])
                 wants_pause = bool(reply.get("pause"))
                 if wants_pause and not self._network_paused:

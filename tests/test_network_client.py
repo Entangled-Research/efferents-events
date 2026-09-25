@@ -113,6 +113,11 @@ def test_orchestrator_hooks_register_heartbeat_and_hub_pause(tmp_path, monkeypat
     o.network._last_heartbeat = 0
     o._maybe_network()
     assert read_steering(sub / "lab")[-1]["action"] == "resume"
+    monkeypatch.setattr(o.network, "heartbeat", lambda *a: {"ok": True, "pause": True, "deleted": True})
+    o.network._last_heartbeat = 0
+    o._maybe_network()
+    from efferents.lifecycle import inactive
+    assert inactive(sub / "lab")
 
 
 def _init(self, url, token, opener):

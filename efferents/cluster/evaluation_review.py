@@ -6,13 +6,19 @@ import json
 from pathlib import Path
 
 
+def fingerprint(raw: bytes) -> str:
+    document = json.loads(raw)
+    document.pop('synced_at', None)
+    return hashlib.sha256(json.dumps(document, sort_keys=True, separators=(',', ':'), allow_nan=False).encode()).hexdigest()
+
+
 def review(directory: Path) -> dict:
     try:
         note = json.loads((directory / 'evaluation-review.json').read_text())
         raw = (directory / 'owner-evals.json').read_bytes()
     except (OSError, ValueError):
         return {}
-    if note.get('snapshot_sha256') != hashlib.sha256(raw).hexdigest():
+    if note.get('snapshot_sha256') != fingerprint(raw):
         return {}
     return note
 

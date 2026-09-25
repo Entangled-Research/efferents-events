@@ -94,12 +94,14 @@ def test_snapshot_keeps_numeric_rows_without_images_and_deduplicates(tmp_path, m
 
 def test_review_annotation_never_overrides_new_evidence(tmp_path):
     import json
-    from efferents.cluster.evaluation_review import annotate
+    from efferents.cluster.evaluation_review import annotate, fingerprint
     raw = b'{"runs": {}}'
     (tmp_path / 'owner-evals.json').write_bytes(raw)
     (tmp_path / 'evaluation-review.json').write_text(json.dumps({
-        'snapshot_sha256': hashlib.sha256(raw).hexdigest(),
+        'snapshot_sha256': fingerprint(raw),
         'ideas': {'primary': {'reason': 'One case of 100; model call failed'}}}))
+    assert annotate(tmp_path, {'verdict': {'verdict': 'falsified'}})['verdict']['verdict'] == 'undecided'
+    (tmp_path / 'owner-evals.json').write_text('{"runs": {}, "synced_at": "later heartbeat"}')
     assert annotate(tmp_path, {'verdict': {'verdict': 'falsified'}})['verdict']['verdict'] == 'undecided'
     (tmp_path / 'owner-evals.json').write_text('{"runs": {"new": true}}')
     assert annotate(tmp_path, {'verdict': {'verdict': 'falsified'}})['verdict']['verdict'] == 'falsified'
