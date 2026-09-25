@@ -92,3 +92,20 @@ def test_lab_ids_come_from_the_owners_words(tmp_path, monkeypatch):
 def test_auto_onboarding_rejects_ideas_without_a_compatible_executor(tmp_path, idea):
     with pytest.raises(ValueError, match="No compatible starter"):
         create_lab(tmp_path / "lab", idea=idea)
+
+
+def test_trial_reports_incomplete_evaluation_without_discarding_run(tmp_path, monkeypatch):
+    from efferents.onboarding import trial
+    import sqlite3
+    monkeypatch.setenv('EFFERENTS_HOME', str(tmp_path / 'home'))
+    submission = tmp_path / 'audit'
+    create_lab(submission, starter='integration')
+    path = submission / 'lab.yaml'
+    cfg = yaml.safe_load(path.read_text())
+    cfg['metrics']['constraints'] = [{'column': 'cases_completed', 'op': '>=', 'value': 100}]
+    path.write_text(yaml.safe_dump(cfg))
+    result = trial(submission, runs=1)
+    assert not result['ok'] and result['runs'] == 1
+    assert 'cases_completed' in result['evaluation_issues'][0]
+    with sqlite3.connect(submission / 'lab/runs.sqlite') as db:
+        assert db.execute('SELECT COUNT(*) FROM runs').fetchone()[0] == 1
