@@ -1,4 +1,4 @@
-name: efferents-events
+name: ${EFFERENTS_EVENT_PROJECT:-efferents-events}
 services:
   hub:
     build:
@@ -16,8 +16,8 @@ services:
     volumes: [events_data:/data]
     tmpfs: ["/tmp:mode=1777,size=256m"]
     env_file:
-      - path: .env
-        required: false
+      - path: ${EFFERENTS_EVENT_ENV:-.env}
+        required: true
     healthcheck:
       test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8810/api/control', timeout=3)"]
       interval: 20s

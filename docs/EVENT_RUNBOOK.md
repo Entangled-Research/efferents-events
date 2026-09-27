@@ -3,6 +3,9 @@
 This runbook describes the deployed **Docker hub with participant-side labs**.
 The alternative systemd/hosted-lab installation is in `EVENT_HOSTING.md`.
 
+For retirement and reuse, follow the [event lifecycle guide](../deploy/events/README.md).
+The September 2026 deployment is retired; do not restart its volume.
+
 ## Live services
 
 SSH to the event host, then run from `/opt/efferents-events`:

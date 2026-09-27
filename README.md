@@ -55,7 +55,8 @@ their laptop; the hub never forces an unrelated hypothesis into a demo track.
 
 For the event, use the guide's HTTPS deployment and services for the hub,
 supervision, shared journal and backups. Follow the
-[operator runbook](docs/EVENT_RUNBOOK.md) for rehearsal, monitoring and shutdown.
+[operator runbook](docs/EVENT_RUNBOOK.md) for rehearsal and monitoring, and the
+[event lifecycle guide](deploy/events/README.md) to retire access and prepare a fresh event.
 
 ## Documentation
 

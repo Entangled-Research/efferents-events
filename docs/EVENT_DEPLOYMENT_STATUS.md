@@ -1,5 +1,14 @@
 # Events deployment
 
+**Retired 2026-09-27.** The September event URL returns HTTP 410. Hub and sync
+containers were removed, active event credential files removed, and all owner
+tokens/recovery keys invalidated. Evidence and billing state remain in a private
+backup and the frozen volume. The separate legacy gateway is unchanged. No
+provider-key revocation at the issuer was performed. Prepare a fresh event with
+[separate state and credentials](../deploy/events/README.md).
+
+The deployment notes below describe the historical event, not a running service.
+
 The Events repository includes the framework network and the September 23 event
 readiness fixes, preserving participant identity, owner-only control, intake,
 the model proxy and remote-lab transport. The production deployment is independent of the
