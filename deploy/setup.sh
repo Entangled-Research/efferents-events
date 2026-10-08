@@ -4,7 +4,7 @@
 #
 #   DOMAIN=event.example.org bash deploy/setup.sh
 #
-# Optional: REF=<branch> (default main; use the event's branch, e.g. glasgow),
+# Optional: REF=<branch> (default main; use the event's branch, e.g. codex/event-2026-10-24),
 # EFFERENTS_REPO=<git url> (default this repository), POPPER_REPO=<git url>.
 #
 # Idempotent: re-running updates the release and units without touching

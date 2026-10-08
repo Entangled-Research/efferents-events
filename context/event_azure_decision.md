@@ -1,4 +1,9 @@
-# Event model funding and Azure decision
+# Historical event model funding and Azure decision
+
+This records a previous event decision, not current credit availability or a
+running deployment. The September deployment was subsequently retired; see
+[deployment status](../docs/EVENT_DEPLOYMENT_STATUS.md). Confirm provider access,
+funding and budgets separately for each new event.
 
 **Recorded:** 2026-09-16. **Source:** owner update in the active implementation task.
 

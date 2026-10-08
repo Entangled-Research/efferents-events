@@ -126,10 +126,10 @@ dashes, and paste the complete Basic Auth hash **inside single quotes**:
 EFFERENTS_HOSTNAME=203-0-113-10.sslip.io
 EFFERENTS_AUTH_USER=organizer
 EFFERENTS_AUTH_HASH='$2a$...paste the complete generated hash here...'
-EVENT_ID=autoresearch-night-2026-09
+EVENT_ID=your-unique-event-id
 EVENT_ENROLLMENT_CODE=...random value shown only to participants...
 EVENT_ADMIN_KEY=...different random value kept by organizer...
-EVENT_EXPIRES_AT=2026-09-25T00:00:00+00:00
+EVENT_EXPIRES_AT=...confirmed closing time in ISO 8601 with timezone...
 EVENT_TOKEN_CAP_USD=3.0
 EVENT_TOTAL_CAP_USD=50.0
 EVENT_AZURE_OPENAI_BASE=https://YOUR-RESOURCE.openai.azure.com/openai/v1

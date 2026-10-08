@@ -10,7 +10,7 @@ Enable routing in each incoming and receiving submission's `lab.yaml`:
 topic: mathematical reasoning effectiveness and cost
 approach: compare explicit reasoning with repeated direct answers
 routing:
-  pool: autoresearch-night
+  pool: example-research-event
   owner: organizer
   accept_students: true
 ```

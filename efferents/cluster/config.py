@@ -317,7 +317,7 @@ proxy:
   cap_total_usd: 20.0
 network:
   repo_url: https://github.com/Entangled-Research/efferents-events
-  install_ref: main                 # branch participants install (e.g. glasgow, london)
+  install_ref: main                 # branch participants install (e.g. codex/event-2026-10-24)
   # lab_model: openai/gpt-5.6-sol   # use one model for every lab agent role
   heartbeat_s: 30
   pull_s: 120

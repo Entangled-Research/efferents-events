@@ -1,4 +1,9 @@
-# Autoresearch Night operator runbook
+# Legacy event gateway operator runbook
+
+This document records the earlier gateway workflow. For the current event, see
+[starter.md](../starter.md); for current deployment operations, use
+[the Events runbook](EVENT_RUNBOOK.md). Historical provider and budget decisions
+below are not confirmed settings for the upcoming event.
 
 This is the minimum live-event contract. The [participant quickstart](event-quickstart.md)
 and [DigitalOcean deployment guide](digitalocean.md) contain the commands.
@@ -48,12 +53,9 @@ The owner-provided credit and provider decision is recorded in
   retain no token hashes or detailed model-request rows after close. The
   organizer deletes the remaining event database and exports at that date.
 
-The earlier planning document listed 22 and 24 September 2026 as candidate
-dates. Do not advertise either as confirmed solely from repository state.
-Use 24 September as the *operational target* only if the organizer confirms it
-with attendees. The 22 September option is go only after a real two-laptop
-rehearsal by 20 September; otherwise move it. No code-only test can replace
-the venue/network rehearsal.
+Current event dates, venue and duration are recorded in
+[starter.md](../starter.md). Complete a real two-laptop and venue/network
+rehearsal before the event; code-only tests do not replace it.
 
 ## Before any attendee receives the URL
 

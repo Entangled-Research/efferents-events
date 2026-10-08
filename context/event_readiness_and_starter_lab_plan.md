@@ -1,8 +1,11 @@
-# Autoresearch Night readiness and starter-lab plan
+# Historical event readiness and starter-lab plan
 
-**Status:** planning only; no implementation is authorized by this document  
-**Written:** 2026-09-15  
-**Candidate event dates:** Tuesday 2026-09-22 or Thursday 2026-09-24
+**Status:** historical planning reference; not the current event brief.
+
+**Written:** 2026-09-15
+
+Current event metadata and starting hypotheses are in [starter.md](../starter.md).
+The architecture and starter designs below are retained as historical context.
 
 This is the handoff for a later implementation session. It records the event
 decisions already made, turns every readiness item into either a completed
@@ -489,14 +492,9 @@ without external data, GPU access or LLM-as-judge metrics.
 6. Run the two-laptop rehearsal and create the offline result bundle.
 7. Add remote talks/replies only if the minimum path is already stable.
 
-## Date decision gate
+## Rehearsal gate
 
-Keep Tuesday 2026-09-22 only if the P0 path passes a two-laptop rehearsal before
-the conference begins or, at the latest, before leaving for it. If the proxy,
-starter lab or remote heartbeat still needs first-time integration after Sunday
-2026-09-20, move the event to Thursday 2026-09-24. Monday should be reserved for
-rehearsal and fixes, not for discovering the architecture.
-
-The LinkedIn post remains the only known unfinished general event-planning item.
-Publish it immediately after the date is fixed; it should promise only the
-minimum experience that has passed rehearsal.
+Complete the P0 path on two laptops before the event. Reserve the final
+preparation period for rehearsal and fixes rather than first-time integration.
+Event announcements should promise only the experience that has passed rehearsal.
+Use [starter.md](../starter.md) for current event metadata.

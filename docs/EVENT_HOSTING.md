@@ -97,7 +97,7 @@ snapshot of the droplet the evening before the event.
 
    ```bash
    sudo DOMAIN=event.yourdomain.org bash deploy/setup.sh          # main
-   sudo REF=glasgow DOMAIN=event.yourdomain.org bash deploy/setup.sh   # an event branch
+   sudo REF=codex/event-2026-10-24 DOMAIN=event.yourdomain.org bash deploy/setup.sh   # an event branch
    ```
 
    It installs packages and Caddy, creates the `efferents` user, opens the

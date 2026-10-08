@@ -11,7 +11,7 @@ From the repository on the deployment host (with `uv sync` completed):
 
 ```bash
 uv run python deploy/events/prepare.py /srv/events/2026-10-research \
-  --name 'October research night' --public-url https://event.example.org
+  --name 'Autoresearch: Agents x Science' --public-url https://event.example.org
 export EFFERENTS_EVENT_PROJECT=efferents-events-2026-10
 export EFFERENTS_EVENT_ENV=/srv/events/2026-10-research/hub.env
 ```
