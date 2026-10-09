@@ -130,3 +130,26 @@ console.log(JSON.stringify(document.getElementById('steering-history').innerHTML
     assert " · queued" in result
     assert " · delivered" in result
     assert "2026-09-23 22:00" in result
+
+
+def test_agent_handoff_uses_connection_token_without_disclosing_recovery_key():
+    result = run_js("""
+window.location.origin = 'https://event.example';
+showRecoveryKey('private-return-key');
+const session = {network_token:'lab-connection-token', has_recovery_key:true};
+renderTerminalPanel(session);
+const first = document.getElementById('terminal-instruction').textContent;
+const approved = agentSetupInstruction(session, 'approved-idea');
+const visible = !document.getElementById('recovery-secret').hidden;
+showRecoveryKey('');
+console.log(JSON.stringify({first, approved, visible,
+  cleared:document.getElementById('recovery-key').textContent,
+  hidden:document.getElementById('recovery-secret').hidden}));
+""")
+    for instruction in (result['first'], result['approved']):
+        assert 'https://event.example/intake.md' in instruction
+        assert 'lab-connection-token' in instruction
+        assert 'private-return-key' not in instruction
+    assert 'approved-idea' in result['approved']
+    assert result['visible'] and result['hidden']
+    assert result['cleared'] == ''

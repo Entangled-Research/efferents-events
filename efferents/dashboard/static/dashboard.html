@@ -85,88 +85,76 @@
           One join code for the room. Pick the name other labs will see next to yours.
         </p>
       </div>
-      <section class="panel join-panel" id="login-panel" aria-labelledby="login-title">
-        <header class="panel-header"><h2 id="login-title">Returning? Sign in</h2></header>
-        <div class="join-body">
-          <p class="hint">Use your saved recovery key, or a still-valid network token or owner link. This restores your identity and labs in any browser, including incognito.</p>
-          <form id="login-form" class="join-form">
-            <label class="field-label" for="login-credential">Recovery key or token</label>
-            <input id="login-credential" type="password" autocomplete="current-password" maxlength="2048" required>
-            <button class="primary-button" type="submit">Sign in</button>
-          </form>
-          <div id="login-message" class="form-message" role="status"></div>
-          <p class="hint">Lost your key and token? Ask the event organizer to recover your existing identity. A name alone cannot prove ownership.</p>
-        </div>
-      </section>
-      <section class="panel join-panel" id="recovery-panel" hidden>
-        <header class="panel-header"><h2>Keep your identity</h2></header>
-        <div class="join-body">
-          <p class="hint">Save your recovery key in a password manager before leaving. It works after cookies are cleared or your 48-hour token expires, and renews access to the same labs and budget. Anyone with this key can act as you. It stays valid until replaced.</p>
-          <button id="create-recovery" class="compact-button" type="button">Create recovery key</button>
-          <div id="recovery-secret" hidden>
-            <code id="recovery-key" class="instruction-line"></code>
-            <button id="copy-recovery" class="compact-button" type="button">Copy recovery key</button>
-            <p class="hint">Save this now. The server cannot show it again.</p>
-          </div>
-          <div id="recovery-message" class="form-message" role="status"></div>
-          <button id="sign-out" class="compact-button" type="button">Sign out of this browser</button>
-        </div>
-      </section>
       <section class="panel join-panel" id="join-panel" aria-labelledby="join-form-title">
-        <header class="panel-header"><h2 id="join-form-title">First time? Create an identity</h2></header>
+        <header class="panel-header"><h2 id="join-form-title">First time? Join the event</h2></header>
         <div class="join-body">
           <form id="join-form" class="join-form">
-            <label class="field-label" for="join-code">Join code</label>
-            <input id="join-code" name="code" type="text" autocomplete="off" required
-                   spellcheck="false">
+            <label class="field-label" for="join-code">Event code</label>
+            <input id="join-code" name="code" type="text" autocomplete="off" required spellcheck="false" aria-describedby="join-code-help">
+            <p class="hint" id="join-code-help">Use the code from your organizer.</p>
             <label class="field-label" for="join-name">Your name</label>
-            <input id="join-name" name="name" type="text" maxlength="40" required
-                   autocomplete="nickname">
-            <button id="join-submit" class="primary-button" type="submit">Join</button>
+            <input id="join-name" name="name" type="text" maxlength="40" required autocomplete="nickname">
+            <button id="join-submit" class="primary-button" type="submit">Join event</button>
           </form>
           <div id="join-message" class="form-message" role="status" aria-live="polite"></div>
         </div>
       </section>
+      <section class="panel join-panel" id="login-panel" aria-label="Returning participants">
+        <details id="login-details" class="join-body">
+          <summary>Already joined? Sign in</summary>
+          <form id="login-form" class="join-form">
+            <label class="field-label" for="login-credential">Your sign-in key</label>
+            <input id="login-credential" name="credential" type="password" autocomplete="current-password" maxlength="2048" required aria-describedby="login-help">
+            <button class="primary-button" type="submit">Sign in</button>
+          </form>
+          <div id="login-message" class="form-message" role="status"></div>
+          <p class="hint" id="login-help">Use the private key you saved when you joined. Older recovery keys and sign-in links still work. Lost yours? Ask the organizer for help.</p>
+        </details>
+      </section>
+      <section class="panel join-panel" id="recovery-panel" hidden>
+        <header class="panel-header"><h2>Your account</h2></header>
+        <div class="join-body">
+          <p class="hint">You’re signed in on this browser. Use your sign-in key to return on another device or after signing out.</p>
+          <div id="recovery-secret" hidden>
+            <p><strong>Save your sign-in key.</strong> This is the only key you need to keep. It’s private, like a password.</p>
+            <code id="recovery-key" class="instruction-line"></code>
+            <button id="copy-recovery" class="compact-button" type="button">Copy sign-in key</button>
+            <button id="saved-recovery" class="compact-button" type="button">I’ve saved it</button>
+            <p class="hint">It’s shown only now, but you can use it again whenever you need to sign in.</p>
+          </div>
+          <div id="recovery-message" class="form-message" role="status"></div>
+          <details id="account-options">
+            <summary>Account options</summary>
+            <p class="hint">If you lost your saved sign-in key, create a replacement here before signing out.</p>
+            <button id="create-recovery" class="compact-button" type="button">Create sign-in key</button>
+            <button id="sign-out" class="compact-button" type="button">Sign out</button>
+          </details>
+        </div>
+      </section>
       <div id="connect-steps" class="connect-steps" hidden>
         <section class="panel join-panel" id="terminal-panel" aria-labelledby="terminal-title">
-          <header class="panel-header"><h2 id="terminal-title">1 · Open your harness and paste this</h2></header>
+          <header class="panel-header"><h2 id="terminal-title">1 · Connect your coding agent</h2></header>
           <div class="join-body">
-            <p class="hint">
-              Your labs live on your own machine: one folder per lab, your own data, your own
-              hardware. Open your coding harness (opencode, Claude Code, Codex, or a web agent
-              that can read a URL) in an empty folder and paste this one instruction:
-            </p>
-            <code id="terminal-instruction" class="instruction-line"></code>
-            <button id="copy-terminal-instruction" class="compact-button" type="button">Copy instruction</button>
-          </div>
-        </section>
-        <section class="panel join-panel" aria-labelledby="token-title">
-          <header class="panel-header"><h2 id="token-title">2 · Give it your network token when it asks</h2></header>
-          <div class="join-body">
-            <code id="network-token" class="instruction-line"></code>
-            <button id="copy-network-token" class="compact-button" type="button">Copy token</button>
-            <p class="hint">
-              The token is you. It pays for your lab's research model calls from the event
-              budget and marks the lab as yours on the network. Never share it.
-            </p>
+            <p class="hint">Open Codex, Claude Code, OpenCode or another coding agent in an empty folder. Copy the setup instruction and paste it there.</p>
+            <button id="copy-terminal-instruction" class="primary-button" type="button">Copy setup instruction</button>
+            <p class="hint">This includes your private lab connection details. Paste it only into your own coding agent.</p>
+            <div id="setup-message" class="form-message" role="status"></div>
+            <details id="connection-details">
+              <summary>View setup instruction</summary>
+              <code id="terminal-instruction" class="instruction-line"></code>
+            </details>
           </div>
         </section>
         <section class="panel join-panel" aria-labelledby="steer-title">
-          <header class="panel-header"><h2 id="steer-title">3 · Sharpen and steer from that folder</h2></header>
+          <header class="panel-header"><h2 id="steer-title">2 · Start your research</h2></header>
           <div class="join-body">
-            <p class="hint">
-              The harness sharpens your claim until it can fail, builds the lab, and starts it.
-              Your lab appears on the network within a minute. Open your lab to steer, pause or
-              resume it in the browser, or use these commands from its folder:
-            </p>
-            <pre class="instruction-line">efferents steer --submission . "Prioritise the small buckets."
+            <p class="hint">Your coding agent will help shape your hypothesis and set up the lab on your machine. Once connected, open your lab on the network to follow its progress, steer or pause it.</p>
+            <details>
+              <summary>Terminal controls</summary>
+              <pre class="instruction-line">efferents steer --submission . "Prioritise the small buckets."
 efferents steer --submission . --pause     # or --resume
 efferents stop  --submission .</pre>
-            <p class="hint">
-              Use your owner link while your token is valid. Save a recovery key above for later access to the same labs and budget.
-            </p>
-            <code id="owner-link" class="instruction-line"></code>
-            <button id="copy-owner-link" class="compact-button" type="button">Copy owner link</button>
+            </details>
           </div>
         </section>
       </div>
@@ -225,11 +213,7 @@ efferents stop  --submission .</pre>
             <p class="hint">Open your preferred coding harness in an empty folder and paste:</p>
             <code id="harness-instruction" class="instruction-line"></code>
             <button id="copy-harness-instruction" class="primary-button" type="button">Copy harness instruction</button>
-            <details class="token-details">
-              <summary>Network token</summary>
-              <code id="harness-network-token"></code>
-              <button id="copy-harness-token" class="compact-button" type="button">Copy token</button>
-            </details>
+            <p class="hint">The instruction includes your private lab connection details. Paste it only into your own coding agent.</p>
             <p class="hint">Your harness builds the evaluator and downloads any required data locally. Model calls go through the event server.</p>
           </section>
           <section class="panel" id="binding-panel" aria-labelledby="binding-title" hidden>

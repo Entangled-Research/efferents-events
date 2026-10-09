@@ -51,10 +51,14 @@ infrastructure. Stopping the web hub alone does not stop local CPU experiments.
 
 ### Returning participants
 
-The Connect a lab page has a returning-user sign-in form. A valid network token
-or owner link restores the current identity in a new browser. New signups receive
-a recovery key, shown once; existing participants can create one while signed in.
-Save it in a password manager. Only its SHA-256 hash is stored on the hub.
+The Connect a lab page shows the event-code/name form first. Returning users
+expand **Already joined? Sign in** and enter their saved **sign-in key** (the
+existing recovery key). Valid network tokens and old owner links remain accepted
+for compatibility. New signups save one sign-in key; replacement and sign-out
+controls are under **Account options**. Only its SHA-256 hash is stored on the hub.
+
+The single **Copy setup instruction** action includes the network token for the
+participant's own coding agent; it never includes their recovery key.
 
 A recovery key works after the 48-hour token window and renews the same token for
 48 hours. It preserves the owner ID, original join date, labs and budget ledgers,

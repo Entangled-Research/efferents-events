@@ -237,15 +237,16 @@ function renderRoute() {
       document.getElementById("connect-steps").hidden = true;
       showRecoveryKey("");
       document.getElementById("recovery-panel").hidden = true;
-      text("join-title", "Sign in or join the lab network");
-      text("join-lede", "Keep your identity across browsers. Sign in below if you have joined before.");
+      text("join-kicker", "Join");
+      text("join-title", controlState.session?.name || "Join the lab network");
+      text("join-lede", "Enter the event code and your name to get started.");
     } else if (route === "join") {
       renderTerminalPanel(controlState.session);
       document.getElementById("login-panel").hidden = true;
       document.getElementById("join-panel").hidden = true;
       text("join-kicker", "Connect a lab");
       text("join-title", `You are in, ${(controlState.session.owner || {}).name || "friend"}`);
-      text("join-lede", "Three steps put a lab of yours on the network. Everything runs on your machine; the event pays for the model calls.");
+      text("join-lede", "Connect your coding agent to start a lab on your machine.");
     } else if (route === "connect") {
       route = "network";
     } else if (route === "observe" && controlState.hydrated && !controlState.connected && !routeLabId()) {
@@ -2416,11 +2417,13 @@ function showRecoveryKey(key) {
   text("recovery-key", key);
   document.getElementById("recovery-secret").hidden = !key;
   document.getElementById("recovery-panel").hidden = false;
+  document.getElementById("create-recovery").hidden = Boolean(key);
 }
 
 function initJoinForm() {
   if (new URLSearchParams(window.location.search).get("signin") === "expired") {
-    showMessage("login-message", "That owner link is invalid or expired. Sign in with your saved recovery key below.", "error");
+    document.getElementById("login-details").open = true;
+    showMessage("login-message", "That sign-in link has expired. Use your saved sign-in key.", "error");
   }
   document.getElementById("login-form").addEventListener("submit", async event => {
     event.preventDefault();
@@ -2438,23 +2441,28 @@ function initJoinForm() {
       renderRoute();
       showMessage("login-message", `Signed in as ${result.owner.name}.`, "success");
       await refreshPortfolio().catch(() => {});
-    } catch (error) { showMessage("login-message", error.message, "error"); }
+    } catch (error) { showMessage("login-message", error.message.replaceAll("recovery key", "sign-in key"), "error"); }
     finally { button.disabled = false; }
   });
   document.getElementById("create-recovery").addEventListener("click", async () => {
-    if (controlState.session?.has_recovery_key && !window.confirm("Replace your recovery key? The previous key will stop working. Save the new key before leaving.")) return;
+    if (controlState.session?.has_recovery_key && !window.confirm("Replace your sign-in key? Your old key will stop working. Your labs and budget will stay the same.")) return;
     try {
       const result = await postJSON("/api/account/recovery", {});
       controlState.session.has_recovery_key = true;
       showRecoveryKey(result.recovery_key);
-      text("create-recovery", "Replace recovery key");
+      text("create-recovery", "Replace sign-in key");
     } catch (error) { showMessage("recovery-message", error.message, "error"); }
   });
   document.getElementById("copy-recovery").addEventListener("click", async () => {
-    try { await navigator.clipboard.writeText(recoveryKey); showMessage("recovery-message", "Copied. Save it in your password manager.", "success"); }
+    try { await navigator.clipboard.writeText(recoveryKey); showMessage("recovery-message", "Sign-in key copied. Save it in your password manager.", "success"); }
     catch { showMessage("recovery-message", "Select the key and copy it manually.", "error"); }
   });
+  document.getElementById("saved-recovery").addEventListener("click", () => {
+    showRecoveryKey("");
+    showMessage("recovery-message", "All set. You can use your saved key to sign in again.", "success");
+  });
   document.getElementById("sign-out").addEventListener("click", async () => {
+    if (recoveryKey && !window.confirm("Have you saved your sign-in key? You will need it to return.")) return;
     try { await postJSON("/api/logout", {}); window.location.reload(); }
     catch (error) { showMessage("recovery-message", error.message, "error"); }
   });
@@ -2474,34 +2482,32 @@ function initJoinForm() {
       if (result.recovery_key) showRecoveryKey(result.recovery_key);
       controlState.mode = "cluster";
       controlState.hydrated = true;
-      // Stay on this page: it now shows the instruction and token they need next.
+      // Stay here to save the sign-in key and copy one complete setup instruction.
       renderSession({cluster: controlState.session});
       renderRoute();
       await refreshPortfolio().catch(() => {});
     } catch (error) {
-      showMessage("join-message", error.message, "error");
+      const alreadyJoined = error.message.includes("already has an identity");
+      showMessage("join-message", alreadyJoined ? "That name has already joined. Sign in below with your saved key." : error.message, "error");
+      if (alreadyJoined) document.getElementById("login-details").open = true;
     } finally {
       button.disabled = false;
     }
   });
-  const copyFrom = (sourceId, okMessage) => async () => {
+  document.getElementById("copy-terminal-instruction").addEventListener("click", async () => {
     try {
-      await navigator.clipboard.writeText(document.getElementById(sourceId).textContent);
-      showMessage("join-message", okMessage, "success");
-    } catch (error) {
-      showMessage("join-message", "Copy failed; select the text and copy it by hand.", "error");
-    }
-  };
-  document.getElementById("copy-terminal-instruction").addEventListener("click", copyFrom("terminal-instruction", "Instruction copied."));
-  document.getElementById("copy-network-token").addEventListener("click", copyFrom("network-token", "Token copied."));
-  document.getElementById("copy-owner-link").addEventListener("click", async () => {
-    try {
-      await navigator.clipboard.writeText(document.getElementById("owner-link").textContent);
-      showMessage("join-message", "Owner link copied.", "success");
-    } catch (error) {
-      showMessage("join-message", "Copy failed; select the link and copy it by hand.", "error");
+      await navigator.clipboard.writeText(document.getElementById("terminal-instruction").textContent);
+      showMessage("setup-message", "Copied. Paste it into your coding agent.", "success");
+    } catch {
+      document.getElementById("connection-details").open = true;
+      showMessage("setup-message", "Select the instruction below and copy it manually.", "error");
     }
   });
+}
+
+function agentSetupInstruction(session, intakeSessionId = null) {
+  const approved = intakeSessionId ? ` Use my approved browser intake session ${intakeSessionId}.` : "";
+  return `Read ${window.location.origin}/intake.md and follow it.${approved} My event network token is ${session.network_token}. Keep this token private and out of Git; use it for the event connection. Do not ask me to copy another token.`;
 }
 
 function renderTerminalPanel(session) {
@@ -2510,12 +2516,10 @@ function renderTerminalPanel(session) {
     steps.hidden = true;
     return;
   }
-  text("terminal-instruction", `Read ${window.location.origin}/intake.md and follow it`);
-  text("network-token", session.network_token);
-  text("owner-link", `${window.location.origin}${session.owner_link || `/?owner=${session.network_token}`}`);
+  text("terminal-instruction", agentSetupInstruction(session));
   steps.hidden = false;
   document.getElementById("recovery-panel").hidden = false;
-  text("create-recovery", session.has_recovery_key ? "Replace recovery key" : "Create recovery key");
+  text("create-recovery", session.has_recovery_key ? "Replace sign-in key" : "Create sign-in key");
 }
 
 // --- hosted cluster: intake dialogue ------------------------------------------
@@ -2635,8 +2639,7 @@ function renderHarnessHandoff(session) {
   text("harness-route-note", existing
     ? `The ${session.track_id} executor can be reused. Your harness will download it and run it locally.`
     : "This idea needs a new evaluator. Your harness will build the lab around the approved hypothesis instead of forcing it into an unrelated template.");
-  text("harness-instruction", `Read ${window.location.origin}/intake.md and follow it. Use my approved browser intake session ${session.session_id}. Ask me for my network token.`);
-  text("harness-network-token", controlState.session ? controlState.session.network_token : "");
+  text("harness-instruction", controlState.session ? agentSetupInstruction(controlState.session, session.session_id) : "Sign in to connect your lab.");
 }
 
 function renderBinding(binding, session) {
@@ -2739,10 +2742,7 @@ function initIntakeView() {
     await navigator.clipboard.writeText(document.getElementById("harness-instruction").textContent);
     showMessage("intake-create-message", "Harness instruction copied.", "success");
   });
-  document.getElementById("copy-harness-token").addEventListener("click", async () => {
-    await navigator.clipboard.writeText(document.getElementById("harness-network-token").textContent);
-    showMessage("intake-create-message", "Network token copied. Keep it private.", "success");
-  });
+
 }
 
 initRouting();
