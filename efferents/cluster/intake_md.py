@@ -329,13 +329,12 @@ mode and approve shell execution if prompted). Do not promise that a web page
 can start a process on an offline laptop.
 
 Report: lab id and path, the hypothesis path, the track, the local workspace
-URL, and the owner controls the human keeps:
-
-```bash
-.venv/bin/efferents steer  --submission . "Prioritise the small buckets."
-.venv/bin/efferents steer  --submission . --pause     # or --resume
-.venv/bin/efferents stop   --submission .
-```
+URL. Keep the human-facing handoff short: they can steer in this same chat
+with requests such as "Try a smaller model", "Pause my lab", "Resume my lab"
+or "Stop my lab". Execute and verify these requests using the rules above;
+do not just repeat instructions back to them. Show terminal commands only
+if they ask for them. They can also open their lab on the event page to use
+Steer, Pause or Resume. Explain that requests queue until the lab picks them up.
 
 Tell them the organizer can pause every lab from the hub if the event budget
 runs out, and that the event's network view at {hub_url} shows their lab next

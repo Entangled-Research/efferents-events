@@ -114,7 +114,6 @@
       <section class="panel join-panel" id="recovery-panel" hidden>
         <header class="panel-header"><h2>Your account</h2></header>
         <div class="join-body">
-          <p class="hint">You’re signed in on this browser. Use your sign-in key to return on another device or after signing out.</p>
           <div id="recovery-secret" hidden>
             <p><strong>Save your sign-in key.</strong> This is the only key you need to keep. It’s private, like a password.</p>
             <code id="recovery-key" class="instruction-line"></code>
@@ -125,6 +124,7 @@
           <div id="recovery-message" class="form-message" role="status"></div>
           <details id="account-options">
             <summary>Account options</summary>
+            <p class="hint">Your sign-in key lets you return on another device or after signing out.</p>
             <p class="hint">If you lost your saved sign-in key, create a replacement here before signing out.</p>
             <button id="create-recovery" class="compact-button" type="button">Create sign-in key</button>
             <button id="sign-out" class="compact-button" type="button">Sign out</button>
@@ -148,13 +148,9 @@
         <section class="panel join-panel" aria-labelledby="steer-title">
           <header class="panel-header"><h2 id="steer-title">2 · Start your research</h2></header>
           <div class="join-body">
-            <p class="hint">Your coding agent will help shape your hypothesis and set up the lab on your machine. Once connected, open your lab on the network to follow its progress, steer or pause it.</p>
-            <details>
-              <summary>Terminal controls</summary>
-              <pre class="instruction-line">efferents steer --submission . "Prioritise the small buckets."
-efferents steer --submission . --pause     # or --resume
-efferents stop  --submission .</pre>
-            </details>
+            <p class="hint">Tell your coding agent what you want to investigate. It will help set up your lab.</p>
+            <p class="hint">Keep steering in the same chat: “Try a smaller model”, “Pause my lab” or “Resume my lab”. No commands to learn.</p>
+            <p class="hint">Or open your lab here and use <strong>Steer</strong>, <strong>Pause</strong> or <strong>Resume</strong>. Requests queue until your lab picks them up.</p>
           </div>
         </section>
       </div>
