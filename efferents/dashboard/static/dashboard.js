@@ -1075,6 +1075,24 @@ function renderNetwork() {
   labs.forEach(lab => groups.set(homeJournal(lab), [...(groups.get(homeJournal(lab)) || []), lab]));
   const names = [...groups.keys()];
   const sizes = names.map(name => groups.get(name).length);
+  document.getElementById("network-mobile-index").innerHTML = names.map(name =>
+    `<section class="mobile-journal-group"><a class="mobile-journal-link" href="${esc(journalHref(name))}">` +
+    `<span>Home journal</span><strong>${esc(name)}</strong><small>${findings.filter(item => (item.journal || homeJournal(item)) === name).length} accepted papers →</small></a>` +
+    `<div class="mobile-lab-list">${groups.get(name).map(lab => {
+      const ideas = labIdeas(lab);
+      const board = lab.review_board || {};
+      const scores = board.scores || {};
+      const scoreLine = ["critical", "neutral", "optimistic"].map(persona => {
+        const value = scores[persona] ?? (persona === "optimistic" ? scores.enthusiast : null);
+        return `${persona.slice(0, 1).toUpperCase()} ${Number.isInteger(value) && value >= 1 && value <= 10 ? `${value}/10` : "—"}`;
+      }).join(" · ");
+      return `<article class="mobile-lab-card${lab.mine ? " mine" : ""}"><div class="mobile-lab-heading">` +
+        `<a href="${esc(labHref(lab.lab_id))}">${esc(labDisplayName(lab.lab_id))}</a><span>${esc(lab.status || "stopped")}</span></div>` +
+        `<div class="mobile-lab-meta"><span>${esc(lab.owner_name || "")}${lab.mine ? " · yours" : ""}</span>` +
+        `<span>Lab spend $${Number(lab.budget?.spent || 0).toFixed(2)}</span></div>` +
+        `<div class="mobile-board">Review ${esc(board.status || "awaiting paper")}${board.status === "accepted" || board.status === "rejected" ? ` · ${esc(scoreLine)}` : ""}</div>` +
+        `<div class="mobile-ideas">${ideas.map(idea => `<a href="${esc(ideaHref(lab.lab_id, idea.id))}">${esc(ideaName(idea))}<small>${esc(idea.verdict || "undecided")}</small></a>`).join("") || "No shared ideas"}</div></article>`;
+    }).join("")}</div></section>`).join("");
   const cards = new Map();
   labs.forEach(lab => {
     const card = document.createElement("article");
@@ -1083,8 +1101,7 @@ function renderNetwork() {
     card.style.width = `${MAP_CELL.card}px`;
     card.innerHTML = `<a class="lab-identity" href="${esc(labHref(lab.lab_id))}" aria-current="${lab.lab_id === networkSelection}"><strong>${esc(labDisplayName(lab.lab_id))}</strong><small>${esc(lab.status || "stopped")}</small></a>` +
       `<div class="network-lab-owner">${esc(lab.owner_name || "")}${lab.mine ? " · yours" : ""}</div>` +
-      labSpendMarkup(lab) + ideaBranchMarkup(lab) +
-      `<div class="internal-research"><span>Hypothesis → Experiment → Evidence → Paper</span></div>`;
+      labSpendMarkup(lab) + ideaBranchMarkup(lab);
     nodes.appendChild(card);
     cards.set(lab.lab_id, card);
   });
@@ -1259,16 +1276,15 @@ function layoutMapGroups(sizes, cols, groupCols) {
   return {origins, width, height: Math.max(460, top)};
 }
 
-// Pick the column counts whose world shape fits the viewport at the largest scale.
+// Keep labs in readable pairs; fit journal groups at the largest available scale.
 function chooseMapLayout(sizes) {
   const map = document.getElementById("lab-map");
-  let best = {cols: 1, groupCols: 1, scale: 0};
-  for (let cols = Math.min(2, Math.max(1, ...sizes)); cols <= Math.max(1, ...sizes); cols++) {
-    for (let groupCols = 1; groupCols <= Math.max(1, sizes.length); groupCols++) {
-      const world = layoutMapGroups(sizes, cols, groupCols);
-      const scale = Math.min(map.clientWidth / world.width, map.clientHeight / world.height);
-      if (scale > best.scale) best = {cols, groupCols, scale};
-    }
+  const cols = Math.min(2, Math.max(1, ...sizes));
+  let best = {cols, groupCols: 1, scale: 0};
+  for (let groupCols = 1; groupCols <= Math.max(1, sizes.length); groupCols++) {
+    const world = layoutMapGroups(sizes, cols, groupCols);
+    const scale = Math.min(map.clientWidth / world.width, map.clientHeight / world.height);
+    if (scale > best.scale) best = {cols, groupCols, scale};
   }
   return best;
 }
@@ -1281,7 +1297,7 @@ function sizeMapViewport(contentKey) {
   // Fill the window below the map's top; when stacked panels push the map
   // under the fold (narrow screens), give it most of one screen instead.
   const room = Math.floor(window.innerHeight - top - below - MAP_ZOOM.margin);
-  map.style.height = `${room >= 320 ? room : Math.floor(window.innerHeight * 0.7)}px`;
+  map.style.height = `${map.clientWidth >= 800 ? Math.max(740, room) : Math.max(570, room)}px`;
   const viewKey = `${map.clientWidth}x${map.clientHeight}`;
   const change = {content: contentKey !== mapView.contentKey, view: viewKey !== mapView.viewKey};
   Object.assign(mapView, {contentKey, viewKey});
