@@ -32,7 +32,7 @@ def test_harness_first():
     assert "New lab</a>" not in HTML
     assert "Connect your coding agent" in HTML
     assert 'return isCluster() ? "join" : "connect";' in JS
-    assert 'href="#join">connect one from your harness' in JS
+    assert 'href="#join">connect your coding agent</a>' in JS
 
 
 def test_css_cluster_marks():
