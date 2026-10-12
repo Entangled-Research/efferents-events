@@ -71,6 +71,6 @@ def test_journal_panel_minimal():
 def test_ideas_branch_inside_a_lab_without_clipping():
     assert 'class="lab-idea-branches"' in JS
     assert 'href="${esc(ideaHref(lab.lab_id, idea.id))}"' in JS
-    assert "card.offsetHeight + 168" in JS
+    assert "organicGroupLayout(members, sizes, compact)" in JS
     assert '.network-lab-boundary { height: auto; }' in CSS
     assert '.lab-idea-branch::before' in CSS

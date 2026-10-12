@@ -11,7 +11,7 @@ THEMES = [
     {"id": "sample-efficient-diffusion", "title": "Sample-Efficient Diffusion", "journal": "Generative Modelling",
      "claim": "Maybe we can get diffusion models to learn from much less data.", "metric": "heldout_fid", "best": 18.7, "direction": "min",
      "ideas": ["Data efficiency", "Matched-compute control"],
-     "siblings": ["Diffusion curriculum", "Augmentation policy", "Latent transfer", "Distillation", "Noise schedules", "Data selection", "Small-model diffusion"]},
+     "siblings": ["Diffusion curriculum", "Augmentation policy", "Latent transfer", "Distillation", "Noise schedules", "Data selection", "Small-model diffusion", "Patch sampling", "Few-shot priors", "Consistency training", "Adaptive batches"]},
     {"id": "uncertainty-hallucination", "title": "Uncertainty and Hallucination", "journal": "Reliability & Evaluation",
      "claim": "Maybe transformers hallucinate more when they're less certain, and we can use this to flag potential hallucination.",
      "metric": "detector_auroc", "best": .78, "direction": "max", "ideas": ["Uncertainty correlation", "Hallucination detection"],
@@ -25,23 +25,25 @@ THEMES = [
 
 def build_snapshot(count):
     labs, findings, receipts = [], [], []
-    per_theme = count // 3
+    populations = [1, 1, 1] if count == 3 else [count // 2, count // 3, count - count // 2 - count // 3]
     for topic_index, topic in enumerate(THEMES):
         topic_labs = []
+        per_theme = populations[topic_index]
         for sibling in range(per_theme):
             lid = topic["id"] if sibling == 0 else f'{topic["id"]}-{sibling + 1}'
             title = topic["title"] if sibling == 0 else topic["siblings"][sibling - 1]
             starter = count == 3
             review = "awaiting paper" if starter else ["accepted", "pending", "rejected", "pending"][sibling % 4]
             measured = not starter and sibling % 4 != 3
-            names = topic["ideas"] if sibling == 0 else [title, "Baseline control"]
-            if sibling and sibling % 4 == 3:
-                names += ["Held-out validation"]
-            ideas = [{"id": "primary" if index == 0 else "control" if index == 1 else "validation", "name": name,
+            patterns = ([3, 5, 2, 4, 1, 5], [2, 1, 3, 2], [1, 2, 1, 2])
+            idea_count = patterns[topic_index][sibling % len(patterns[topic_index])]
+            names = list(topic["ideas"]) if sibling == 0 else [title, "Baseline control"]
+            names = (names + ["Seed stability", "Ablation study", "Held-out validation"])[:idea_count]
+            ideas = [{"id": "primary" if index == 0 else f"idea-{index + 1}", "name": name,
                       "focus": topic["claim"], "verdict": "undecided",
                       "eval_suite": {"rationale": "Paired seeds, held-out data, matched compute."}} for index, name in enumerate(names)]
             best = round(topic["best"] + (1 if topic["direction"] == "min" else -1) * sibling * (.7 if topic["best"] > 1 else .015), 3)
-            lab = {"lab_id": lid, "display_name": title, "owner_name": "Ada" if sibling == 0 else f"Participant {topic_index * per_theme + sibling + 1:02d}",
+            lab = {"lab_id": lid, "display_name": title, "owner_name": "Ada" if sibling == 0 else f"Participant {len(labs) + 1:02d}",
                    "domain": "machine learning", "journal": topic["journal"],
                    "status": "stopped" if starter else ["running", "running", "paused", "stopped"][sibling % 4],
                    "remote": True, "mine": sibling == 0, "selected": False, "source": "participant laptop",
@@ -62,6 +64,15 @@ def build_snapshot(count):
                                  "published_at": NOW, "ts": NOW,
                                  "manuscript": f"# {title}\n\nSIMULATED PREVIEW RECORD.\n\n## Starting hypothesis\n{topic['claim']}\n\n## Method\nHeld-out data and matched controls.\n\n## Results\nPreview values only. No real research was run.\n\n## Limitations\nReplication remains required."})
         if not starter:
+            # Several distinct accepted papers have been read by the same neighbour.
+            # This is synthetic recorded history, not a new exchange each refresh.
+            repeats = [6, 2, 1][topic_index]
+            original = next(paper for paper in findings if paper["lab_id"] == topic_labs[0]["lab_id"])
+            for history in range(1, repeats):
+                paper = {**original, "id": f"{original['id']}-history-{history}", "campaign_id": f"simulated-history-{history}",
+                         "title": f"{topic_labs[0]['display_name']}: simulated study {history + 1}"}
+                findings.append(paper)
+                receipts.append({"finding_id": paper["id"], "source": paper["lab_id"], "target": topic_labs[1]["lab_id"], "ts": NOW})
             receipts.append({"finding_id": f"simulated-paper-{topic_labs[0]['lab_id']}", "source": topic_labs[0]["lab_id"],
                              "target": topic_labs[1]["lab_id"], "ts": NOW})
     if count > 3:

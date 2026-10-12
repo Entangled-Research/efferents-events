@@ -1070,9 +1070,97 @@ function networkFlowRecords(labs, findings, observations) {
   return {publications: valid, reading};
 }
 
+// Per-viewer spatial state only. Reading affinity never creates scientific exchange.
+const networkGravityOffsets = new Map();
+let networkGravityTimer = null;
+let networkGravityLayoutKey = "";
+let networkDrift = readStored("efferents-network-drift", true) !== false;
+function networkAffinity(labs, publications, observations) {
+  const ids = new Set(labs.map(lab => lab.lab_id));
+  const byId = new Map(publications.map(paper => [paper.id, paper]));
+  const seen = new Set(), pairs = new Map();
+  observations.forEach(receipt => {
+    const paper = byId.get(receipt.finding_id);
+    if (!paper || !ids.has(paper.lab_id) || !ids.has(receipt.target) || paper.lab_id === receipt.target) return;
+    const key = `${paper.id}:${receipt.target}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    const [a, b] = [paper.lab_id, receipt.target].sort();
+    const pairKey = `${a}:${b}`;
+    const pair = pairs.get(pairKey) || {a, b, weight: 0};
+    pair.weight += 1; pairs.set(pairKey, pair);
+  });
+  return [...pairs.values()];
+}
+
+function advanceNetworkGravity(bodies, pairs, offsets, seconds) {
+  const dt = Math.max(0, Math.min(.25, seconds));
+  const forces = new Map(bodies.map(body => [body.id, {x: 0, y: 0}]));
+  const byId = new Map(bodies.map(body => [body.id, body]));
+  const position = body => ({x: body.x + (offsets[body.id]?.x || 0), y: body.y + (offsets[body.id]?.y || 0)});
+  pairs.forEach(pair => {
+    const a = byId.get(pair.a), b = byId.get(pair.b);
+    if (!a || !b) return;
+    const p = position(a), q = position(b), dx = q.x - p.x, dy = q.y - p.y;
+    const distance = Math.hypot(dx, dy) || 1;
+    const strength = 2.1 * Math.log1p(pair.weight);
+    const f = {x: dx / distance * strength, y: dy / distance * strength};
+    forces.get(a.id).x += f.x; forces.get(a.id).y += f.y;
+    forces.get(b.id).x -= f.x; forces.get(b.id).y -= f.y;
+  });
+  const next = {};
+  bodies.forEach(body => {
+    const old = offsets[body.id] || {x: 0, y: 0}, force = forces.get(body.id);
+    const mass = Math.sqrt(1 + body.ideas);
+    const vx = force.x / mass - old.x * .008, vy = force.y / mass - old.y * .008;
+    const speed = Math.hypot(vx, vy), limit = speed > 1.25 ? 1.25 / speed : 1;
+    let x = old.x + vx * limit * dt, y = old.y + vy * limit * dt;
+    y = Math.max(body.minY ?? -72, y);
+    const radius = Math.hypot(x, y);
+    if (radius > 72) { x *= 72 / radius; y *= 72 / radius; }
+    next[body.id] = {x, y};
+  });
+  // Reject a move that would squeeze a lab or its review gate into another lab.
+  // Current positions are a safe fallback, so collision prevention never jumps.
+  const collides = (a, b) => {
+    const p = {x: a.x + next[a.id].x, y: a.y + next[a.id].y};
+    const q = {x: b.x + next[b.id].x, y: b.y + next[b.id].y};
+    return Math.abs(p.x - q.x) < (a.width + b.width) / 2 + 30 &&
+      p.y - 110 < q.y + b.height + 30 && p.y + a.height + 30 > q.y - 110;
+  };
+  for (let pass = 0; pass < 2; pass++) {
+    for (let i = 0; i < bodies.length; i++) for (let j = i + 1; j < bodies.length; j++) {
+      if (collides(bodies[i], bodies[j])) {
+        next[bodies[i].id] = {...(offsets[bodies[i].id] || {x: 0, y: 0})};
+        next[bodies[j].id] = {...(offsets[bodies[j].id] || {x: 0, y: 0})};
+      }
+    }
+  }
+  return next;
+}
+
+function organicGroupLayout(members, sizes, compact) {
+  const averageIdeas = members.reduce((sum, lab) => sum + labIdeas(lab).length, 0) / members.length;
+  const cols = compact ? 1 : Math.max(1, Math.min(3, Math.round(Math.sqrt(members.length * averageIdeas / 3))));
+  const cell = compact ? 420 : Math.max(...members.map(lab => sizes.get(lab.lab_id).width)) + 112;
+  const columns = Array(cols).fill(compact ? 212 : 294);
+  const placements = members.map((lab, index) => {
+    const size = sizes.get(lab.lab_id);
+    const col = index < cols ? index : columns.indexOf(Math.min(...columns));
+    const seed = [...lab.lab_id].reduce((value, letter) => (value * 31 + letter.charCodeAt(0)) >>> 0, 7);
+    const sway = compact ? 0 : seed % 31 - 15;
+    const x = (col + .5) * cell + sway;
+    const y = columns[col] + (compact ? 0 : seed % 25);
+    columns[col] = y + size.height + 190;
+    return {lab, x, y, col, row: index >= cols ? 1 : 0, size};
+  });
+  return {width: cols * cell, height: Math.max(...columns) + 40, placements, cols};
+}
+
 let networkJournalFilter = "";
 
 function renderNetwork() {
+  if (networkGravityTimer) { clearInterval(networkGravityTimer); networkGravityTimer = null; }
   if (document.getElementById("network-view").hidden) return;
   renderJournalDirectory();
   const allLabs = portfolioLabs(), findings = publishedFindings();
@@ -1107,6 +1195,8 @@ function renderNetwork() {
     const card = document.createElement("article");
     card.className = `network-lab-boundary efferent-lab${lab.mine ? " mine" : ""}`;
     card.dataset.labId = lab.lab_id;
+    const ideaCount = labIdeas(lab).length;
+    card.dataset.growth = ideaCount >= 4 ? "wide" : ideaCount <= 2 ? "compact" : "vertical";
     const headline = lab.headline || {}, board = boardFor(lab);
     card.innerHTML = `<header class="efferent-lab-head"><span class="lab-nucleus" aria-hidden="true">ℯ</span>` +
       `<div><a class="lab-identity" href="${esc(labHref(lab.lab_id))}"><strong>${esc(labDisplayName(lab.lab_id))}</strong></a>` +
@@ -1121,15 +1211,15 @@ function renderNetwork() {
     cards.set(lab.lab_id, card);
   });
   // Geometry is measured before placement so additional ideas never overlap.
-  const rowHeight = Math.max(340, ...[...cards.values()].map(card => card.offsetHeight + 168));
   const compact = document.getElementById("lab-map").clientWidth < 720;
-  const slot = 384, gutter = 64;
-  const groupSpecs = [...groups].map(([name, members]) => ({name, members, cols: compact ? 1 : Math.min(2, members.length)}));
-  const width = compact ? 420 : Math.max(760, groupSpecs.reduce((sum, group) => sum + group.cols * slot + gutter, gutter));
+  const sizes = new Map(labs.map(lab => [lab.lab_id, {width: cards.get(lab.lab_id).offsetWidth, height: cards.get(lab.lab_id).offsetHeight}]));
+  const groupSpecs = [...groups].map(([name, members]) => ({name, members, layout: organicGroupLayout(members, sizes, compact)}));
+  const gutter = compact ? 0 : 140;
+  const width = compact ? 420 : Math.max(760, groupSpecs.reduce((sum, group) => sum + group.layout.width + gutter, gutter));
   let groupLeft = gutter, baseY = 0;
   const positions = [], journalPorts = new Map(), labPorts = new Map();
-  groupSpecs.forEach(({name, members, cols}) => {
-    const center = compact ? width / 2 : groupLeft + cols * slot / 2;
+  groupSpecs.forEach(({name, members, layout}) => {
+    const center = compact ? width / 2 : groupLeft + layout.width / 2;
     const journalY = baseY + (compact ? 22 : 58);
     const journal = document.createElement("div");
     journal.className = "shared-journal-node efferent-journal";
@@ -1140,14 +1230,13 @@ function renderNetwork() {
     journalsLayer.appendChild(journal);
     journalPorts.set(name, {x: center, y: journalY + 77, side: center + 142, top: journalY + 38});
     const laneX = compact ? 28 : groupLeft + 6;
-    members.forEach((lab, index) => {
-      const col = index % cols, row = Math.floor(index / cols);
-      const x = compact ? 225 : groupLeft + (col + .5) * slot;
-      const y = baseY + (compact ? 210 : 294) + row * rowHeight + (compact ? 0 : [0, 18][col]);
+    layout.placements.forEach(({lab, x: localX, y: localY, col, row, size}) => {
+      const x = (compact ? 0 : groupLeft) + localX;
+      const y = baseY + localY;
       const card = cards.get(lab.lab_id);
       Object.assign(card.style, {left: `${x}px`, top: `${y}px`});
       // Publish from the top border, through the lab's own review gate.
-      const labX = x - 84, labY = y, gateY = y - 86;
+      const labX = x - size.width * .25, labY = y, gateY = y - 86;
       const board = boardFor(lab), scores = board.scores || {};
       const review = document.createElement("button");
       review.type = "button"; review.className = `review-gate ${esc(board.status || "pending")}`;
@@ -1161,58 +1250,89 @@ function renderNetwork() {
       review.onclick = () => inspectLab(lab.lab_id, "review");
       nodes.appendChild(review);
       const root = journalPorts.get(name);
-      const neck = `M${labX},${labY} C${labX},${labY - 28} ${labX},${gateY + 68} ${labX},${gateY + 42}`;
-      // A shared side stem carries later rows around the lab boxes, never through them.
-      const limb = row > 0
-        ? `M${labX},${gateY} C${labX},${gateY - 72} ${laneX},${gateY - 24} ${laneX},${gateY - 104} L${laneX},${root.y + 112} C${laneX},${root.y + 28} ${center},${root.y + 84} ${center},${root.y}`
-        : `M${labX},${gateY} C${labX},${(gateY + root.y) / 2} ${center},${(gateY + root.y) / 2} ${center},${root.y}`;
-      const full = `${neck} ${limb}`;
-      positions.push({lab, name, neck, limb, full, labX, labY, gateY, laneX, cardX: x});
-      labPorts.set(lab.lab_id, {x: x - 168, y: y + 62, root: name, gateY, laneX: x - 192});
+      positions.push({lab, name, labX, labY, gateY, laneX: compact ? 28 : groupLeft + col * (layout.width / layout.cols) + 12, cardX: x, baseX: x, baseY: y, size, row, card, review, root});
+      labPorts.set(lab.lab_id, {x: x - size.width / 2, y: y + 62, root: name, gateY, laneX: x - size.width / 2 - 24});
     });
-    if (compact) baseY += 248 + Math.ceil(members.length / cols) * rowHeight;
-    else groupLeft += cols * slot + gutter;
+    if (compact) baseY += layout.height + 100;
+    else groupLeft += layout.width + gutter;
   });
-  const height = Math.max(620, ...positions.map(pos => pos.labY + cards.get(pos.lab.lab_id).offsetHeight + 28));
+  const height = Math.max(620, ...positions.map(pos => pos.labY + cards.get(pos.lab.lab_id).offsetHeight + 128));
   lines.setAttribute("viewBox", `0 0 ${width} ${height}`);
   const addPath = (d, cls, label) => {
     const edge = svgElement("path", {d, class: cls, fill: "none"});
     const title = svgElement("title", {}); title.textContent = label;
-    edge.appendChild(title); lines.appendChild(edge);
+    edge.appendChild(title); lines.appendChild(edge); return edge;
   };
   const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
   const packet = (d, kind, index = 0) => {
-    if (reducedMotion) return;
+    if (reducedMotion) return null;
     const dot = svgElement("circle", {r: kind === "publication" ? 4.5 : 3.5, class: `flow-packet ${kind}`});
-    dot.appendChild(svgElement("animateMotion", {dur: "8s", begin: `${-index * 2}s`, repeatCount: "indefinite", path: d}));
-    lines.appendChild(dot);
+    dot.appendChild(svgElement("animateMotion", {dur: "8s", begin: `${-((performance.now() / 1000 + index * 2) % 8)}s`, repeatCount: "indefinite", path: d}));
+    lines.appendChild(dot); return dot.querySelector("animateMotion");
   };
+  const affinity = networkAffinity(labs, flow.publications,
+    [...portfolioState.observations, ...(portfolioState.eventNetwork?.observations || [])]);
+  const bodies = positions.map(pos => ({id: pos.lab.lab_id, x: pos.baseX, y: pos.baseY, width: pos.size.width, height: pos.size.height, ideas: labIdeas(pos.lab).length,
+    minY: Math.min(0, pos.root.y + 18 - (pos.baseY - 86))}));
+  const gravityKey = `${networkJournalFilter}:${compact}:` + bodies.map(body => `${body.id}:${body.x}:${body.y}:${body.width}:${body.height}`).join("|");
+  if (gravityKey !== networkGravityLayoutKey) { networkGravityOffsets.clear(); networkGravityLayoutKey = gravityKey; }
+  const routes = [];
+  const route = (getPath, cls, label, kind, index) => {
+    const d = getPath(), edge = addPath(d, cls, label), motion = kind ? packet(d, kind, index) : null;
+    routes.push({getPath, edge, motion});
+  };
+  const limbFor = pos => pos.row > 0
+    ? `M${pos.labX},${pos.gateY} C${pos.labX},${pos.gateY - 72} ${pos.laneX},${pos.gateY - 24} ${pos.laneX},${pos.gateY - 104} L${pos.laneX},${pos.root.y + 112} C${pos.laneX},${pos.root.y + 28} ${pos.root.x},${pos.root.y + 84} ${pos.root.x},${pos.root.y}`
+    : `M${pos.labX},${pos.gateY} C${pos.labX},${(pos.gateY + pos.root.y) / 2} ${pos.root.x},${(pos.gateY + pos.root.y) / 2} ${pos.root.x},${pos.root.y}`;
+  const neckFor = pos => `M${pos.labX},${pos.labY} C${pos.labX},${pos.labY - 28} ${pos.labX},${pos.gateY + 68} ${pos.labX},${pos.gateY + 42}`;
   positions.forEach((pos, index) => {
-    const {lab, name, neck, limb, full, labX, labY, gateY, cardX} = pos;
-    addPath(neck, "nerve-root", `${labDisplayName(lab.lab_id)} → its review board`);
-    addPath(limb, "nerve-branch", `${labDisplayName(lab.lab_id)} → ${name}: home journal`);
-    const accepted = flow.publications.some(paper => paper.lab_id === lab.lab_id && homeJournal(paper) === name);
-    if (accepted) {
-      addPath(full, "flow-path publication", `${labDisplayName(lab.lab_id)} → ${name}: accepted paper`);
-      packet(full, "publication", index);
+    const {lab, name} = pos;
+    route(() => neckFor(pos), "nerve-root", `${labDisplayName(lab.lab_id)} → its review board`);
+    route(() => limbFor(pos), "nerve-branch", `${labDisplayName(lab.lab_id)} → ${name}: home journal`);
+    if (flow.publications.some(paper => paper.lab_id === lab.lab_id && homeJournal(paper) === name)) {
+      route(() => `${neckFor(pos)} ${limbFor(pos)}`, "flow-path publication", `${labDisplayName(lab.lab_id)} → ${name}: accepted paper`, "publication", index);
     }
     if (boardFor(lab).status === "rejected") {
-      const returning = `M${labX + 92},${gateY + 22} C${labX + 160},${gateY + 22} ${cardX + 126},${labY - 42} ${cardX + 126},${labY}`;
-      addPath(returning, "flow-path revision", `${labDisplayName(lab.lab_id)}: rejected paper returns for revision`);
-      packet(returning, "revision", index);
+      route(() => `M${pos.labX + 92},${pos.gateY + 22} C${pos.labX + 160},${pos.gateY + 22} ${pos.cardX + pos.size.width * .38},${pos.labY - 42} ${pos.cardX + pos.size.width * .38},${pos.labY}`,
+        "flow-path revision", `${labDisplayName(lab.lab_id)}: rejected paper returns for revision`, "revision", index);
     }
   });
   flow.reading.forEach((receipt, index) => {
     const journal = journalPorts.get(receipt.journal), port = labPorts.get(receipt.target);
     if (!journal || !port) return;
-    // Reading bypasses review. Occasional cross-journal paths run in the clear canopy.
-    const lane = port.laneX - (receipt.occasional ? 16 : 8);
-    const d = receipt.occasional
-      ? `M${journal.side},${journal.top} C${journal.side + 92},${journal.top - 66} ${lane},${journal.top - 66} ${lane},${journal.top + 56} L${lane},${port.y - 44} Q${lane},${port.y} ${port.x},${port.y}`
-      : `M${journal.x - 118},${journal.top + 38} C${lane},${journal.top + 46} ${lane},${journal.top + 84} ${lane},${journal.top + 116} L${lane},${port.y - 44} Q${lane},${port.y} ${port.x},${port.y}`;
-    addPath(d, `flow-path reading${receipt.occasional ? " occasional" : ""}`, `${receipt.journal} → ${labDisplayName(receipt.target)}: ${receipt.occasional ? "occasional cross-journal" : "home-journal"} reading receipt; not proof of replication`);
-    packet(d, "reading", index + 1);
+    route(() => {
+      const lane = port.laneX - (receipt.occasional ? 16 : 8);
+      return receipt.occasional
+        ? `M${journal.side},${journal.top} C${journal.side + 92},${journal.top - 66} ${lane},${journal.top - 66} ${lane},${journal.top + 56} L${lane},${port.y - 44} Q${lane},${port.y} ${port.x},${port.y}`
+        : `M${journal.x - 118},${journal.top + 38} C${lane},${journal.top + 46} ${lane},${journal.top + 84} ${lane},${journal.top + 116} L${lane},${port.y - 44} Q${lane},${port.y} ${port.x},${port.y}`;
+    }, `flow-path reading${receipt.occasional ? " occasional" : ""}`,
+    `${receipt.journal} → ${labDisplayName(receipt.target)}: recorded reading; not proof of replication`, "reading", index + 1);
   });
+  const place = () => {
+    positions.forEach(pos => {
+      const offset = networkGravityOffsets.get(pos.lab.lab_id) || {x: 0, y: 0};
+      pos.cardX = pos.baseX + offset.x; pos.labY = pos.baseY + offset.y;
+      pos.labX = pos.cardX - pos.size.width * .25; pos.gateY = pos.labY - 86;
+      Object.assign(pos.card.style, {left: `${pos.cardX}px`, top: `${pos.labY}px`});
+      Object.assign(pos.review.style, {left: `${pos.labX}px`, top: `${pos.gateY}px`});
+      Object.assign(labPorts.get(pos.lab.lab_id), {x: pos.cardX - pos.size.width / 2, y: pos.labY + 62, gateY: pos.gateY, laneX: pos.cardX - pos.size.width / 2 - 24});
+    });
+    routes.forEach(item => { const d = item.getPath(); item.edge.setAttribute("d", d); if (item.motion) item.motion.setAttribute("path", d); });
+  };
+  place();
+  const driftButton = document.querySelector('[data-map-zoom="drift"]');
+  driftButton.setAttribute("aria-pressed", String(networkDrift));
+  if (!reducedMotion) {
+    networkGravityTimer = setInterval(() => {
+      const map = document.getElementById("lab-map");
+      if (document.hidden || document.getElementById("network-view").hidden || !networkDrift || map.classList.contains("panning") ||
+          document.querySelector(".network-inspector[open]") || map.querySelector("button:hover, a:hover")) return;
+      const offsets = Object.fromEntries(bodies.map(body => [body.id, networkGravityOffsets.get(body.id) || {x: 0, y: 0}]));
+      const next = advanceNetworkGravity(bodies, affinity, offsets, .1);
+      Object.entries(next).forEach(([id, value]) => networkGravityOffsets.set(id, value));
+      place();
+    }, 100);
+  }
   const contentKey = [...labs.map(lab => `${lab.lab_id}:${cards.get(lab.lab_id).offsetHeight}`).sort(), ...groups.keys(), compact].join("|");
   const change = sizeMapViewport(contentKey);
   setMapWorld(width, height, change.view || (change.content && !mapView.moved));
@@ -1222,10 +1342,8 @@ function renderNetwork() {
 // ---------------------------------------------------------- map pan / zoom
 // #lab-map is a fixed viewport; #network-world holds every layer at its
 // natural layout size and only its transform changes.
-const mapView = {x: 0, y: 0, k: 1, width: 1000, height: 460, contentKey: "", viewKey: "", moved: false, layout: {cols: 2, groupCols: 1}};
+const mapView = {x: 0, y: 0, k: 1, width: 1000, height: 460, contentKey: "", viewKey: "", moved: false};
 const MAP_ZOOM = {min: 0.15, max: 2.5, fitMin: 0.85, fitMax: 1, margin: 16, step: 1.3, pan: 60};
-// World geometry in px: a lab slot is a card plus its two routing gutters.
-const MAP_CELL = {slot: 460, card: 360, pad: 40, row: 410, journal: 150};
 const clamp = (value, low, high) => Math.min(high, Math.max(low, value));
 
 function applyMapView(animated = false) {
@@ -1272,38 +1390,6 @@ function panMap(dx, dy) {
   mapView.y += dy;
   mapView.moved = true;
   applyMapView();
-}
-
-// Journal groups flow in rows of groupCols; each group holds its labs in up to
-// cols columns and is only as wide as the labs it has.
-function layoutMapGroups(sizes, cols, groupCols) {
-  const origins = [];
-  let top = 0, width = MAP_CELL.slot + 2 * MAP_CELL.pad;
-  for (let i = 0; i < sizes.length; i += groupCols) {
-    const row = sizes.slice(i, i + groupCols);
-    let left = 0;
-    row.forEach(size => {
-      const groupWidth = Math.min(cols, size) * MAP_CELL.slot + 2 * MAP_CELL.pad;
-      origins.push({x: left, y: top, width: groupWidth});
-      left += groupWidth;
-    });
-    width = Math.max(width, left);
-    top += Math.max(...row.map(size => Math.ceil(size / cols) * MAP_CELL.row + MAP_CELL.journal));
-  }
-  return {origins, width, height: Math.max(460, top)};
-}
-
-// Keep labs in readable pairs; fit journal groups at the largest available scale.
-function chooseMapLayout(sizes) {
-  const map = document.getElementById("lab-map");
-  const cols = Math.min(2, Math.max(1, ...sizes));
-  let best = {cols, groupCols: 1, scale: 0};
-  for (let groupCols = 1; groupCols <= Math.max(1, sizes.length); groupCols++) {
-    const world = layoutMapGroups(sizes, cols, groupCols);
-    const scale = Math.min(map.clientWidth / world.width, map.clientHeight / world.height);
-    if (scale > best.scale) best = {cols, groupCols, scale};
-  }
-  return best;
 }
 
 // Size the viewport to the window and report what changed since the last render.
@@ -1382,7 +1468,8 @@ function initMapPanZoom() {
   });
   map.querySelector(".map-controls").addEventListener("click", (event) => {
     const action = event.target.closest("[data-map-zoom]")?.dataset.mapZoom;
-    if (action === "fit") fitMap(true);
+    if (action === "drift") { networkDrift = !networkDrift; writeStored("efferents-network-drift", networkDrift); renderNetwork(); }
+    else if (action === "fit") fitMap(true);
     else if (action === "read") fitMap(false);
     else if (action) zoomMapCentered(action === "in" ? MAP_ZOOM.step : 1 / MAP_ZOOM.step);
   });
