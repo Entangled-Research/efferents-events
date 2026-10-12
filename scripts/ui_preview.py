@@ -25,7 +25,7 @@ def idea(lab_id, index=0):
             "verdict": "undecided", "eval_suite": {"rationale": "Matched compute, fixed holdout and three seeds."}}
 
 LABS = [{"lab_id": lid, "display_name": name, "owner_name": owner,
-         "domain": "machine learning", "journal": JOURNAL, "status": status,
+         "domain": "machine learning", "journal": "Measurement & Methods" if lid == "evaluation" else JOURNAL, "status": status,
          "remote": True, "mine": owner == "Ada", "selected": False,
          "source": "participant laptop", "last_activity": NOW, "heartbeat_ts": NOW,
          "received_at": NOW, "budget": {"spent": spend},
@@ -44,7 +44,8 @@ FINDINGS = [{"id": "simulated-paper-01", "kind": "publication", "publication_sta
              "review_scores": {"critical": 6, "neutral": 7, "optimistic": 8}, "ts": NOW,
              "manuscript": "# Adaptive sampling under matched compute\n\nSIMULATED PREVIEW RECORD.\n\n## Method\nThree paired seeds; fixed holdout and equal compute.\n\n## Results\nPreview values only; no real scientific conclusion.\n\n## Limitations\nSmall synthetic rehearsal. Replication remains required."}]
 PORTFOLIO = {"labs": LABS, "findings": FINDINGS, "observations": [
-    {"finding_id": "simulated-paper-01", "source": "sample-efficiency", "target": "representation", "ts": NOW}],
+    {"finding_id": "simulated-paper-01", "source": "sample-efficiency", "target": "representation", "ts": NOW},
+    {"finding_id": "simulated-paper-01", "source": "sample-efficiency", "target": "evaluation", "ts": NOW}],
     "edges": [], "journals": [], "journal_uses": [], "event_network": None}
 
 def control(lab=None):

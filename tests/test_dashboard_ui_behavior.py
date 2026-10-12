@@ -75,6 +75,41 @@ console.log(JSON.stringify(ideaBranchMarkup(lab)));
     assert 'lab-idea-branch falsified' in result
 
 
+def test_network_flow_uses_complete_accepted_papers_and_recorded_receipts():
+    result = run_js("""
+const labs = [{lab_id:'source',journal:'Models'}, {lab_id:'home',journal:'Models'},
+ {lab_id:'visitor',journal:'Methods'}];
+const paper = {id:'valid',kind:'publication',publication_status:'accepted',lab_id:'source',
+ journal:'Models',review_scores:{critical:6,neutral:7,optimistic:8}};
+const findings = [paper,
+ {...paper,id:'rejected',publication_status:'rejected'},
+ {...paper,id:'unfinished',review_scores:{critical:6,neutral:7}},
+ {...paper,id:'idea',kind:'hypothesis'},
+ {...paper,id:'bad-score',review_scores:{critical:6,neutral:7,optimistic:11}}];
+const receipts = [{finding_id:'valid',target:'home'}, {finding_id:'valid',target:'home'},
+ {finding_id:'valid',target:'visitor'}, {finding_id:'rejected',target:'visitor'},
+ {finding_id:'unfinished',target:'visitor'}, {finding_id:'missing',target:'visitor'},
+ {finding_id:'valid',target:'unknown-lab'}];
+console.log(JSON.stringify(networkFlowRecords(labs,findings,receipts)));
+""")
+    assert [paper["id"] for paper in result["publications"]] == ["valid"]
+    assert result["reading"] == [
+        {"journal": "Models", "target": "home", "occasional": False},
+        {"journal": "Models", "target": "visitor", "occasional": True},
+    ]
+
+
+def test_network_flow_never_invents_reading_from_membership_or_publication():
+    result = run_js("""
+const paper = {id:'legacy',kind:'publication',publication_status:'accepted',lab_id:'source',
+ journal:'Models',review_scores:{critical:6,neutral:7,enthusiast:8}};
+console.log(JSON.stringify(networkFlowRecords([{lab_id:'source',journal:'Models'},
+ {lab_id:'peer',journal:'Models'}],[paper],[])));
+""")
+    assert len(result["publications"]) == 1
+    assert result["reading"] == []
+
+
 def test_budget_holds_are_separate_from_spend_and_clear_on_account_change():
     result = run_js("""
 controlState.mode = 'cluster';
