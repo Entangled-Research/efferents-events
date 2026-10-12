@@ -60,9 +60,10 @@ def control(lab=None):
 
 def suite(lab, iid):
     private = not lab["mine"]
-    values = [18.7, 19.3, 20.1, 21.0, 22.4, 24.2]
+    best = lab["headline"]["best"] or 18.7
+    values = [round(best + delta, 1) for delta in [0, .6, 1.4, 2.3, 3.7, 5.5]]
     rows = [{"run_id": f"run-{6-i:03d}", "value": v, "eligible": True,
-             "status": "succeeded", "ts": NOW, "cost_usd": .19, "metrics": {"heldout_error": v}}
+             "status": "succeeded", "ts": NOW, "started_at": NOW, "cost_usd": .19, "metrics": {"heldout_error": v}}
             for i, v in enumerate(values)]
     return {"detail_unavailable": private, "hypothesis": {
         "question": idea(lab["lab_id"], iid == "control")["name"],
@@ -72,7 +73,7 @@ def suite(lab, iid):
                   "rationale": "Fixed holdout, equal compute, three paired seeds.", "samples": [],
                   "graphs": [{"title": "Held-out error", "series": [{"column": "heldout_error", "points":
                     [{"run_id": r["run_id"], "value": r["value"]} for r in reversed(rows)]}]}] if not private else []},
-        "runs": {"runs": rows, "history": {"total": 6, "best": 18.7},
+        "runs": {"runs": rows, "series": list(reversed(rows)), "history": {"total": 6, "best": best},
                  "headline": {"column": "heldout_error", "direction": "min"}},
         "evidence": {"records": [], "panels": []},
         "verdict": {"verdict": "undecided", "line": "Undecided · preview evidence only", "n_runs": 6,
