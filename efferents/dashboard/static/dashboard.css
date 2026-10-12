@@ -2992,3 +2992,24 @@ pre.instruction-line {
 }
 
 .efferent-lab-head > div { background: var(--panel); }
+
+/* Solid lab boundaries, broad curves and bounded columns at event scale. */
+.efferent-lab, .efferent-lab.mine { width: 336px; padding: 12px 16px 14px; border: 2px solid var(--signal-strong); border-top: 7px solid var(--signal-strong); background: var(--panel); box-shadow: 4px 4px 0 #c7bda9; }
+.efferent-lab.mine { border-left: 4px solid var(--teal); }
+.efferent-lab-head { padding: 4px 0 12px; border-bottom: 1px solid var(--line); }
+.efferent-lab .lab-identity strong { font-size: 20px; }
+.efferent-lab .network-lab-spend { margin: 8px 0 10px; padding: 7px 9px; border: 1px solid var(--line); background: #eee9dd; }
+.lab-readout { padding: 10px 0 0; }
+.efferent-lab .lab-idea-branches { margin-top: 12px; }
+.efferent-lab .lab-idea-branch::before { width: 27px; height: 27px; top: -9px; border-bottom-left-radius: 27px; }
+.review-gate { transform: translateX(-50%); }
+.nerve-root { stroke-width: 5; }
+#network-journal-filter { margin-left: auto; width: auto; max-width: 250px; padding: 6px 25px 6px 8px; border: 1px solid #aeb7c0; background: var(--signal-strong); color: var(--on-signal); font: 11px var(--mono); }
+@media(max-width:720px) { .network-map-panel > .panel-header { flex-wrap: wrap; gap: 10px; } #network-journal-filter { max-width: 200px; } .efferent-lab, .efferent-lab.mine { width: 336px; } }
+
+@media(max-width:720px) {
+  .network-map-panel > .panel-header { display: grid; grid-template-columns: 1fr auto; padding: 14px 16px; }
+  #network-map-title { grid-column: 1; grid-row: 1; overflow: visible; text-overflow: clip; white-space: normal; }
+  #network-node-count { grid-column: 2; grid-row: 1; font-size: 9px; }
+  #network-journal-filter { grid-column: 1 / -1; grid-row: 2; width: 100%; max-width: none; margin: 0; }
+}
