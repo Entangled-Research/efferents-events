@@ -30,7 +30,9 @@ def test_harness_first():
     assert 'href="#join" data-route-link="join" data-cluster-only' in HTML
     assert 'href="#intake"' not in HTML
     assert "New lab</a>" not in HTML
-    assert "Connect your coding agent" in HTML
+    assert "Start your lab" in HTML
+    assert 'id="copy-funded-setup"' in HTML
+    assert 'id="copy-terminal-instruction"' not in HTML
     assert 'return isCluster() ? "join" : "connect";' in JS
     assert 'href="#join">connect your coding agent</a>' in JS
 
