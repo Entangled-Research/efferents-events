@@ -2650,6 +2650,15 @@ function initJoinForm() {
       button.disabled = false;
     }
   });
+  document.getElementById("copy-funded-setup").addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(document.getElementById("funded-setup-command").textContent);
+      showMessage("setup-message", "Copied. Paste into your terminal to open event-funded OpenCode.", "success");
+    } catch {
+      document.getElementById("funded-setup-details").open = true;
+      showMessage("setup-message", "Copy the terminal command below manually.", "error");
+    }
+  });
   document.getElementById("copy-terminal-instruction").addEventListener("click", async () => {
     try {
       await navigator.clipboard.writeText(document.getElementById("terminal-instruction").textContent);
@@ -2666,6 +2675,13 @@ function agentSetupInstruction(session, intakeSessionId = null) {
   return `Read ${window.location.origin}/intake.md and follow it.${approved} My event network token is ${session.network_token}. Keep this token private and out of Git; use it for the event connection. Do not ask me to copy another token.`;
 }
 
+function fundedSetupCommand(session) {
+  const quote = value => "'" + String(value).replaceAll("'", "'\\''") + "'";
+  const origin = window.location.origin;
+  const loader = `import urllib.request; exec(compile(urllib.request.urlopen(${JSON.stringify(origin + "/bootstrap-opencode.py")}, timeout=30).read(), "<event setup>", "exec"))`;
+  return `EFFERENTS_EVENT_TOKEN=${quote(session.network_token)} python3 -c ${quote(loader)} --hub ${quote(origin)} --launch`;
+}
+
 function renderTerminalPanel(session) {
   const steps = document.getElementById("connect-steps");
   if (!session || !session.network_token) {
@@ -2673,6 +2689,7 @@ function renderTerminalPanel(session) {
     return;
   }
   text("terminal-instruction", agentSetupInstruction(session));
+  text("funded-setup-command", fundedSetupCommand(session));
   steps.hidden = false;
   document.getElementById("recovery-panel").hidden = false;
   text("create-recovery", session.has_recovery_key ? "Replace sign-in key" : "Create sign-in key");

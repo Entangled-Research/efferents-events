@@ -283,3 +283,13 @@ def test_starter_plan_browser_save_uses_cookie_csrf_and_owner_boundary(cluster_s
     assert status==200 and plan['text']=='Owner plan'
     _,other=_join(port,'Other')
     assert _request(port,route,method='POST',payload={'text':'Wrong owner','revision':plan['revision']},headers=other)[0]==403
+
+
+def test_funded_bootstrap_is_public_standalone_python(cluster_server):
+    port, _, _, _ = cluster_server
+    status, body, headers = _request(port, "/bootstrap-opencode.py")
+    assert status == 200
+    source = body["raw"]
+    compile(source, "bootstrap-opencode.py", "exec")
+    assert "def bootstrap(" in source and "def launch(" in source
+    assert "from efferents" not in source

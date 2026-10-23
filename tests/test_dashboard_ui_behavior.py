@@ -244,3 +244,17 @@ console.log(JSON.stringify({first, approved, visible,
     assert 'approved-idea' in result['approved']
     assert result['visible'] and result['hidden']
     assert result['cleared'] == ''
+
+
+def test_funded_command_bootstraps_in_terminal_before_any_agent_message():
+    import shlex
+    command = run_js("""
+window.location.origin = 'https://event.test';
+console.log(JSON.stringify(fundedSetupCommand({network_token:"token'with$literal"})));
+""")
+    parts = shlex.split(command)
+    assert parts[0] == "EFFERENTS_EVENT_TOKEN=token'with$literal"
+    assert parts[1:3] == ["python3", "-c"]
+    assert parts[-3:] == ["--hub", "https://event.test", "--launch"]
+    assert "https://event.test/bootstrap-opencode.py" in parts[3]
+    assert "token'with$literal" not in parts[3]

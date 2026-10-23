@@ -14,7 +14,8 @@ Ask a focused question only when a missing objective, instruction or resource bl
 The outcome is a lab on THIS laptop, joined to the event's shared network.
 
 The human has already joined the event in their browser and has a **network
-token**. Ask for it now if they have not pasted it; every step below needs it.
+token**. Read it from the private file named in the setup prompt if provided;
+ask for it only when neither a token nor its file was supplied. Every step below needs it.
 Never print the token back in full. Everything the lab spends on language
 models is paid by the organizer through the event hub; the token is the
 lab's credential for that.
@@ -364,7 +365,7 @@ def render_intake_md(cfg: ClusterConfig, hub_url: str) -> str:
 
 
 def render_starters_md(cfg, tracks, hub_url):
-    lines = [f"# {cfg.name}: start here", "", "Choose one lab and begin with its first idea. Your coding agent handles setup and experiment refinement. Tell it your objective; it asks only when instructions or essential resources are missing.", "", f"1. Open {hub_url}/#join and join the event.", "2. Save your private sign-in key.", "3. In an empty local folder, paste the website’s combined setup instruction into your coding agent.", "4. Name a starter below. Its first comparison is already scoped; you can redirect it in ordinary language.", "", "Experiments run on your laptop. Each participant has $100 shared across all labs; the whole event shares $3,000. No separate Popper Probe setup is needed.", ""]
+    lines = [f"# {cfg.name}: start here", "", "Choose one lab and begin with its first idea. Your coding agent handles setup and experiment refinement. Tell it your objective; it asks only when instructions or essential resources are missing.", "", f"1. Open {hub_url}/#join and join the event.", "2. Save your private sign-in key.", "3. For organizer-funded setup from the first message, copy “event-funded setup” from the website into a terminal in an empty folder. It opens OpenCode on the event provider; Python 3 and OpenCode must already be installed. Other coding-agent setup may use your personal allowance.", "4. Name a starter below. Its first comparison is already scoped; you can redirect it in ordinary language.", "", "Experiments run on your laptop. Each participant has $100 shared across all labs; the whole event shares $3,000. No separate Popper Probe setup is needed.", ""]
     for track in tracks.values():
         lines += [f"## {track.title}", "", track.summary, ""]
         for index, idea in enumerate(track.lab_yaml.get("students", []), 1):

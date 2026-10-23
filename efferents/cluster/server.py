@@ -166,6 +166,11 @@ class ClusterHandler(DashboardHandler):
             body = render_starters_md(self.cluster.cfg, self.cluster.tracks, self._base_url()).encode()
             self._send_bytes(body, "text/markdown; charset=utf-8")
             return True
+        if path == "/bootstrap-opencode.py":
+            from efferents.cluster import opencode_setup
+            body = Path(opencode_setup.__file__).read_bytes()
+            self._send_bytes(body, "text/x-python; charset=utf-8")
+            return True
         if path == "/intake.md":
             body = render_intake_md(self.cluster.cfg, self._base_url()).encode()
             self._send_bytes(body, "text/markdown; charset=utf-8")
