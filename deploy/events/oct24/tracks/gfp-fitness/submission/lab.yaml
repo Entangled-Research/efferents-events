@@ -1,12 +1,7 @@
 lab_id: masha-gfp-fitness
 domain: GFP fluorescence prediction
-research_goal: Use measured green fluorescent protein variants to study mutation effects
-  and honest generalization. Two laptop-scale ideas; no wet lab or protein folding
-  model.
-approach: Predicts measured log fluorescence for variants of one GFP protein, not
-  thermodynamic stability or arbitrary proteins. The published paper already studies
-  epistasis; this is a bounded reproduction/method comparison, not a claim of discovering
-  epistasis. Dark variants have an assay floor; no causal or wet-lab conclusions.
+research_goal: Investigate GFP fluorescence prediction
+approach: Bounded CPU experiment; full scope and limitations are recorded in README.md.
 source:
   dir: ./src/
   allowed_patterns:

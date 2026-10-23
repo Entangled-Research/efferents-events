@@ -58,3 +58,17 @@ def test_quantum_reference_is_a_normalized_distribution_and_fits_have_no_oracle_
     for structured in (True,False):
         q=module.fit(samples,states,structured)
         assert np.isclose(q.sum(),1) and np.all(q>=0)
+
+
+def test_templates_materialize_as_valid_participant_labs(tmp_path):
+    import shutil
+    from efferents.lab import LabConfig
+    for track in load_tracks(ROOT).values():
+        destination=tmp_path/track.id
+        shutil.copytree(track.submission,destination)
+        shutil.copy2(destination/'starter-hypothesis.md',destination/'hypothesis.md')
+        raw=yaml.safe_load((destination/'lab.yaml').read_text())
+        raw['falsifiers']=list(track.example_falsifiers)
+        (destination/'lab.yaml').write_text(yaml.safe_dump(raw))
+        cfg=LabConfig.from_submission(destination)
+        assert len(cfg.students)==len(track.lab_yaml['students'])

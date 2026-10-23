@@ -1,10 +1,7 @@
 lab_id: masha-quantum-measurement
 domain: quantum measurement simulation
-research_goal: Reconstruct a small quantum measurement distribution and test whether
-  calibration is worth its shot cost. CPU only; no quantum hardware.
-approach: A six-qubit transverse-field Ising simulation. Computational-basis probabilities
-  do not establish entanglement or quantum advantage. The exact reference is for scoring
-  only; fits must use finite-shot samples.
+research_goal: Investigate quantum measurement simulation
+approach: Bounded CPU experiment; full scope and limitations are recorded in README.md.
 source:
   dir: ./src/
   allowed_patterns:

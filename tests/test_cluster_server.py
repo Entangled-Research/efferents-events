@@ -268,3 +268,18 @@ def test_diagnostics_are_private_and_contain_no_credentials(cluster_server, monk
                     payload={"target_id": ada["owner"]["id"], "source_ids": [bob.owner_id], "reason": "verified"},
                     headers={"Authorization": "Bearer organizer-secret"})
     assert status == 200 and result["owner"]["name"] == "Ada"
+
+
+def test_starter_plan_browser_save_uses_cookie_csrf_and_owner_boundary(cluster_server):
+    from tests.cluster_helpers import VALID_HYP
+    port, *_=cluster_server
+    masha, browser=_join(port,'Masha')
+    token=masha['cluster']['network_token']
+    assert _request(port,'/api/network/labs',method='POST',payload={
+        'lab_id':'masha-starter','hypothesis':VALID_HYP},headers={'Authorization':'Bearer '+token})[0]==200
+    route='/api/network/labs/masha-starter/starter'
+    assert _request(port,route,method='POST',payload={'text':'Owner plan','revision':None},headers={'Cookie':browser['Cookie']})[0]==403
+    status,plan,_=_request(port,route,method='POST',payload={'text':'Owner plan','revision':None},headers=browser)
+    assert status==200 and plan['text']=='Owner plan'
+    _,other=_join(port,'Other')
+    assert _request(port,route,method='POST',payload={'text':'Wrong owner','revision':plan['revision']},headers=other)[0]==403

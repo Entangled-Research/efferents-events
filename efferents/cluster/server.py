@@ -369,6 +369,14 @@ class ClusterHandler(DashboardHandler):
                          status=status, extra_headers=extra)
 
     def _extra_post(self, path: str, payload: dict) -> bool:
+        starter = _NET_LAB_ROUTE.match(path)
+        if starter and starter.group("verb") == "starter":
+            owner = self._require_joined()
+            if not self.cluster.mutation_limiter.allow(owner.owner_id):
+                raise ControlError("Too many requests; slow down.", status=429)
+            self._send_json(self.cluster.hub.save_starter_plan(
+                owner, starter.group("lab_id"), payload))
+            return True
         if path == "/api/account/recovery":
             owner = self._require_joined()
             if not self.cluster.mutation_limiter.allow(owner.owner_id):

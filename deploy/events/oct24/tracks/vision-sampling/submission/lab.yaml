@@ -1,12 +1,7 @@
 lab_id: masha-vision-sampling
 domain: synthetic image diffusion and spatial reasoning
-research_goal: "Compare diffusion step budgets and schedules, then test whether an\
-  \ explicit scene graph helps spatial answers. Tiny 16\xD716 images, CPU only."
-approach: The default diffusion experiment uses a fixed analytic posterior-mean denoiser
-  over 18 synthetic shape images, not a pretrained neural diffusion model. It isolates
-  sampler behavior. The spatial experiment compares local pixel and scene-graph algorithms,
-  not general vision-language model reasoning. Transfer to pretrained models or VLMs
-  is an optional follow-up requiring separate resources and validation.
+research_goal: Investigate synthetic image diffusion and spatial reasoning
+approach: Bounded CPU experiment; full scope and limitations are recorded in README.md.
 source:
   dir: ./src/
   allowed_patterns:
