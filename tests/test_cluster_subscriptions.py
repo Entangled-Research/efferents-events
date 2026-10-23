@@ -86,3 +86,13 @@ def test_visit_reads_at_most_three_home_and_one_cross_paper(tmp_path):
         )
         == 2
     )
+
+
+def test_event_scientific_domain_names_deliver_accepted_related_research(tmp_path):
+    domains={'bio':'GFP fluorescence prediction',
+             'vision':'synthetic image diffusion and spatial reasoning'}
+    for visit in range(1,6):
+        feed=subscriptions.visit(tmp_path,'bio',domains['bio'],[entry('vision')],domains,
+                                 now=visit*120,interval=120)
+        assert ('**Lab**: vision' in feed)==(visit==5)
+    assert _rows(tmp_path/'deliveries.jsonl')[0]['track']=='interdisciplinary'
