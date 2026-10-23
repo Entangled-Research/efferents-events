@@ -58,6 +58,8 @@ def run(config, smoke=False):
     baseline = np.array([means.get(k, y[train].mean()) for k in count[test]])
     baseline_error = float(np.sqrt(np.mean((baseline - y[test]) ** 2)))
     treatment_error = float(np.sqrt(np.mean((prediction - y[test]) ** 2)))
+    comparison_indices = test.copy()
+    comparison_prediction = baseline.copy()
     task = config.get("task", "prediction")
     if task == "prediction":
         effect = (baseline_error - treatment_error) / baseline_error - 0.10
@@ -76,6 +78,8 @@ def run(config, smoke=False):
         baseline_error = float(
             np.sqrt(np.mean((random_prediction - y[test[:ntest]]) ** 2))
         )
+        comparison_indices = test[:ntest].copy()
+        comparison_prediction = random_prediction.copy()
         prediction = fit_predict(x, y, near[:size], far[:ntest], ridge)
         test = far[:ntest]
         treatment_error = float(np.sqrt(np.mean((prediction - y[test]) ** 2)))
@@ -92,14 +96,25 @@ def run(config, smoke=False):
         title=title,
     )
     fig.tight_layout()
-    return {
+    metrics = {
         "effect": effect,
         "baseline_error": baseline_error,
         "treatment_error": treatment_error,
         "n_train": len(train) if task == "prediction" else size,
         "n_test": len(test),
         "coverage": 1,
-    }, fig
+    }
+    # Preserve the requested mutation-distance diagnostics without changing any
+    # fit, split or headline. Empty strata report n=0 and omit unmeasured RMSE.
+    for mutations in sorted(set(count.tolist())):
+        for arm, indices, values in (("baseline", comparison_indices, comparison_prediction),
+                                      ("treatment", test, prediction)):
+            mask = count[indices] == mutations
+            prefix = f"{arm}_mutations_{mutations}"
+            metrics[prefix + "_n"] = int(mask.sum())
+            if mask.any():
+                metrics[prefix + "_rmse"] = float(np.sqrt(np.mean((values[mask]-y[indices][mask])**2)))
+    return metrics, fig
 
 
 def main():
