@@ -140,6 +140,7 @@ def main():
                 "artifacts": [{"kind": "samples", "path": str(path)}],
                 "elapsed_s": time.perf_counter() - started,
                 "provenance": {
+                    "executor_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
                     "dataset_sha256": json.loads(
                         (
                             Path(__file__).resolve().parents[1] / "data/provenance.json"

@@ -5,12 +5,13 @@
   "metrics": {
     "headline": {
       "column": "effect",
-      "direction": "max"
+      "direction": "max",
+      "aggregate": "mean"
     },
     "panels": [
       {
         "column": "effect",
-        "label": "Claim margin (≥0)"
+        "label": "Claim margin (\u22650)"
       },
       {
         "column": "baseline_error",
@@ -71,8 +72,8 @@
   "samples": [
     {
       "kind": "samples",
-      "description": "Measured output comparison or sample gallery emitted by this idea’s executor."
+      "description": "Measured output comparison or sample gallery emitted by this idea\u2019s executor."
     }
   ],
-  "implementation_note": "Use task=schedule and this idea’s attributed runs only. Failed or missing runs are not measurements. Keep preregistered settings fixed and report five distinct eligible seeds; coverage=1 alone is not a completeness proof."
+  "implementation_note": "Use task=schedule and this idea\u2019s attributed runs only. Failed or missing runs are not measurements. Keep preregistered settings fixed and report five distinct eligible seeds; coverage=1 alone is not a completeness proof."
 }
