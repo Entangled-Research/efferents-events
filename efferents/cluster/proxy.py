@@ -12,6 +12,8 @@ owner.
 
 from __future__ import annotations
 
+import base64
+import io
 import json
 import os
 import threading
@@ -48,6 +50,52 @@ def _estimate_input_tokens(request: dict) -> int:
     # Four characters per token is the SDK's own rough rule for reservations.
     text = json.dumps(request.get("system", "")) + json.dumps(request.get("messages", []))
     return max(1, len(text) // 4)
+
+
+# A conservative reservation independent of compressed image byte size. Inline
+# images are bounded to 2048 x 2048; usage is reconciled from Azure's response.
+IMAGE_INPUT_RESERVATION = 131072
+
+
+def image_input_tokens(request: dict) -> int:
+    """Validate actual message content, allowing bounded inline images only."""
+    from PIL import Image
+    count = 0
+
+    def visit(value):
+        nonlocal count
+        if isinstance(value, list):
+            for item in value:
+                visit(item)
+        elif isinstance(value, dict):
+            kind = value.get("type", "")
+            if kind in ("input_audio", "audio", "input_file", "file") or "file_id" in value:
+                raise ProxyError(400, "audio and file inputs are unsupported", "invalid_request_error")
+            if kind in ("input_image", "image_url"):
+                url = value.get("image_url")
+                if isinstance(url, dict):
+                    url = url.get("url")
+                try:
+                    prefix, encoded = url.split(",", 1)
+                    formats = {"data:image/png;base64": "PNG", "data:image/jpeg;base64": "JPEG",
+                               "data:image/webp;base64": "WEBP"}
+                    if prefix not in formats:
+                        raise ValueError("Only inline PNG, JPEG and WebP images are supported")
+                    data = base64.b64decode(encoded, validate=True)
+                    with Image.open(io.BytesIO(data)) as im:
+                        if im.format != formats[prefix] or max(im.size) > 2048:
+                            raise ValueError("Image dimensions or format exceed the event limit")
+                        im.verify()
+                except Exception as exc:
+                    raise ProxyError(400, "Expected a valid inline PNG/JPEG/WebP image up to 2048 pixels", "invalid_request_error") from exc
+                count += 1
+                if count > 6:
+                    raise ProxyError(400, "At most six images are supported", "invalid_request_error")
+            elif "content" in value:
+                visit(value["content"])
+
+    visit(request.get("input", request.get("messages", [])))
+    return count * IMAGE_INPUT_RESERVATION
 
 
 class ModelProxy:
@@ -130,8 +178,7 @@ class ModelProxy:
                 for message in request["messages"]:
                     if isinstance(message, dict) and message.get("role") == "assistant" and message.get("content") is None:
                         message["content"] = ""
-            if any(term in body.lower() for term in (b'"image_url"', b'"input_audio"', b'"file_id"')):
-                raise ProxyError(400, "only text and function tools are supported", "invalid_request_error")
+            image_tokens = image_input_tokens(request)
             if model.startswith(("gpt-5.6-", "gpt-6")) and not responses_api:
                 if model == "gpt-6.1-sol" and request.get("tools"):
                     raise ProxyError(400, "Sol tool calls require the Responses API; copy the current setup instruction.",
@@ -150,7 +197,7 @@ class ModelProxy:
             max_tokens = request.get("max_tokens")
             if not isinstance(max_tokens, int) or isinstance(max_tokens, bool) or not 1 <= max_tokens <= _OPENAI_MAX_OUTPUT:
                 raise ProxyError(400, "max output tokens must be 1–32768", "invalid_request_error")
-        est_in = max(1, len(body) // 3) if provider == "openai" else _estimate_input_tokens(request)
+        est_in = max(1, len(body) // 3) + image_tokens if provider == "openai" else _estimate_input_tokens(request)
         if provider == "openai":
             upstream = os.environ.get("EFFERENTS_AZURE_OPENAI_ENDPOINT", "").rstrip("/")
             if not upstream.startswith("https://") or not upstream.endswith("/openai/v1"):

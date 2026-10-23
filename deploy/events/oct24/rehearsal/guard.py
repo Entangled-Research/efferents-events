@@ -50,8 +50,8 @@ class Guard:
                     'pending': len(self.pending), 'stopped': self.stopped,
                     'remaining': self.cap-self.spent-sum(self.pending.values())}
 
-    def reserve(self, model, output, length, lab):
-        estimate = estimate_call_cost_usd(model, output, max(1, length // 3))
+    def reserve(self, model, output, length, lab, image_tokens=0):
+        estimate = estimate_call_cost_usd(model, output, max(1, length // 3) + image_tokens)
         with self.lock:
             if self.stopped or (self.root / 'STOP').exists() or self.spent+sum(self.pending.values())+estimate > self.cap:
                 raise ValueError('Rehearsal aggregate cap reached or owner stopped the run')
@@ -123,7 +123,8 @@ class Handler(BaseHTTPRequestHandler):
             output = request.get('max_output_tokens') or request.get('max_completion_tokens') or request.get('max_tokens')
             if not isinstance(output, int) or output < 1:
                 raise ValueError('A positive output limit is required')
-            identifier = guard.reserve(model, output, len(body), lab)
+            from efferents.cluster.proxy import image_input_tokens
+            identifier = guard.reserve(model, output, len(body), lab, image_input_tokens(request))
             upstream = urllib.request.Request(guard.hub+path, data=body,
                          headers={'Authorization':'Bearer '+guard.token, 'Content-Type':'application/json'})
             try:

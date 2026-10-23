@@ -322,3 +322,61 @@ def test_current_azure_models_support_responses_tools_and_billing(tmp_path, monk
     assert status == 200
     assert sent[0]["model"] == model
     assert px.spend("o1") > 0
+
+
+def _inline_image():
+    import base64
+    from PIL import Image
+    out = io.BytesIO()
+    Image.new('RGB', (16, 16), 'red').save(out, format='PNG')
+    return 'data:image/png;base64,' + base64.b64encode(out.getvalue()).decode()
+
+
+@pytest.mark.parametrize('responses_api', [True, False])
+def test_inline_images_are_validated_forwarded_and_billed(tmp_path, monkeypatch, responses_api):
+    from efferents.cluster.proxy import image_input_tokens, IMAGE_INPUT_RESERVATION
+    cfg = make_cluster(tmp_path, monkeypatch, proxy={'cap_per_owner_usd': 10, 'cap_total_usd': 20})
+    monkeypatch.setenv('EFFERENTS_AZURE_OPENAI_ENDPOINT', 'https://resource.openai.azure.com/openai/v1')
+    image = {'type': 'input_image', 'image_url': _inline_image()} if responses_api else {
+        'type': 'image_url', 'image_url': {'url': _inline_image()}}
+    request = {'model': 'gpt-6.1-sol', 'max_output_tokens' if responses_api else 'max_tokens': 200,
+               'input' if responses_api else 'messages': [{'role': 'user', 'content': [image]}]}
+    assert image_input_tokens(request) == IMAGE_INPUT_RESERVATION
+    seen = []
+    def opener(req, timeout=0):
+        seen.append(json.loads(req.data))
+        return FakeResponse({'usage': ({'input_tokens': 1000, 'output_tokens': 10} if responses_api else {'prompt_tokens': 1000, 'completion_tokens': 10})})
+    px = ModelProxy(cfg, opener=opener)
+    assert px.forward(owner_id='o1', path='/v1/responses' if responses_api else '/v1/chat/completions',
+                      body=json.dumps(request).encode(), headers={}, api_key='key', provider='openai')[0] == 200
+    assert seen and px.spend('o1') > 0
+
+
+@pytest.mark.parametrize('part', [
+    {'type': 'input_image', 'image_url': 'https://example.com/image.png'},
+    {'type': 'input_image', 'image_url': 'data:image/png;base64,broken'},
+    {'type': 'input_audio', 'input_audio': {}},
+    {'type': 'input_file', 'file_id': 'file-1'},
+])
+def test_unsupported_image_audio_file_parts_are_rejected(part):
+    from efferents.cluster.proxy import image_input_tokens
+    with pytest.raises(ProxyError):
+        image_input_tokens({'input': [{'role': 'user', 'content': [part]}]})
+
+
+def test_text_mentions_and_tool_schemas_are_not_multimedia_inputs():
+    from efferents.cluster.proxy import image_input_tokens
+    assert image_input_tokens({'input': 'Explain "image_url" and "file_id"',
+                               'tools': [{'type': 'function', 'name': 'file_id'}]}) == 0
+
+
+def test_image_count_and_dimensions_are_bounded():
+    import base64
+    from PIL import Image
+    from efferents.cluster.proxy import image_input_tokens
+    with pytest.raises(ProxyError):
+        image_input_tokens({'input': [{'type': 'input_image', 'image_url': _inline_image()}]*7})
+    out = io.BytesIO(); Image.new('RGB', (2049, 1)).save(out, format='PNG')
+    with pytest.raises(ProxyError):
+        image_input_tokens({'input': [{'type': 'input_image', 'image_url':
+            'data:image/png;base64,'+base64.b64encode(out.getvalue()).decode()}]})
