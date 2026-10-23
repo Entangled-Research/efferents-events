@@ -23,6 +23,7 @@ def main():
     lab = sub.name
     os.environ['EFFERENTS_CADENCE_RESEARCHER_MIN_INTERVAL_S'] = '45'
     os.environ['EFFERENTS_CADENCE_STEP_PAUSE_S'] = '5'
+    os.environ['EFFERENTS_CADENCE_HOURS_PER_PAPER'] = '0.05'
     os.environ['EFFERENTS_CADENCE_EMPTY_QUEUE_SLEEP_S'] = '10'
     os.environ['EFFERENTS_MAX_CONCURRENT_CALLS'] = '4'
     os.environ['OPENBLAS_NUM_THREADS'] = '1'
