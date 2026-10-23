@@ -26,7 +26,7 @@ def configure(config_path: Path, *, opencode_dir: Path | None = None) -> str:
     env = event["env"]
     token = env["EFFERENTS_NETWORK_TOKEN"]
     model = env["EFFERENTS_MODEL_CODER"].removeprefix("openai/")
-    if not token or model != "gpt-5.6-sol":
+    if not token or model not in {"gpt-5.6-sol", "gpt-6.1-sol"}:
         raise ValueError("event config must contain a network token and the active Azure Sol model")
     hub_url = str(event["hub_url"]).rstrip("/")
     if not hub_url.startswith(("https://", "http://127.0.0.1:")):
@@ -60,7 +60,7 @@ def configure(config_path: Path, *, opencode_dir: Path | None = None) -> str:
         },
         "models": {
             model: {
-                "name": "GPT-5.6 Sol via Efferents Azure",
+                "name": f"{model.upper()} via Efferents Azure",
                 "limit": {"context": 128000, "output": 32768},
             },
         },

@@ -304,3 +304,21 @@ def test_organizer_pause_blocks_proxy_before_any_provider_call(tmp_path, monkeyp
         px.forward(owner_id="o1", path="/v1/messages", body=_request(), headers={}, api_key="key")
     assert caught.value.status == 402 and caught.value.kind == "event_paused"
     assert not calls and SpendCoordinator(cfg).reservations() == []
+
+
+@pytest.mark.parametrize("model", ["gpt-6-luna", "gpt-6.1-sol"])
+def test_current_azure_models_support_responses_tools_and_billing(tmp_path, monkeypatch, model):
+    cfg = make_cluster(tmp_path, monkeypatch)
+    monkeypatch.setenv("EFFERENTS_AZURE_OPENAI_ENDPOINT", "https://resource.openai.azure.com/openai/v1")
+    sent = []
+    def opener(req, timeout=0):
+        sent.append(json.loads(req.data))
+        return FakeResponse({"model": model, "output": [], "usage": {"input_tokens":100, "output_tokens":10}})
+    px = ModelProxy(cfg, opener=opener)
+    request = {"model":model, "input":"hello", "max_output_tokens":200,
+               "tools":[{"type":"function", "name":"lookup", "parameters":{"type":"object"}}]}
+    status, _, _ = px.forward(owner_id="o1", path="/v1/responses", body=json.dumps(request).encode(),
+                             headers={}, api_key="key", provider="openai")
+    assert status == 200
+    assert sent[0]["model"] == model
+    assert px.spend("o1") > 0

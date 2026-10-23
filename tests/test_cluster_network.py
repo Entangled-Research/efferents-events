@@ -607,3 +607,20 @@ def test_journal_directory_survives_lab_departure_and_hub_restart(hub):
     registration.rename(registration.with_suffix('.inactive'))
     restarted = NetworkHub(cfg, ctx.hub.tracks)
     assert {'name': 'Journal of Numerical Analysis'} in restarted.network_evidence()['journals']
+
+
+def test_default_azure_routing_uses_luna_for_small_tasks_and_sol_for_research(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    from efferents.cluster.network import NetworkHub
+    cfg = make_cluster(tmp_path, monkeypatch, labs={"max_per_owner":0, "total_cap_usd":100},
+                       proxy={"cap_per_owner_usd":100, "cap_total_usd":3000},
+                       caps={"cluster_total_usd":3000})
+    monkeypatch.setenv("EFFERENTS_AZURE_OPENAI_ENDPOINT", "https://resource.openai.azure.com/openai/v1")
+    owner = SimpleNamespace(token="participant-only", owner_id="owner", public=lambda: {})
+    config = NetworkHub(cfg, {}).config_payload(owner, "https://event.example")
+    env = config["env"]
+    assert env["EFFERENTS_MODEL_ROUTER"] == env["EFFERENTS_MODEL_LIBRARIAN"] == "openai/gpt-6-luna"
+    for role in ("", "_REVIEWER", "_REBUTTAL", "_SUPERVISOR", "_ANALYST", "_CODER"):
+        assert env["EFFERENTS_MODEL" + role] == "openai/gpt-6.1-sol"
+    assert config["limits"] == {"labs_per_owner":0, "proxy_cap_usd":100}
+    assert config["lab_yaml"]["budget"]["total_cap_usd"] == 100

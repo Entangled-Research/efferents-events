@@ -100,13 +100,14 @@ class NetworkHub:
             model_env = {
                 "OPENAI_API_KEY": owner.token,
                 "EFFERENTS_API_BASE": f"{url}/proxy/openai/v1",
-                "EFFERENTS_MODEL": "openai/gpt-5.6-luna",
-                "EFFERENTS_MODEL_LIBRARIAN": "openai/gpt-5.6-luna",
-                "EFFERENTS_MODEL_REVIEWER": "openai/gpt-5.6-luna",
-                "EFFERENTS_MODEL_REBUTTAL": "openai/gpt-4.1-nano",
-                "EFFERENTS_MODEL_SUPERVISOR": "openai/gpt-5.6-sol",
-                "EFFERENTS_MODEL_ANALYST": "openai/gpt-5.6-sol",
-                "EFFERENTS_MODEL_CODER": "openai/gpt-5.6-sol",
+                "EFFERENTS_MODEL": "openai/gpt-6.1-sol",
+                "EFFERENTS_MODEL_ROUTER": "openai/gpt-6-luna",
+                "EFFERENTS_MODEL_LIBRARIAN": "openai/gpt-6-luna",
+                "EFFERENTS_MODEL_REVIEWER": "openai/gpt-6.1-sol",
+                "EFFERENTS_MODEL_REBUTTAL": "openai/gpt-6.1-sol",
+                "EFFERENTS_MODEL_SUPERVISOR": "openai/gpt-6.1-sol",
+                "EFFERENTS_MODEL_ANALYST": "openai/gpt-6.1-sol",
+                "EFFERENTS_MODEL_CODER": "openai/gpt-6.1-sol",
             }
             if self.cfg.network.lab_model:
                 model_env.update({key: self.cfg.network.lab_model for key in model_env

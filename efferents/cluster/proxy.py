@@ -28,7 +28,8 @@ PROXY_PREFIX = "/proxy/anthropic"
 OPENAI_PROXY_PREFIX = "/proxy/openai"
 MAX_PROXY_BODY = 8 * 1024 * 1024
 _FORWARD_HEADERS = ("anthropic-version", "anthropic-beta", "content-type", "accept")
-_AZURE_MODELS = frozenset({"gpt-4.1-nano", "gpt-5.6-luna", "gpt-5.6-sol"})
+_AZURE_MODELS = frozenset({"gpt-4.1-nano", "gpt-5.6-luna", "gpt-5.6-sol",
+                           "gpt-6-luna", "gpt-6.1-sol"})
 _OPENAI_MAX_BODY = 512_000  # bounded input with room for coding context
 _OPENAI_MAX_OUTPUT = 32768
 
@@ -119,7 +120,7 @@ class ModelProxy:
                 if not isinstance(request.get("input"), (str, list)):
                     raise ProxyError(400, "input must be text or an array", "invalid_request_error")
                 request.setdefault("max_output_tokens", _OPENAI_MAX_OUTPUT)
-                if model == "gpt-5.6-sol":
+                if model in {"gpt-5.6-sol", "gpt-6.1-sol"}:
                     request.setdefault("reasoning", {"effort": "high"})
             elif request.get("messages") is None or not isinstance(request["messages"], list):
                 raise ProxyError(400, "messages must be an array", "invalid_request_error")
@@ -131,7 +132,10 @@ class ModelProxy:
                         message["content"] = ""
             if any(term in body.lower() for term in (b'"image_url"', b'"input_audio"', b'"file_id"')):
                 raise ProxyError(400, "only text and function tools are supported", "invalid_request_error")
-            if model.startswith("gpt-5.6-") and not responses_api:
+            if model.startswith(("gpt-5.6-", "gpt-6")) and not responses_api:
+                if model == "gpt-6.1-sol" and request.get("tools"):
+                    raise ProxyError(400, "Sol tool calls require the Responses API; copy the current setup instruction.",
+                                     "invalid_request_error")
                 if any(field in request for field in ("temperature", "top_p", "logprobs")):
                     raise ProxyError(400, "sampling options are unsupported for GPT-5.6", "invalid_request_error")
                 request["max_completion_tokens"] = request.pop("max_completion_tokens", request.pop("max_tokens", 0))

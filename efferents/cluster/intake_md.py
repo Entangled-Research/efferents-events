@@ -91,9 +91,8 @@ building the evaluator:
 ```
 
 This preserves other OpenCode providers, keeps the organizer's Azure key on
-the hub, and sets GPT-5.6 Sol through the event proxy as the default for new
-sessions. In an existing session, select **Efferents Event (Azure) / GPT-5.6
-Sol** with `/models` before continuing. Do not use the event join code here.
+the hub, and sets Sol through the event proxy as the default for new
+sessions. In an existing session, select **Efferents Event (Azure) / Sol** with `/models` before continuing. Do not use the event join code here.
 
 ## Evaluation validity before conclusions
 
