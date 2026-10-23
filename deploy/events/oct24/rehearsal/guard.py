@@ -136,6 +136,8 @@ class Handler(BaseHTTPRequestHandler):
             guard.settle(identifier, model, payload, status, lab)
             self.respond(status, payload)
         except ValueError as error:
+            if identifier is not None:
+                guard.log('unresolved', id=identifier, lab=lab, reason=type(error).__name__)
             self.respond(429 if identifier is None else 502, {'error':{'message':str(error), 'type':'rehearsal_limit'}})
         except Exception as error:
             # Preserve pending reservation: the upstream might have billed it.

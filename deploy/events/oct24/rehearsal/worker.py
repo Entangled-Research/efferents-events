@@ -74,9 +74,11 @@ def main():
                 phase.reset(phase_token)
         setattr(module, name, wrapped)
 
-    from efferents.agents import researcher, executor
+    from efferents.agents import researcher, executor, reviewer, writer
     instrument(researcher, 'propose', 'researcher')
     instrument(executor, 'execute', 'executor')
+    instrument(reviewer, 'review', 'reviewer')
+    instrument(writer, 'write_phase_a_paper', 'writer')
     from efferents.agents import model_client
     original_model_call = model_client._Messages.create
     def observed_model_call(self, **kwargs):
