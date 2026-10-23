@@ -2169,17 +2169,19 @@ async function refreshStarterPlan() {
   text("starter-plan-message", "");
   panel.hidden = false;
 }
-document.getElementById("starter-plan-form").addEventListener("submit", async (event) => {
-  event.preventDefault();
-  if (!starterPlanLab || routeLabId() !== starterPlanLab) return;
-  try {
-    const data = await postJSON(`/api/network/labs/${encodeURIComponent(starterPlanLab)}/starter`, {
-      text: document.getElementById("starter-plan-text").value, revision: starterPlanRevision,
-    });
-    starterPlanRevision = data.revision;
-    text("starter-plan-message", "Plan saved. Ask your coding agent to apply it before running.");
-  } catch (error) { text("starter-plan-message", error.message); }
-});
+function initStarterPlan() {
+  document.getElementById("starter-plan-form").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (!starterPlanLab || routeLabId() !== starterPlanLab) return;
+    try {
+      const data = await postJSON(`/api/network/labs/${encodeURIComponent(starterPlanLab)}/starter`, {
+        text: document.getElementById("starter-plan-text").value, revision: starterPlanRevision,
+      });
+      starterPlanRevision = data.revision;
+      text("starter-plan-message", "Plan saved. Ask your coding agent to apply it before running.");
+    } catch (error) { text("starter-plan-message", error.message); }
+  });
+}
 
 async function refreshObserver() {
   if (document.hidden || currentRoute() !== "observe" || !routeIdeaId()) return;
@@ -2909,6 +2911,7 @@ initSteeringForm();
 initRuntimeControls();
 initJoinForm();
 initDiagnostics();
+initStarterPlan();
 initIntakeView();
 refresh();
 setInterval(refresh, 4000);

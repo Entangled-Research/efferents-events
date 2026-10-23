@@ -1,0 +1,8 @@
+{
+  "source": "https://huggingface.co/datasets/OATML-Markslab/ProteinGym_v0.1/resolve/main/ProteinGym_substitutions/GFP_AEQVI_Sarkisyan_2016.csv",
+  "sha256": "dcfe5eb754186eb9eb3a2fe7889d83d791640963a4512b55e91e3c3d4ac65eb2",
+  "original": "https://doi.org/10.6084/m9.figshare.3102154",
+  "license": "CC BY 4.0",
+  "citation": "Sarkisyan et al. (2016), Local fitness landscape of the green fluorescent protein, Nature 533, 397\u2013401; ProteinGym (Notin et al.).",
+  "modifications": "None to CSV; executor uses a fixed content-hash subset independent of labels."
+}
