@@ -71,7 +71,7 @@ def test_launch_selects_only_event_provider_before_first_prompt(tmp_path, monkey
     monkeypatch.setenv("EFFERENTS_EVENT_TOKEN", "private-token")
     monkeypatch.setattr("shutil.which", lambda name: "/test/opencode")
     monkeypatch.setattr(os, "execvpe", lambda executable, args, env: calls.append((executable, args, env)))
-    launch("https://event.test", "efferents-event/gpt-6.1-sol", "efferents-event/gpt-6-luna", opencode_dir=tmp_path)
+    launch("https://event.test", "efferents-event/gpt-6.1-sol", "efferents-event/gpt-6-luna", opencode_dir=tmp_path, intake_session_id="approved-session")
     _, args, env = calls[0]
     assert args[1:3] == ["--model", "efferents-event/gpt-6.1-sol"]
     assert "private-token" not in " ".join(args)
@@ -80,3 +80,4 @@ def test_launch_selects_only_event_provider_before_first_prompt(tmp_path, monkey
     assert settings["enabled_providers"] == ["efferents-event"]
     assert settings["small_model"] == "efferents-event/gpt-6-luna"
     assert str(tmp_path / "efferents-event-token") in args[-1]
+    assert "approved browser intake session approved-session" in args[-1]

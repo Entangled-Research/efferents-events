@@ -229,8 +229,8 @@ window.location.origin = 'https://event.example';
 showRecoveryKey('private-return-key');
 const session = {network_token:'lab-connection-token', has_recovery_key:true};
 renderTerminalPanel(session);
-const first = document.getElementById('terminal-instruction').textContent;
-const approved = agentSetupInstruction(session, 'approved-idea');
+const first = document.getElementById('funded-setup-command').textContent;
+const approved = fundedSetupCommand(session, 'approved-idea');
 const visible = !document.getElementById('recovery-secret').hidden;
 showRecoveryKey('');
 console.log(JSON.stringify({first, approved, visible,
@@ -238,7 +238,7 @@ console.log(JSON.stringify({first, approved, visible,
   hidden:document.getElementById('recovery-secret').hidden}));
 """)
     for instruction in (result['first'], result['approved']):
-        assert 'https://event.example/intake.md' in instruction
+        assert 'https://event.example/bootstrap-opencode.py' in instruction
         assert 'lab-connection-token' in instruction
         assert 'private-return-key' not in instruction
     assert 'approved-idea' in result['approved']

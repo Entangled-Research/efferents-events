@@ -100,7 +100,7 @@ def bootstrap(hub_url: str, token: str, *, opencode_dir: Path | None = None) -> 
     return model, small_model
 
 
-def launch(hub_url: str, model: str, small_model: str, *, opencode_dir: Path | None = None) -> None:
+def launch(hub_url: str, model: str, small_model: str, *, opencode_dir: Path | None = None, intake_session_id: str | None = None) -> None:
     executable = shutil.which("opencode")
     if not executable:
         raise ValueError("OpenCode is not installed. Install it from https://opencode.ai then run this setup again; no model credits have been used.")
@@ -109,6 +109,8 @@ def launch(hub_url: str, model: str, small_model: str, *, opencode_dir: Path | N
               f"My private event network token is in {directory / 'efferents-event-token'}; "
               "read it from that file instead of asking me to paste it. Keep it private and out of Git. "
               "Use the event's prepared starters and ask which scientific objective I want if needed.")
+    if intake_session_id:
+        prompt += f" Use my approved browser intake session {intake_session_id}."
     environment = dict(os.environ)
     environment.pop("EFFERENTS_EVENT_TOKEN", None)
     # Override project defaults for this new session; do not expose personal providers.
@@ -125,6 +127,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("config", nargs="?")
     parser.add_argument("--hub")
     parser.add_argument("--launch", action="store_true")
+    parser.add_argument("--intake")
     options = parser.parse_args(args)
     try:
         if options.hub:
@@ -134,10 +137,9 @@ def main(argv: list[str] | None = None) -> int:
             small_model = "efferents-event/gpt-6-luna"
         else:
             parser.error("provide a config file or --hub URL")
-        print("Event models configured: Sol for research and coding, Luna for lightweight tasks. "
-              "Both use your shared event allowance.", flush=True)
+        print("Setup ready.", flush=True)
         if options.launch:
-            launch(options.hub, model, small_model)
+            launch(options.hub, model, small_model, intake_session_id=options.intake)
     except (OSError, ValueError, KeyError, TypeError) as exc:
         print(f"OpenCode setup failed: {exc}", file=sys.stderr)
         return 1

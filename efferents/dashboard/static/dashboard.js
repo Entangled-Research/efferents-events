@@ -2653,33 +2653,20 @@ function initJoinForm() {
   document.getElementById("copy-funded-setup").addEventListener("click", async () => {
     try {
       await navigator.clipboard.writeText(document.getElementById("funded-setup-command").textContent);
-      showMessage("setup-message", "Copied. Paste into your terminal to open event-funded OpenCode.", "success");
+      showMessage("setup-message", "Copied. Paste into your terminal.", "success");
     } catch {
       document.getElementById("funded-setup-details").open = true;
       showMessage("setup-message", "Copy the terminal command below manually.", "error");
     }
   });
-  document.getElementById("copy-terminal-instruction").addEventListener("click", async () => {
-    try {
-      await navigator.clipboard.writeText(document.getElementById("terminal-instruction").textContent);
-      showMessage("setup-message", "Copied. Paste it into your coding agent.", "success");
-    } catch {
-      document.getElementById("connection-details").open = true;
-      showMessage("setup-message", "Select the instruction below and copy it manually.", "error");
-    }
-  });
 }
 
-function agentSetupInstruction(session, intakeSessionId = null) {
-  const approved = intakeSessionId ? ` Use my approved browser intake session ${intakeSessionId}.` : "";
-  return `Read ${window.location.origin}/intake.md and follow it.${approved} My event network token is ${session.network_token}. Keep this token private and out of Git; use it for the event connection. Do not ask me to copy another token.`;
-}
-
-function fundedSetupCommand(session) {
+function fundedSetupCommand(session, intakeSessionId = null) {
   const quote = value => "'" + String(value).replaceAll("'", "'\\''") + "'";
   const origin = window.location.origin;
   const loader = `import urllib.request; exec(compile(urllib.request.urlopen(${JSON.stringify(origin + "/bootstrap-opencode.py")}, timeout=30).read(), "<event setup>", "exec"))`;
-  return `EFFERENTS_EVENT_TOKEN=${quote(session.network_token)} python3 -c ${quote(loader)} --hub ${quote(origin)} --launch`;
+  const intake = intakeSessionId ? ` --intake ${quote(intakeSessionId)}` : "";
+  return `EFFERENTS_EVENT_TOKEN=${quote(session.network_token)} python3 -c ${quote(loader)} --hub ${quote(origin)} --launch${intake}`;
 }
 
 function renderTerminalPanel(session) {
@@ -2688,7 +2675,6 @@ function renderTerminalPanel(session) {
     steps.hidden = true;
     return;
   }
-  text("terminal-instruction", agentSetupInstruction(session));
   text("funded-setup-command", fundedSetupCommand(session));
   steps.hidden = false;
   document.getElementById("recovery-panel").hidden = false;
@@ -2807,12 +2793,7 @@ function renderRouting(session, tracks) {
 }
 
 function renderHarnessHandoff(session) {
-  const route = session.routing || {};
-  const existing = route.action === "existing" && session.track_id;
-  text("harness-route-note", existing
-    ? `The ${session.track_id} executor can be reused. Your harness will download it and run it locally.`
-    : "This idea needs a new evaluator. Your harness will build the lab around the approved hypothesis instead of forcing it into an unrelated template.");
-  text("harness-instruction", controlState.session ? agentSetupInstruction(controlState.session, session.session_id) : "Sign in to connect your lab.");
+  text("harness-instruction", controlState.session ? fundedSetupCommand(controlState.session, session.session_id) : "Sign in to start your lab.");
 }
 
 function renderBinding(binding, session) {
@@ -2913,7 +2894,7 @@ function initIntakeView() {
   });
   document.getElementById("copy-harness-instruction").addEventListener("click", async () => {
     await navigator.clipboard.writeText(document.getElementById("harness-instruction").textContent);
-    showMessage("intake-create-message", "Harness instruction copied.", "success");
+    showMessage("intake-create-message", "Copied. Paste into your terminal.", "success");
   });
 
 }
