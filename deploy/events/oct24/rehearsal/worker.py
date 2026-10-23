@@ -28,6 +28,9 @@ def main():
     os.environ['OPENBLAS_NUM_THREADS'] = '1'
     os.environ['OMP_NUM_THREADS'] = '1'
     os.environ['MKL_NUM_THREADS'] = '1'
+    from efferents.agents.model_client import PROVIDER_KEY_ENV
+    for key in set(PROVIDER_KEY_ENV.values()):
+        os.environ.pop(key, None)
     from efferents import event
     from efferents.envfile import load_dotenv
     load_dotenv(sub / '.env')
@@ -96,6 +99,9 @@ def main():
         result = cli.main()
         record('worker_end', result=result)
         return result
+    except SystemExit as error:
+        record('worker_end', result=error.code or 0, interrupted=True)
+        raise
     except BaseException as error:
         record('worker_crash', error=f'{type(error).__name__}: {str(error)[:400]}')
         raise
