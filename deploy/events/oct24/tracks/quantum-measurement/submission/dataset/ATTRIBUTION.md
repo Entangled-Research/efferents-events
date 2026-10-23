@@ -1,0 +1,1 @@
+UCI Optical Recognition of Handwritten Digits, Alpaydin and Kaynak (1998), https://doi.org/10.24432/C50P49 . CC BY 4.0: https://creativecommons.org/licenses/by/4.0/ . Original optdigits.tes unchanged. New stratified splits within this collection; no original benchmark score claimed.

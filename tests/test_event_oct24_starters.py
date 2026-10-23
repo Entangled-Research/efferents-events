@@ -30,7 +30,7 @@ def test_catalogue_contains_three_labs_and_seven_scoped_ideas():
 
 
 @pytest.mark.parametrize('track,task',[
-    ('quantum-measurement','correlations'),('quantum-measurement','readout'),
+    ('quantum-measurement','encoding'),('quantum-measurement','tensor_network'),
     ('gfp-fitness','prediction'),('gfp-fitness','distance'),
     ('vision-sampling','few_steps'),('vision-sampling','schedule'),('vision-sampling','reasoning')])
 def test_every_idea_measures_finite_results_and_produces_a_gallery(track,task):
@@ -50,14 +50,36 @@ def test_every_idea_measures_finite_results_and_produces_a_gallery(track,task):
         plt.close(fig)
 
 
-def test_quantum_reference_is_a_normalized_distribution_and_fits_have_no_oracle_argument():
+def test_quantum_encodings_match_explicit_small_state_overlaps():
     module=module_for('quantum-measurement')
-    states,p=module.target(6,.7)
-    assert np.isclose(p.sum(),1) and np.all(p>=0)
-    samples=states[np.random.default_rng(1).choice(len(p),256,p=p)]
-    for structured in (True,False):
-        q=module.fit(samples,states,structured)
-        assert np.isclose(q.sum(),1) and np.all(q>=0)
+    x=np.array([[0.2,0.7],[0.8,0.1]])
+    states=[]
+    for row in x:
+        local=[np.array([np.cos(np.pi*.25*v/2),np.sin(np.pi*.25*v/2)]) for v in row]
+        states.append(np.kron(*local))
+    expected=np.abs(np.array(states)@np.array(states).T)**2
+    assert np.allclose(module.rotation_kernel(x,x,.25),expected)
+    amplitudes=module.normalize(x)
+    kernel=module.fidelity_kernel(amplitudes,amplitudes)
+    assert np.allclose(np.diag(kernel),1)
+    assert np.linalg.eigvalsh(kernel).min()>=-1e-10
+
+
+@pytest.mark.parametrize('ordering',['row_major','interleaved'])
+def test_complex_tensor_train_preserves_phase_at_full_rank_and_counts_storage(ordering):
+    module=module_for('quantum-measurement')
+    rng=np.random.default_rng(12)
+    vector=rng.normal(size=64)+1j*rng.normal(size=64)
+    exact,count=module.tt_compress(vector,8,ordering)
+    assert np.allclose(exact,vector) and count>64
+    low,low_count=module.tt_compress(vector,2,ordering)
+    assert low_count==40 and np.linalg.norm(low-vector)>0
+    # A separable complex state is exactly representable at bond one.
+    product=np.array([1.0+0j])
+    for _ in range(6):
+        product=np.kron(product,rng.normal(size=2)+1j*rng.normal(size=2))
+    restored,_=module.tt_compress(product,1,ordering)
+    assert np.allclose(restored,product)
 
 
 def test_templates_materialize_as_valid_participant_labs(tmp_path):

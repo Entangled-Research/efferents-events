@@ -1,33 +1,33 @@
 id: quantum-measurement
-title: 'Quantum: Learn from Fewer Shots'
-summary: Reconstruct a small quantum measurement distribution and test whether calibration
-  is worth its shot cost. CPU only; no quantum hardware.
-domain: quantum measurement simulation
+title: 'Quantum: Encode Images, Compress with Tensors'
+summary: Compare amplitude and rotation-gate encodings on handwritten digits, then
+  compress complex Fourier amplitudes with matrix product states. CPU simulations.
+domain: quantum data encoding and tensor networks
 knobs:
 - name: task
   description: Experiment parameter task
-  default: correlations
+  default: encoding
 - name: seed
   description: Experiment parameter seed
   default: 0
-- name: qubits
-  description: Experiment parameter qubits
-  default: 6
-- name: shots
-  description: Experiment parameter shots
-  default: 512
-- name: field
-  description: Experiment parameter field
-  default: 0.7
-- name: flip01
-  description: Experiment parameter flip01
-  default: 0.04
-- name: flip10
-  description: Experiment parameter flip10
+- name: train_per_class
+  description: Experiment parameter train_per_class
+  default: 20
+- name: test_per_class
+  description: Experiment parameter test_per_class
+  default: 10
+- name: ridge
+  description: Experiment parameter ridge
   default: 0.1
-- name: calibration_fraction
-  description: Experiment parameter calibration_fraction
-  default: 0.3
+- name: angle_scale
+  description: Experiment parameter angle_scale
+  default: 0.25
+- name: bond_dim
+  description: Experiment parameter bond_dim
+  default: 2
+- name: ordering
+  description: Experiment parameter ordering
+  default: row_major
 columns:
 - name: effect
   description: "Signed margin above this idea\u2019s preregistered target; \u2265\

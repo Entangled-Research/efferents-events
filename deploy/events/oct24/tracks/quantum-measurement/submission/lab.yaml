@@ -1,6 +1,7 @@
 lab_id: masha-quantum-measurement
-domain: quantum measurement simulation
-research_goal: Investigate quantum measurement simulation
+domain: quantum data encoding and tensor networks
+research_goal: Compare quantum image encodings and tensor-network compression on measured
+  digit images.
 approach: Bounded CPU experiment; full scope and limitations are recorded in README.md.
 source:
   dir: ./src/
@@ -18,7 +19,7 @@ metrics:
     direction: max
   panels:
   - column: effect
-    label: "Claim margin (\u22650)"
+    label: Claim margin (≥0)
   - column: baseline_error
     label: Baseline Error
   - column: treatment_error
@@ -39,22 +40,29 @@ peer_review:
 autonomy:
   coder_enabled: false
 students:
-- id: correlations
-  handle: Do correlations help when measurements are scarce?
-  focus: "At 512 signal shots on the six-qubit Ising ground state with field 0.7,\
-    \ an adjacent-qubit conditional model reduces total-variation error by at least\
-    \ 10% versus independent Bernoulli fits on the same samples. Always set config.task=correlations\
-    \ for your experiments. Compare the two fitted distributions against the exact\
-    \ 64-outcome reference. Repeat seeds 0\u20134, then vary shots (128, 512, 2048)\
-    \ and field (0.4, 0.7, 1.2). Do not train on reference probabilities."
-- id: readout
-  handle: Is correcting noisy measurements worth the calibration cost?
-  focus: "At 512 total shots and asymmetric readout noise (0\u21921=0.04, 1\u2192\
-    0=0.10), calibrated correction reduces total-variation error by at least 10% versus\
-    \ uncorrected sampling. The correction arm spends 30% of its total shots on calibration.\
-    \ Always set config.task=readout for your experiments. Each arm gets 512 total\
-    \ shots. Estimate each qubit\u2019s calibration errors using calibration shots,\
-    \ invert the estimated channel, project negative probabilities to zero and renormalize.\
-    \ Compare to the exact reference over seeds 0\u20134. Repeat at 128 and 2048 shots;\
-    \ report bias/variance and projection effects."
-default_student_id: correlations
+- id: encoding
+  handle: Does amplitude or rotation encoding preserve digit similarity better?
+  focus: On 200 training and 100 held-out digit images, a squared-fidelity kernel
+    from amplitude encoding improves classification accuracy by at least five percentage
+    points over a product RY-rotation kernel at angle_scale=0.25, using the same ridge
+    classifier. Always set config.task=encoding. Use 20 train and 10 test examples
+    per class, seeds 0–4, fixed ridge=0.1. Both see all 64 pixels scaled by the known
+    sensor range 16. Amplitudes are L2-normalized; RY angles are pi*0.25*pixel. Report
+    both accuracies, off-diagonal kernel means, 6 versus 64 qubits, and wall time.
+    Follow up with angle scales 0.5/1.0 as separate campaigns; do not tune on test
+    labels. Exact fidelities, no finite-shot noise or state-preparation circuit accounting.
+- id: tensor_network
+  handle: How much complex image data can a small tensor network keep?
+  focus: A bond-2 matrix product state of normalized complex Fourier digit amplitudes
+    retains mean held-out squared fidelity at least 0.90 and classification accuracy
+    within five percentage points of dense amplitudes, while using at most 75% as
+    many complex coefficients. Always set config.task=tensor_network. Use the same
+    fixed stratified 200/100 split per seed 0–4. Orthogonal 2D FFT, reshape 64 coefficients
+    into six binary tensor indices, TT-SVD truncate to bond 2; reconstruct and normalize
+    before the same ridge classifier. Compress training and test images independently
+    without labels. Report test fidelity, dense/compressed accuracy, inverse-FFT gallery
+    and actual stored core coefficients /64. Compare bonds 1,2,4,8 and row-major versus
+    interleaved row/column bit ordering as separate campaigns. High bonds may use
+    more storage than dense data. Fidelity and storage alone do not establish classification
+    preservation.
+default_student_id: encoding

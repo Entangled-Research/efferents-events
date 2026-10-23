@@ -1,8 +1,8 @@
-task: correlations
+task: encoding
 seed: 0
-qubits: 6
-shots: 512
-field: 0.7
-flip01: 0.04
-flip10: 0.1
-calibration_fraction: 0.3
+train_per_class: 20
+test_per_class: 10
+ridge: 0.1
+angle_scale: 0.25
+bond_dim: 2
+ordering: row_major

@@ -1,37 +1,37 @@
 [
   {
     "id": "quantum-measurement",
-    "title": "Quantum: Learn from Fewer Shots",
-    "domain": "quantum measurement simulation",
-    "summary": "Reconstruct a small quantum measurement distribution and test whether calibration is worth its shot cost. CPU only; no quantum hardware.",
+    "title": "Quantum: Encode Images, Compress with Tensors",
+    "domain": "quantum data encoding and tensor networks",
+    "summary": "Compare amplitude and rotation-gate encodings on handwritten digits, then compress complex Fourier amplitudes with matrix product states. CPU simulations.",
     "config": {
-      "task": "correlations",
+      "task": "encoding",
       "seed": 0,
-      "qubits": 6,
-      "shots": 512,
-      "field": 0.7,
-      "flip01": 0.04,
-      "flip10": 0.1,
-      "calibration_fraction": 0.3
+      "train_per_class": 20,
+      "test_per_class": 10,
+      "ridge": 0.1,
+      "angle_scale": 0.25,
+      "bond_dim": 2,
+      "ordering": "row_major"
     },
-    "source": "https://quantum.cloud.ibm.com/docs/en/guides/error-mitigation-and-suppression-techniques",
-    "boundary": "A six-qubit transverse-field Ising simulation. Computational-basis probabilities do not establish entanglement or quantum advantage. The exact reference is for scoring only; fits must use finite-shot samples.",
+    "source": "https://docs.pennylane.ai/en/stable/introduction/templates.html",
+    "boundary": "Exact classical simulation of quantum feature-map fidelities and tensor-train decompositions. All 64 pixels enter both encodings: amplitude encoding uses 6 qubits; rotation encoding uses 64 separable RY gates/qubits, evaluated analytically without building a 2^64 state. Qubit counts and preparation costs are not matched; amplitude loading is not free. No hardware speedup or quantum advantage claim. Complex data are 2D Fourier coefficients of real digit images. TT-SVD sees the full input and is a classical compression method; report actual core storage, including cases where it exceeds dense storage. Labels are used only to fit classifiers on training examples. These new stratified splits are within UCI optdigits.tes, not its original benchmark split.",
     "ideas": [
       {
-        "id": "correlations",
-        "title": "Do correlations help when measurements are scarce?",
-        "question": "Can a simple correlated model reconstruct quantum measurement outcomes better than treating every qubit independently?",
-        "claim": "At 512 signal shots on the six-qubit Ising ground state with field 0.7, an adjacent-qubit conditional model reduces total-variation error by at least 10% versus independent Bernoulli fits on the same samples.",
-        "test": "Compare the two fitted distributions against the exact 64-outcome reference. Repeat seeds 0\u20134, then vary shots (128, 512, 2048) and field (0.4, 0.7, 1.2). Do not train on reference probabilities.",
-        "task": "correlations"
+        "id": "encoding",
+        "title": "Does amplitude or rotation encoding preserve digit similarity better?",
+        "question": "If the same image becomes amplitudes or rotation angles, which representation keeps useful similarities for recognizing digits?",
+        "claim": "On 200 training and 100 held-out digit images, a squared-fidelity kernel from amplitude encoding improves classification accuracy by at least five percentage points over a product RY-rotation kernel at angle_scale=0.25, using the same ridge classifier.",
+        "test": "Use 20 train and 10 test examples per class, seeds 0–4, fixed ridge=0.1. Both see all 64 pixels scaled by the known sensor range 16. Amplitudes are L2-normalized; RY angles are pi*0.25*pixel. Report both accuracies, off-diagonal kernel means, 6 versus 64 qubits, and wall time. Follow up with angle scales 0.5/1.0 as separate campaigns; do not tune on test labels. Exact fidelities, no finite-shot noise or state-preparation circuit accounting.",
+        "task": "encoding"
       },
       {
-        "id": "readout",
-        "title": "Is correcting noisy measurements worth the calibration cost?",
-        "question": "Does readout calibration reduce distribution error when its extra measurements count against the same budget?",
-        "claim": "At 512 total shots and asymmetric readout noise (0\u21921=0.04, 1\u21920=0.10), calibrated correction reduces total-variation error by at least 10% versus uncorrected sampling. The correction arm spends 30% of its total shots on calibration.",
-        "test": "Each arm gets 512 total shots. Estimate each qubit\u2019s calibration errors using calibration shots, invert the estimated channel, project negative probabilities to zero and renormalize. Compare to the exact reference over seeds 0\u20134. Repeat at 128 and 2048 shots; report bias/variance and projection effects.",
-        "task": "readout"
+        "id": "tensor_network",
+        "title": "How much complex image data can a small tensor network keep?",
+        "question": "Can a short chain of small tensors retain Fourier phase, image structure and digit recognition while using fewer stored coefficients?",
+        "claim": "A bond-2 matrix product state of normalized complex Fourier digit amplitudes retains mean held-out squared fidelity at least 0.90 and classification accuracy within five percentage points of dense amplitudes, while using at most 75% as many complex coefficients.",
+        "test": "Use the same fixed stratified 200/100 split per seed 0–4. Orthogonal 2D FFT, reshape 64 coefficients into six binary tensor indices, TT-SVD truncate to bond 2; reconstruct and normalize before the same ridge classifier. Compress training and test images independently without labels. Report test fidelity, dense/compressed accuracy, inverse-FFT gallery and actual stored core coefficients /64. Compare bonds 1,2,4,8 and row-major versus interleaved row/column bit ordering as separate campaigns. High bonds may use more storage than dense data. Fidelity and storage alone do not establish classification preservation.",
+        "task": "tensor_network"
       }
     ]
   },
@@ -54,15 +54,15 @@
         "title": "Do mutation identities matter more than mutation count?",
         "question": "How much do mutation identities add beyond the number of changes to the protein?",
         "claim": "On a fixed content-selected 6000-variant subset, a ridge model with hashed mutation-identity features reduces held-out fluorescence RMSE by at least 10% relative to a mutation-count mean predictor.",
-        "test": "Use 70/30 train/test splits for seeds 0\u20134. Fit feature weights and count-bin means on training labels only; fix ridge=10 before testing. Report errors by mutation count and show a predicted-versus-measured scatter. Hashing collisions are a known model limitation. Do not tune on test labels.",
+        "test": "Use 70/30 train/test splits for seeds 0–4. Fit feature weights and count-bin means on training labels only; fix ridge=10 before testing. Report errors by mutation count and show a predicted-versus-measured scatter. Hashing collisions are a known model limitation. Do not tune on test labels.",
         "task": "prediction"
       },
       {
         "id": "distance",
         "title": "Does a good random-split score survive farther mutations?",
         "question": "Can a predictor trained close to the original protein handle variants with more mutations?",
-        "claim": "At matched train/test sizes, the same additive mutation-feature predictor has at least 10% higher RMSE when trained on variants with \u22642 mutations and tested on \u22653 than under a random split.",
-        "test": "Run the random and mutational-distance protocols with the same fixed data subset, model, regularization and matched sizes. Seeds 0\u20134 resample within each protocol. Report each distance stratum; this tests a distribution shift, not a pure causal effect of distance.",
+        "claim": "At matched train/test sizes, the same additive mutation-feature predictor has at least 10% higher RMSE when trained on variants with ≤2 mutations and tested on ≥3 than under a random split.",
+        "test": "Run the random and mutational-distance protocols with the same fixed data subset, model, regularization and matched sizes. Seeds 0–4 resample within each protocol. Report each distance stratum; this tests a distribution shift, not a pure causal effect of distance.",
         "task": "distance"
       }
     ]
@@ -71,7 +71,7 @@
     "id": "vision-sampling",
     "title": "Vision: Sample Faster, Reason Spatially",
     "domain": "synthetic image diffusion and spatial reasoning",
-    "summary": "Compare diffusion step budgets and schedules, then test whether an explicit scene graph helps spatial answers. Tiny 16\u00d716 images, CPU only.",
+    "summary": "Compare diffusion step budgets and schedules, then test whether an explicit scene graph helps spatial answers. Tiny 16×16 images, CPU only.",
     "config": {
       "task": "few_steps",
       "seed": 0,
@@ -87,7 +87,7 @@
         "title": "Can we cut sampling to eight steps without breaking shapes?",
         "question": "Where is the quality-versus-compute tradeoff for diffusion sampling?",
         "claim": "Eight DDIM-style denoiser evaluations retain shape validity within five percentage points AND mode total-variation error within 0.05 of a 32-evaluation reference, using the same denoiser and initial noise.",
-        "test": "Fix 256 samples and paired initial noises per seed. Validity is nearest-template pixel MSE <0.05. Test seeds 0\u20134. Report validity, nearest-template error, mode total-variation and measured time; a quality pass alone does not establish diversity. Steps must remain exactly 8 versus 32 for this claim.",
+        "test": "Fix 256 samples and paired initial noises per seed. Validity is nearest-template pixel MSE <0.05. Test seeds 0–4. Report validity, nearest-template error, mode total-variation and measured time; a quality pass alone does not establish diversity. Steps must remain exactly 8 versus 32 for this claim.",
         "task": "few_steps"
       },
       {
@@ -95,7 +95,7 @@
         "title": "Where should a small sampler spend its steps?",
         "question": "At the same eight evaluations, does concentrating steps near the clean image preserve more modes?",
         "claim": "A quadratic late-focused eight-evaluation schedule reduces total-variation distance of the generated mode distribution from uniform by at least 0.02 versus an eight-evaluation uniform schedule.",
-        "test": "Hold the clean-image bank, denoiser, initial noise, sample count and evaluation budget fixed. Compare schedules over seeds 0\u20134; report validity alongside diversity. A late-focused schedule might fail or help fidelity while hurting diversity.",
+        "test": "Hold the clean-image bank, denoiser, initial noise, sample count and evaluation budget fixed. Compare schedules over seeds 0–4; report validity alongside diversity. A late-focused schedule might fail or help fidelity while hurting diversity.",
         "task": "schedule"
       },
       {
@@ -103,7 +103,7 @@
         "title": "Do intermediate scene graphs help with left and right?",
         "question": "Is it better to extract objects and their positions before answering a spatial question?",
         "claim": "An intermediate color-mask centroid scene graph improves left/right accuracy by at least five percentage points over a ridge predictor on downsampled pixels when test scenes use a wider translation range.",
-        "test": "Both methods receive only rendered RGB pixels. Train the pixel predictor on 600 labeled scenes; evaluate both on the same 256 shifted scenes for seeds 0\u20134. Generator coordinates define labels but must never be passed to the predictor. Report accuracy and failure galleries. The graph encodes the relation explicitly, so this is a pipeline comparison, not a matched-capacity reasoning claim.",
+        "test": "Both methods receive only rendered RGB pixels. Train the pixel predictor on 600 labeled scenes; evaluate both on the same 256 shifted scenes for seeds 0–4. Generator coordinates define labels but must never be passed to the predictor. Report accuracy and failure galleries. The graph encodes the relation explicitly, so this is a pipeline comparison, not a matched-capacity reasoning claim.",
         "task": "reasoning"
       }
     ]

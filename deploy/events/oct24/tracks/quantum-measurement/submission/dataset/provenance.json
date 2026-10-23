@@ -1,0 +1,8 @@
+{
+  "source": "https://archive.ics.uci.edu/static/public/80/optical+recognition+of+handwritten+digits.zip",
+  "file": "optdigits.tes",
+  "sha256": "6ebb3d2fee246a4e99363262ddf8a00a3c41bee6014c373ed9d9216ba7f651b8",
+  "license": "CC BY 4.0",
+  "citation": "Alpaydin, E. & Kaynak, C. (1998). Optical Recognition of Handwritten Digits. UCI Machine Learning Repository. DOI:10.24432/C50P49",
+  "modifications": "None. Pixel values divided by 16 inside executor; seeds select stratified train/test subsets from this test-file collection. Not the original UCI train/test benchmark."
+}
