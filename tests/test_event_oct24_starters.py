@@ -94,3 +94,9 @@ def test_templates_materialize_as_valid_participant_labs(tmp_path):
         (destination/'lab.yaml').write_text(yaml.safe_dump(raw))
         cfg=LabConfig.from_submission(destination)
         assert len(cfg.students)==len(track.lab_yaml['students'])
+        from efferents.eval_suite import resolve_idea_config
+        for student in cfg.students:
+            scoped=resolve_idea_config(destination,cfg,student['id'])
+            assert scoped.metrics.headline.column=='effect'
+            assert scoped.falsifiers, 'Every prepared idea needs its own publication contract'
+

@@ -1,0 +1,78 @@
+{
+  "version": 1,
+  "title": "Does a good random-split score survive farther mutations?",
+  "rationale": "At matched train/test sizes, the same additive mutation-feature predictor has at least 10% higher RMSE when trained on variants with ≤2 mutations and tested on ≥3 than under a random split.",
+  "metrics": {
+    "headline": {
+      "column": "effect",
+      "direction": "max"
+    },
+    "panels": [
+      {
+        "column": "effect",
+        "label": "Claim margin (≥0)"
+      },
+      {
+        "column": "baseline_error",
+        "label": "Baseline Error"
+      },
+      {
+        "column": "treatment_error",
+        "label": "Treatment Error"
+      },
+      {
+        "column": "coverage",
+        "label": "Coverage"
+      }
+    ],
+    "constraints": [
+      {
+        "column": "coverage",
+        "op": ">=",
+        "value": 1
+      }
+    ]
+  },
+  "falsifiers": [
+    {
+      "id": "margin-negative",
+      "description": "Mean signed claim margin is negative over five eligible seeds",
+      "when": {
+        "column": "effect",
+        "agg": "mean",
+        "op": "<",
+        "value": 0,
+        "min_n": 5
+      }
+    }
+  ],
+  "evidence": {},
+  "graphs": [
+    {
+      "title": "Signed margin above the preregistered target",
+      "columns": [
+        "effect"
+      ]
+    },
+    {
+      "title": "Baseline and treatment error for this idea",
+      "columns": [
+        "baseline_error",
+        "treatment_error"
+      ]
+    },
+    {
+      "title": "Reported coverage",
+      "columns": [
+        "coverage"
+      ]
+    }
+  ],
+  "samples": [
+    {
+      "kind": "samples",
+      "description": "Measured output comparison or sample gallery emitted by this idea’s executor."
+    }
+  ],
+  "implementation_note": "Use task=distance and this idea’s attributed runs only. Failed or missing runs are not measurements. Keep preregistered settings fixed and report five distinct eligible seeds; coverage=1 alone is not a completeness proof."
+}
