@@ -18,6 +18,7 @@ def main():
     parser.add_argument('--run-dir', type=Path, required=True)
     parser.add_argument('--guard-port', type=int, required=True)
     parser.add_argument('--iterations', type=int, default=100)
+    parser.add_argument('--finish-queued', action='store_true', help='Drain prescribed tests and review existing studies without new research proposals')
     args = parser.parse_args()
     sub = args.submission.resolve()
     lab = sub.name
@@ -95,6 +96,9 @@ def main():
                    error=f'{type(error).__name__}: {str(error)[:400]}')
             raise
     model_client._Messages.create = observed_model_call
+    if args.finish_queued:
+        from efferents.agents.orchestrator import Orchestrator
+        Orchestrator._refill_queue = lambda self: 0
     from efferents import cli
     record('worker_start')
     sys.argv = ['efferents', 'start', '--submission', str(sub), '--max-iterations', str(args.iterations)]

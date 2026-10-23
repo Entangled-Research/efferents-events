@@ -9,7 +9,9 @@ it with `--run-dir`, the participant's private `--env`, and `--cap`. It writes i
 loopback port to `guard-port`. `worker.py` takes that port, the same `--run-dir`,
 and a local `--submission`; it strips inherited provider credentials, uses the
 normal event connection, and records actual Researcher, executor, Writer and
-reviewer intervals. The guard supports non-streaming model calls only.
+reviewer intervals. The guard supports non-streaming model calls only. Use `worker.py --finish-queued` for an explicit
+completion stage: execute already prescribed tests and run the normal Analyst
+and Writer/three-reviewer path, without asking for further research proposals.
 
 `status.py RUN_DIRECTORY` reports measured concurrency and failures.
 `analyze.py RUN_DIRECTORY --catalogue deploy/events/oct24/starter-manifest.json`
