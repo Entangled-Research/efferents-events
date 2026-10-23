@@ -190,7 +190,7 @@ def main():
                 "artifacts": [{"kind": "samples", "path": str(output)}],
                 "elapsed_s": time.perf_counter() - started,
                 "provenance": {
-                    "executor_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+                    "executor_file": "src/experiment.py", "executor_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
                     "config_sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
                     "task": config.get("task"),
                     "seed": config.get("seed"),

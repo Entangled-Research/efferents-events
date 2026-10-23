@@ -165,7 +165,7 @@ def main():
     print(json.dumps({"run_id": identifier, "metrics": metrics,
                       "artifacts": [{"kind": "samples", "path": str(path)}],
                       "elapsed_s": time.perf_counter()-started,
-                      "provenance": {"executor_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(), "config_sha256": hashlib.sha256(config_path.read_bytes()).hexdigest(),
+                      "provenance": {"executor_file": "src/experiment.py", "executor_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(), "config_sha256": hashlib.sha256(config_path.read_bytes()).hexdigest(),
                                      "task": config.get("task"), "seed": config.get("seed"),
                                      "dataset_sha256": json.loads((Path(__file__).resolve().parents[1]/"dataset/provenance.json").read_text())["sha256"]}}))
 
