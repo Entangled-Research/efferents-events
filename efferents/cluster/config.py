@@ -335,7 +335,6 @@ ANTHROPIC_API_KEY=
 # EFFERENTS_MODEL_ANALYST=claude-sonnet-4-6
 # EFFERENTS_MAX_CONCURRENT_CALLS=12
 # EFFERENTS_ANTHROPIC_MAX_RETRIES=4
-# POPPER_PROBE_REPO=/srv/efferents/popper-probe
 # NTFY_TOPIC=                          # keeper notifications only; stripped from daemons
 OMP_NUM_THREADS=1
 """

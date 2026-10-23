@@ -153,11 +153,9 @@
         <div class="route-kicker">Optional · before your harness</div>
         <h1>Sharpen a claim until it can fail</h1>
         <p class="route-lede">
-          A Popperian probe pushes back on your idea, one question at a time, until
-          it has a falsifier an experiment could trip. The approved hypothesis is
-          handed to your coding harness, which builds the lab on your laptop and
-          connects it to the network. Skip this and the harness runs the same
-          dialogue in the terminal.
+          Describe your objective. The model drafts a bounded experiment and asks
+          only when it needs to clarify your objective or instructions. You can
+          edit the plan here, or go straight to your coding agent for setup.
         </p>
       </div>
       <div class="intake-grid">
@@ -173,7 +171,7 @@
                       placeholder="Describe the claim you want to test…" required></textarea>
             <div class="intake-form-row">
               <span class="char-count"><span id="intake-count">0</span> / 4000</span>
-              <span id="intake-thinking" class="header-meta" hidden>probe is thinking…</span>
+              <span id="intake-thinking" class="header-meta" hidden>model is thinking…</span>
               <button id="intake-send" class="primary-button" type="submit">Send</button>
             </div>
           </form>
@@ -188,7 +186,7 @@
             <pre id="intake-draft" class="intake-draft"></pre>
             <div id="intake-draft-errors" class="form-message error" hidden></div>
             <button id="intake-approve" class="primary-button" type="button" disabled>
-              Approve hypothesis
+              Use this plan
             </button>
           </section>
           <section class="panel" id="track-panel" aria-labelledby="track-title" hidden>
@@ -348,6 +346,16 @@
       <section id="lab-ideas-directory" class="panel" aria-labelledby="lab-ideas-title">
         <header class="panel-header"><h1 id="lab-ideas-title">Ideas</h1><span>Each idea has its own eval suite</span></header>
         <div id="lab-ideas-list"></div>
+      </section>
+      <section id="starter-plan-panel" class="panel" aria-labelledby="starter-plan-title" hidden>
+        <header class="panel-header"><h2 id="starter-plan-title">Research plan</h2><span>Owner instructions</span></header>
+        <form id="starter-plan-form" class="steer-form">
+          <label for="starter-plan-text">Edit the questions and test plans for this starter</label>
+          <textarea id="starter-plan-text" maxlength="24000" rows="16" required></textarea>
+          <p>Save your edits here, then ask your coding agent to apply the saved plan before running. Existing evidence stays in its original form.</p>
+          <button class="primary-button" type="submit">Save plan</button>
+          <div id="starter-plan-message" class="form-message" role="status"></div>
+        </form>
       </section>
       <div class="steer-layout">
         <section class="panel">

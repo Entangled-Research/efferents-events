@@ -1,0 +1,42 @@
+id: gfp-fitness
+title: 'Biology: Why Proteins Stop Glowing'
+summary: Use measured green fluorescent protein variants to study mutation effects
+  and honest generalization. Two laptop-scale ideas; no wet lab or protein folding
+  model.
+domain: GFP fluorescence prediction
+knobs:
+- name: task
+  description: Experiment parameter task
+  default: prediction
+- name: seed
+  description: Experiment parameter seed
+  default: 0
+- name: max_rows
+  description: Experiment parameter max_rows
+  default: 6000
+- name: ridge
+  description: Experiment parameter ridge
+  default: 10
+columns:
+- name: effect
+  description: "Signed margin above this idea\u2019s preregistered target; \u2265\
+    0 meets the target"
+  direction: max
+- name: baseline_error
+  description: baseline error
+  direction: min
+- name: treatment_error
+  description: treatment error
+  direction: min
+- name: coverage
+  description: coverage
+  direction: max
+example_falsifiers:
+- id: margin-negative
+  description: Mean signed claim margin is negative over five eligible seeds
+  when:
+    column: effect
+    agg: mean
+    op: <
+    value: 0
+    min_n: 5

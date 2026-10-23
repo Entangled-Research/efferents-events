@@ -32,8 +32,7 @@ ENV EFFERENTS_INSTALL_WHEEL=/opt/efferents/dist/efferents-0.1.4-py3-none-any.whl
     HOME=/data/home \
     XDG_CACHE_HOME=/data/cache \
     MPLCONFIGDIR=/data/cache/matplotlib \
-    EFFERENTS_HOME=/data/efferents \
-    POPPER_PROBE_REPO=/data/popper-probe
+    EFFERENTS_HOME=/data/efferents
 
 USER 10001:10001
 WORKDIR /data

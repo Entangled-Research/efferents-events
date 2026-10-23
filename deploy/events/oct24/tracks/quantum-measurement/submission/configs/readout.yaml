@@ -1,0 +1,8 @@
+task: readout
+seed: 0
+qubits: 6
+shots: 512
+field: 0.7
+flip01: 0.04
+flip10: 0.1
+calibration_fraction: 0.3

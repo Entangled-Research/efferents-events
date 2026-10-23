@@ -1575,6 +1575,7 @@ async function selectPortfolioLab(labId, openObserver) {
     renderLabTabs();
     renderNetwork();
     await refreshObserver();
+    await refreshStarterPlan();
   } catch (error) {
     console.error(error);
     if (routeLabId() === labId) {
@@ -2149,6 +2150,37 @@ function renderActivity(activities) {
   }).join("");
 }
 
+let starterPlanLab = null;
+let starterPlanRevision = null;
+let starterPlanOwner = null;
+async function refreshStarterPlan() {
+  const labId = currentRoute() === "observe" ? routeLabId() : null;
+  const panel = document.getElementById("starter-plan-panel");
+  if (!isCluster() || !isJoined() || !labId || routeIdeaId()) { panel.hidden = true; starterPlanLab = null; return; }
+  const ownerId = controlState.session?.owner?.id;
+  if (starterPlanLab === labId && starterPlanOwner === ownerId) { panel.hidden = false; return; }
+  panel.hidden = true;
+  const data = await getJSON(`/api/labs/${encodeURIComponent(labId)}/starter`);
+  if (routeLabId() !== labId || !data.available) return;
+  starterPlanLab = labId;
+  starterPlanOwner = ownerId;
+  starterPlanRevision = data.revision;
+  document.getElementById("starter-plan-text").value = data.text;
+  text("starter-plan-message", "");
+  panel.hidden = false;
+}
+document.getElementById("starter-plan-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!starterPlanLab || routeLabId() !== starterPlanLab) return;
+  try {
+    const data = await postJSON(`/api/network/labs/${encodeURIComponent(starterPlanLab)}/starter`, {
+      text: document.getElementById("starter-plan-text").value, revision: starterPlanRevision,
+    });
+    starterPlanRevision = data.revision;
+    text("starter-plan-message", "Plan saved. Ask your coding agent to apply it before running.");
+  } catch (error) { text("starter-plan-message", error.message); }
+});
+
 async function refreshObserver() {
   if (document.hidden || currentRoute() !== "observe" || !routeIdeaId()) return;
   const href = window.location.hash;
@@ -2193,6 +2225,7 @@ async function refresh() {
       renderControl(session);
     }
     await refreshObserver();
+    await refreshStarterPlan();
   } catch (error) {
     console.error(error);
   }

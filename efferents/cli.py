@@ -922,13 +922,7 @@ def _cmd_cluster(args: argparse.Namespace) -> int:
             print(f"credentials: {key_env or 'provider key'} missing for {cfg.model}",
                   file=sys.stderr)
             problems += 1
-        popper = os.environ.get("POPPER_PROBE_REPO", str(Path.home() / "Documents/popper-probe"))
-        skill = Path(popper) / "skills" / "intake" / "SKILL.md"
-        if skill.is_file():
-            print(f"popper-probe: {popper}")
-        else:
-            print(f"popper-probe: {skill} not found (set POPPER_PROBE_REPO)", file=sys.stderr)
-            problems += 1
+        print("hypothesis refinement: built in (model-led; no external checkout)")
         env_mode = cfg.paths.env.stat().st_mode & 0o777 if cfg.paths.env.exists() else None
         if env_mode is not None and env_mode & 0o077:
             print(f".env: mode {oct(env_mode)} is group/world readable; chmod 600",
@@ -1412,7 +1406,7 @@ def build_parser() -> argparse.ArgumentParser:
         return sp
 
     _cluster_parser("init", "Create a cluster directory skeleton (cluster.yaml, .env, tracks/)")
-    _cluster_parser("check", "Validate cluster.yaml, every track, credentials and popper-probe")
+    _cluster_parser("check", "Validate cluster.yaml, every track and model credentials")
     sp = _cluster_parser("keeper", "Supervise daemons, enforce caps, write status.json")
     sp.add_argument("--once", action="store_true", help="One tick, then exit")
     sp = _cluster_parser("sync", "Shared journal hub, fan-out, cross-lab reviews")

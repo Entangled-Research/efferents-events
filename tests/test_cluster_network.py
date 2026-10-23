@@ -624,3 +624,26 @@ def test_default_azure_routing_uses_luna_for_small_tasks_and_sol_for_research(tm
         assert env["EFFERENTS_MODEL" + role] == "openai/gpt-6.1-sol"
     assert config["limits"] == {"labs_per_owner":0, "proxy_cap_usd":100}
     assert config["lab_yaml"]["budget"]["total_cap_usd"] == 100
+
+
+def test_owner_can_edit_starter_plan_without_rewriting_hypothesis(tmp_path, monkeypatch):
+    from efferents.cluster.network import NetworkHub
+    from efferents.cluster.owners import OwnerStore
+    from efferents.dashboard.control import ControlError
+    cfg=make_cluster(tmp_path,monkeypatch)
+    store=OwnerStore(cfg.paths.owners)
+    owner=store.join('Masha')
+    other=store.join('Other')
+    hub=NetworkHub(cfg,{})
+    hub.register(owner,{'lab_id':'starter','hypothesis':VALID_HYP})
+    first=hub.save_starter_plan(owner,'starter',{'text':'First objective','revision':None})
+    assert hub.lab_view('starter','starter',owner_id=owner.owner_id)['text']=='First objective'
+    assert hub.lab_view('starter','starter',owner_id=other.owner_id)=={'available':False}
+    with pytest.raises(ControlError):
+        hub.save_starter_plan(other,'starter',{'text':'Wrong owner','revision':first['revision']})
+    with pytest.raises(ControlError):
+        hub.save_starter_plan(owner,'starter',{'text':'Lost update','revision':'stale'})
+    updated=hub.save_starter_plan(owner,'starter',{'text':'Revised objective','revision':first['revision']})
+    assert updated['text']=='Revised objective'
+    assert (hub.lab_dir('starter')/'hypothesis.md').read_text()==VALID_HYP
+    assert len(list((hub.lab_dir('starter')/'starter-plan-history').glob('*.json')))==1

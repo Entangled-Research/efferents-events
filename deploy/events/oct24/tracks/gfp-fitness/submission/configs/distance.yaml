@@ -1,0 +1,4 @@
+task: distance
+seed: 0
+max_rows: 6000
+ridge: 10

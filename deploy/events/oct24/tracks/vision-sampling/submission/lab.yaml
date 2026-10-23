@@ -1,0 +1,76 @@
+lab_id: masha-vision-sampling
+domain: synthetic image diffusion and spatial reasoning
+research_goal: "Compare diffusion step budgets and schedules, then test whether an\
+  \ explicit scene graph helps spatial answers. Tiny 16\xD716 images, CPU only."
+approach: The default diffusion experiment uses a fixed analytic posterior-mean denoiser
+  over 18 synthetic shape images, not a pretrained neural diffusion model. It isolates
+  sampler behavior. The spatial experiment compares local pixel and scene-graph algorithms,
+  not general vision-language model reasoning. Transfer to pretrained models or VLMs
+  is an optional follow-up requiring separate resources and validation.
+source:
+  dir: ./src/
+  allowed_patterns:
+  - '**/*.py'
+executor:
+  run_command: python3 -m experiment --config {config_path}
+  smoke_command: python3 -m experiment --config {config_path} --smoke
+  config_template: ../configs/default.yaml
+  run_timeout_s: 180
+  smoke_timeout_s: 90
+metrics:
+  headline:
+    column: effect
+    direction: max
+  panels:
+  - column: effect
+    label: "Claim margin (\u22650)"
+  - column: baseline_error
+    label: Baseline Error
+  - column: treatment_error
+    label: Treatment Error
+  - column: coverage
+    label: Coverage
+  constraints:
+  - column: coverage
+    op: '>='
+    value: 1
+budget:
+  daily_cap_usd: 100
+  total_cap_usd: 100
+  sonnet_default: true
+hypothesis_validation: popper
+peer_review:
+  enabled: true
+autonomy:
+  coder_enabled: false
+students:
+- id: few_steps
+  handle: Can we cut sampling to eight steps without breaking shapes?
+  focus: "Eight DDIM-style denoiser evaluations retain the fraction of valid shape\
+    \ samples within five percentage points of a 32-evaluation reference, using the\
+    \ same denoiser and initial noise. Always set config.task=few_steps for your experiments.\
+    \ Fix 256 samples and paired initial noises per seed. Validity is nearest-template\
+    \ pixel MSE <0.05. Test seeds 0\u20134. Report validity, nearest-template error,\
+    \ mode total-variation and measured time; a quality pass alone does not establish\
+    \ diversity. Steps must remain exactly 8 versus 32 for this claim."
+- id: schedule
+  handle: Where should a small sampler spend its steps?
+  focus: "A quadratic late-focused eight-evaluation schedule reduces total-variation\
+    \ distance of the generated mode distribution from uniform by at least 0.02 versus\
+    \ an eight-evaluation uniform schedule. Always set config.task=schedule for your\
+    \ experiments. Hold the clean-image bank, denoiser, initial noise, sample count\
+    \ and evaluation budget fixed. Compare schedules over seeds 0\u20134; report validity\
+    \ alongside diversity. A late-focused schedule might fail or help fidelity while\
+    \ hurting diversity."
+- id: reasoning
+  handle: Do intermediate scene graphs help with left and right?
+  focus: "An intermediate color-mask centroid scene graph improves left/right accuracy\
+    \ by at least five percentage points over a ridge predictor on downsampled pixels\
+    \ when test scenes use a wider translation range. Always set config.task=reasoning\
+    \ for your experiments. Both methods receive only rendered RGB pixels. Train the\
+    \ pixel predictor on 600 labeled scenes; evaluate both on the same 256 shifted\
+    \ scenes for seeds 0\u20134. Generator coordinates define labels but must never\
+    \ be passed to the predictor. Report accuracy and failure galleries. The graph\
+    \ encodes the relation explicitly, so this is a pipeline comparison, not a matched-capacity\
+    \ reasoning claim."
+default_student_id: few_steps

@@ -9,7 +9,8 @@ TEMPLATE = """\
 # Launch an efferents research lab for the event "{name}"
 
 You are the setup agent for a human who is at an efferents event. Work
-conversationally, ask one question at a time, and follow this file in order.
+autonomously from the objective and instructions, and follow this file in order.
+Ask a focused question only when a missing objective, instruction or resource blocks work.
 The outcome is a lab on THIS laptop, joined to the event's shared network.
 
 The human has already joined the event in their browser and has a **network
@@ -23,14 +24,14 @@ send the network token to `/api/join`.
 Hub: {hub_url}
 
 There is no private/public lab choice in this setup. Do not ask the participant
-for a lab visibility or placement mode during Popper intake or after approval.
+for a lab visibility or placement mode during hypothesis refinement.
 They have already selected this event. If an earlier turn asked that question,
 skip it and continue from the saved research answers. This does not grant
 permission to upload source, datasets, drafts or other private material.
 
 ## 1. Where the lab lives
 
-Ask for a short lab name (`lab_id`, kebab-case, matching
+Infer a short descriptive lab name from the objective (`lab_id`, kebab-case, matching
 `[A-Za-z0-9][A-Za-z0-9._-]{{0,127}}`), then create a fresh directory with that
 name in the current folder and `cd` into it. Run `git init` there. Do not
 build the lab inside another project.
@@ -128,32 +129,30 @@ Confirm that the returned session belongs to this owner, is `approved` or
 `bound`, and its draft has `valid: true` and `gate: passed`. Copy it to
 `popper-corpus/<slug>/hypothesis.md`. Do not make the human repeat the dialogue.
 
-If there is no approved browser session, run the intake dialogue below.
+If there is no approved browser session, refine the hypothesis yourself using the
+objective, existing instructions and the available executor. Do not install, invoke
+or ask the human to complete Popper Probe. Do not require a staged interview.
 
-Run the popper-probe intake dialogue WITH the human. Use the
-`popper-probe:intake` skill if installed; otherwise read and follow
+For a starter, show the short lab/idea menu from `tracks` and its README. If the
+human has already chosen a direction, continue without asking them to choose again.
+Infer reversible choices such as seeds and a bounded first comparison; record them
+as assumptions. Ask only when the objective, instructions or essential resource
+is missing or contradictory. Preserve the human's objective verbatim.
 
-```text
-https://raw.githubusercontent.com/mashathepotato/popper-probe/main/skills/intake/SKILL.md
-```
+Write `hypothesis.md` and `popper-corpus/<slug>/hypothesis.md` with YAML fields
+`slug`, `created`, `status: active`, `falsifiability_gate: passed`, and
+`literature_pass: none`, plus these nonempty Markdown sections:
+`## Original framing`, `## Operational restatement`, `## Falsifier(s)`, and
+`## Test design`. Specify the intervention, matched baseline, data split, metric,
+threshold, seeds, compute bound and an outcome that would refute the claim.
+Critique the design internally and record assumptions and alternative explanations.
+Do not invent evidence or literature checks. A passed contract is permission to
+measure a claim, never evidence that the claim is true.
 
-Sparring partner, not judge: one question at a time. The claim will be tested
-by an automated experiment runner that reports numeric metrics per run, so
-push the operational restatement and the falsifier toward quantities such a
-runner could measure. The tracks in `.event-config.json` say what each
-executor can vary and measure; use them as orientation, not as a cage.
-
-The dialogue must produce `popper-corpus/<slug>/hypothesis.md` with
-`falsifiability_gate: passed` and `status: active`. Show the whole draft to
-the human and get approval before writing it. Validate it:
-
-```bash
-git clone --depth 1 https://github.com/mashathepotato/popper-probe .popper-probe 2>/dev/null || true
-python3 .popper-probe/scripts/validate_hypothesis.py popper-corpus/<slug>/hypothesis.md
-```
-
-Copy the approved file to `./hypothesis.md`. If the gate fails, help the human
-reformulate; do not build a lab around an unfalsifiable claim.
+Use `efferents.agents.popper_gate.validate_hypothesis_text` to check the draft;
+this validator is built in and needs no separate repository. Correct errors
+without repeatedly questioning the human. Leave a concise readable plan they
+can edit. Do not build an experiment around a genuinely untestable objective.
 
 ## 4. Route to an executor or build a new one
 
@@ -172,6 +171,17 @@ cp -R <track_id>/submission/. .
 cp <track_id>/track.yaml ./track.yaml
 rm -rf <track_id>
 ```
+
+If the chosen track supplies `starter-hypothesis.md` and `ideas/`, reuse the
+chosen idea's prepared contract instead of repeating intake. Copy that idea's
+hypothesis into `./hypothesis.md` and its config to `configs/default.yaml`.
+Install the track's `requirements.txt` in this lab's virtual environment.
+Use its README and idea contracts to distinguish the first experiment from
+optional follow-ups. If the human chose one idea only, do not activate the rest.
+
+For an existing lab, fetch `/api/labs/<lab_id>/starter` with its owner's token.
+If `available: true`, apply its saved research plan to the local working files
+before running. Do not rewrite old campaigns, observations or billing records.
 
 Now the directory holds `README.md`, `lab.yaml`, `src/`, `configs/` from the
 track plus your `hypothesis.md` and `popper-corpus/`.
@@ -195,8 +205,8 @@ Edit `lab.yaml`:
 - replace the `budget`, `cadence`, `autonomy`, and `routing` blocks with the `lab_yaml`
   block from `.event-config.json` (the organizer's caps and event cadence);
 - add `falsifiers:` — ask the hub to map the hypothesis's falsifier onto the
-  track's ledger columns, show the human the rules, and keep the ones they
-  agree with:
+  track's ledger columns, inspect the rules against the stated objective,
+  and correct unsupported mappings yourself:
 
 ```bash
 curl -sS -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \\
@@ -212,7 +222,7 @@ curl -sS -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
 
 Write `.env` from the `env` block of `.event-config.json`, one `KEY=value`
 per line, plus `EFFERENTS_NETWORK_TRACK=<track_id>`. Add `.env`,
-`.event-config.json`, `.popper-probe/` and `lab/` to `.gitignore`. Then:
+`.event-config.json` and `lab/` to `.gitignore`. Then:
 
 ```bash
 .venv/bin/efferents validate --submission .
@@ -268,9 +278,11 @@ submission; report the target lab and campaign. If it returns `action: create`,
 continue below. Different owners, executors, datasets, or uncertain matches
 remain separate labs.
 
-Present the launch contract (lab id, hypothesis title and falsifier, track,
-run command, headline metric, falsifier rules, caps) and ask for explicit
-approval. First persist one real bounded experiment through the normal ledger:
+Record the launch contract (lab id, hypothesis title and falsifier, track,
+run command, headline metric, falsifier rules, caps). If the human already asked
+you to set up and run research, proceed within that authorization; do not ask
+for routine re-approval. If they asked only for a draft, leave it ready without
+starting research. First persist one real bounded experiment through the normal ledger:
 
 ```bash
 .venv/bin/efferents trial --submission . --runs 1
@@ -349,3 +361,14 @@ def render_intake_md(cfg: ClusterConfig, hub_url: str) -> str:
         pip_spec=f"git+{cfg.network.repo_url}.git@{cfg.network.install_ref}",
         heartbeat_s=cfg.network.heartbeat_s,
     )
+
+
+def render_starters_md(cfg, tracks, hub_url):
+    lines = [f"# {cfg.name}: start here", "", "Choose one lab and begin with its first idea. Your coding agent handles setup and experiment refinement. Tell it your objective; it asks only when instructions or essential resources are missing.", "", f"1. Open {hub_url}/#join and join the event.", "2. Save your private sign-in key.", "3. In an empty local folder, paste the website’s combined setup instruction into your coding agent.", "4. Name a starter below. Its first comparison is already scoped; you can redirect it in ordinary language.", "", "Experiments run on your laptop. Each participant has $100 shared across all labs; the whole event shares $3,000. No separate Popper Probe setup is needed.", ""]
+    for track in tracks.values():
+        lines += [f"## {track.title}", "", track.summary, ""]
+        for index, idea in enumerate(track.lab_yaml.get("students", []), 1):
+            lines.append(f"{index}. {idea.get('handle') or idea['id']}")
+        lines += ["", f"Tell your agent: ‘Use the {track.id} starter. Begin with its first idea and preserve the baseline and measurement contract.’", ""]
+    lines += ["These are proposed experiments, not findings. Keep failures and inconclusive results. The quantum and image samplers are controlled simulations; the biology starter uses measured GFP fluorescence data. A complete valid three-reviewer board is required for journal acceptance.", ""]
+    return "\n".join(lines)

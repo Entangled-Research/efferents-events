@@ -1,0 +1,111 @@
+[
+  {
+    "id": "quantum-measurement",
+    "title": "Quantum: Learn from Fewer Shots",
+    "domain": "quantum measurement simulation",
+    "summary": "Reconstruct a small quantum measurement distribution and test whether calibration is worth its shot cost. CPU only; no quantum hardware.",
+    "config": {
+      "task": "correlations",
+      "seed": 0,
+      "qubits": 6,
+      "shots": 512,
+      "field": 0.7,
+      "flip01": 0.04,
+      "flip10": 0.1,
+      "calibration_fraction": 0.3
+    },
+    "source": "https://quantum.cloud.ibm.com/docs/en/guides/error-mitigation-and-suppression-techniques",
+    "boundary": "A six-qubit transverse-field Ising simulation. Computational-basis probabilities do not establish entanglement or quantum advantage. The exact reference is for scoring only; fits must use finite-shot samples.",
+    "ideas": [
+      {
+        "id": "correlations",
+        "title": "Do correlations help when measurements are scarce?",
+        "question": "Can a simple correlated model reconstruct quantum measurement outcomes better than treating every qubit independently?",
+        "claim": "At 512 signal shots on the six-qubit Ising ground state with field 0.7, an adjacent-qubit conditional model reduces total-variation error by at least 10% versus independent Bernoulli fits on the same samples.",
+        "test": "Compare the two fitted distributions against the exact 64-outcome reference. Repeat seeds 0\u20134, then vary shots (128, 512, 2048) and field (0.4, 0.7, 1.2). Do not train on reference probabilities.",
+        "task": "correlations"
+      },
+      {
+        "id": "readout",
+        "title": "Is correcting noisy measurements worth the calibration cost?",
+        "question": "Does readout calibration reduce distribution error when its extra measurements count against the same budget?",
+        "claim": "At 512 total shots and asymmetric readout noise (0\u21921=0.04, 1\u21920=0.10), calibrated correction reduces total-variation error by at least 10% versus uncorrected sampling. The correction arm spends 30% of its total shots on calibration.",
+        "test": "Each arm gets 512 total shots. Estimate each qubit\u2019s calibration errors using calibration shots, invert the estimated channel, project negative probabilities to zero and renormalize. Compare to the exact reference over seeds 0\u20134. Repeat at 128 and 2048 shots; report bias/variance and projection effects.",
+        "task": "readout"
+      }
+    ]
+  },
+  {
+    "id": "gfp-fitness",
+    "title": "Biology: Why Proteins Stop Glowing",
+    "domain": "GFP fluorescence prediction",
+    "summary": "Use measured green fluorescent protein variants to study mutation effects and honest generalization. Two laptop-scale ideas; no wet lab or protein folding model.",
+    "config": {
+      "task": "prediction",
+      "seed": 0,
+      "max_rows": 6000,
+      "ridge": 10
+    },
+    "source": "https://www.nature.com/articles/nature17995",
+    "boundary": "Predicts measured log fluorescence for variants of one GFP protein, not thermodynamic stability or arbitrary proteins. The published paper already studies epistasis; this is a bounded reproduction/method comparison, not a claim of discovering epistasis. Dark variants have an assay floor; no causal or wet-lab conclusions.",
+    "ideas": [
+      {
+        "id": "prediction",
+        "title": "Do mutation identities matter more than mutation count?",
+        "question": "How much do mutation identities add beyond the number of changes to the protein?",
+        "claim": "On a fixed content-selected 6000-variant subset, a ridge model with hashed mutation-identity features reduces held-out fluorescence RMSE by at least 10% relative to a mutation-count mean predictor.",
+        "test": "Use 70/30 train/test splits for seeds 0\u20134. Fit feature weights and count-bin means on training labels only; fix ridge=10 before testing. Report errors by mutation count and show a predicted-versus-measured scatter. Hashing collisions are a known model limitation. Do not tune on test labels.",
+        "task": "prediction"
+      },
+      {
+        "id": "distance",
+        "title": "Does a good random-split score survive farther mutations?",
+        "question": "Can a predictor trained close to the original protein handle variants with more mutations?",
+        "claim": "At matched train/test sizes, the same additive mutation-feature predictor has at least 10% higher RMSE when trained on variants with \u22642 mutations and tested on \u22653 than under a random split.",
+        "test": "Run the random and mutational-distance protocols with the same fixed data subset, model, regularization and matched sizes. Seeds 0\u20134 resample within each protocol. Report each distance stratum; this tests a distribution shift, not a pure causal effect of distance.",
+        "task": "distance"
+      }
+    ]
+  },
+  {
+    "id": "vision-sampling",
+    "title": "Vision: Sample Faster, Reason Spatially",
+    "domain": "synthetic image diffusion and spatial reasoning",
+    "summary": "Compare diffusion step budgets and schedules, then test whether an explicit scene graph helps spatial answers. Tiny 16\u00d716 images, CPU only.",
+    "config": {
+      "task": "few_steps",
+      "seed": 0,
+      "samples": 256,
+      "steps": 8,
+      "reference_steps": 32
+    },
+    "source": "https://arxiv.org/abs/2010.02502",
+    "boundary": "The default diffusion experiment uses a fixed analytic posterior-mean denoiser over 18 synthetic shape images, not a pretrained neural diffusion model. It isolates sampler behavior. The spatial experiment compares local pixel and scene-graph algorithms, not general vision-language model reasoning. Transfer to pretrained models or VLMs is an optional follow-up requiring separate resources and validation.",
+    "ideas": [
+      {
+        "id": "few_steps",
+        "title": "Can we cut sampling to eight steps without breaking shapes?",
+        "question": "Where is the quality-versus-compute tradeoff for diffusion sampling?",
+        "claim": "Eight DDIM-style denoiser evaluations retain shape validity within five percentage points AND mode total-variation error within 0.05 of a 32-evaluation reference, using the same denoiser and initial noise.",
+        "test": "Fix 256 samples and paired initial noises per seed. Validity is nearest-template pixel MSE <0.05. Test seeds 0\u20134. Report validity, nearest-template error, mode total-variation and measured time; a quality pass alone does not establish diversity. Steps must remain exactly 8 versus 32 for this claim.",
+        "task": "few_steps"
+      },
+      {
+        "id": "schedule",
+        "title": "Where should a small sampler spend its steps?",
+        "question": "At the same eight evaluations, does concentrating steps near the clean image preserve more modes?",
+        "claim": "A quadratic late-focused eight-evaluation schedule reduces total-variation distance of the generated mode distribution from uniform by at least 0.02 versus an eight-evaluation uniform schedule.",
+        "test": "Hold the clean-image bank, denoiser, initial noise, sample count and evaluation budget fixed. Compare schedules over seeds 0\u20134; report validity alongside diversity. A late-focused schedule might fail or help fidelity while hurting diversity.",
+        "task": "schedule"
+      },
+      {
+        "id": "reasoning",
+        "title": "Do intermediate scene graphs help with left and right?",
+        "question": "Is it better to extract objects and their positions before answering a spatial question?",
+        "claim": "An intermediate color-mask centroid scene graph improves left/right accuracy by at least five percentage points over a ridge predictor on downsampled pixels when test scenes use a wider translation range.",
+        "test": "Both methods receive only rendered RGB pixels. Train the pixel predictor on 600 labeled scenes; evaluate both on the same 256 shifted scenes for seeds 0\u20134. Generator coordinates define labels but must never be passed to the predictor. Report accuracy and failure galleries. The graph encodes the relation explicitly, so this is a pipeline comparison, not a matched-capacity reasoning claim.",
+        "task": "reasoning"
+      }
+    ]
+  }
+]

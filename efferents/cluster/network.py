@@ -201,7 +201,7 @@ class NetworkHub:
                                    f"{self.cfg.labs.max_per_owner}.", status=409)
             reg = {
                 "lab_id": lab_id,
-                "display_name": existing.get("display_name"),
+                "display_name": str(payload.get("display_name") or existing.get("display_name") or lab_id)[:100],
                 "owner_id": owner.owner_id,
                 "original_owner_id": existing.get("original_owner_id") or existing.get("owner_id") or owner.owner_id,
                 "owner_name": owner.name,
@@ -221,6 +221,32 @@ class NetworkHub:
                     track=reg["track"], renewed=bool(existing))
         return {"registered": True, "lab_id": lab_id, "heartbeat_s": self.cfg.network.heartbeat_s,
                 "pull_s": self.cfg.network.pull_s, "liveness_supported": True}
+
+    def save_starter_plan(self, owner: Owner, lab_id: str, payload: dict) -> dict:
+        """Save owner instructions with conflict detection; never rewrite evidence."""
+        self.require_owner(owner, lab_id)
+        text = payload.get("text")
+        if not isinstance(text, str) or not 1 <= len(text.strip()) <= 24000 or "\x00" in text:
+            raise ControlError("Use a research plan of 1–24,000 characters.")
+        directory = self.lab_dir(lab_id)
+        if inactive(directory):
+            raise ControlError("This lab was deleted.", status=410)
+        with self._lock:
+            path = directory / "starter-plan.json"
+            previous = _read_json(path)
+            if payload.get("revision") != previous.get("revision"):
+                raise ControlError("This plan changed in another window. Reload before saving.", status=409)
+            revision = hashlib.sha256(text.encode()).hexdigest()
+            if previous:
+                history = directory / "starter-plan-history"
+                history.mkdir(exist_ok=True)
+                _write_json(history / f"{previous['revision']}.json", previous)
+            plan = {"text": text, "revision": revision, "updated_at": _now(),
+                    "updated_by": owner.owner_id}
+            _write_json(path, plan)
+        write_event(self.paths, "starter_plan_saved", owner_id=owner.owner_id,
+                    lab_id=lab_id, revision=revision)
+        return {"available": True, **plan}
 
     def delete(self, owner: Owner, lab_id: str, payload: dict, *, idea: bool = False) -> dict:
         self.require_owner(owner, lab_id)
@@ -591,6 +617,11 @@ class NetworkHub:
         if inactive(d):
             raise ControlError("Lab deleted by its owner; evidence retained.", status=410)
         beat = self._heartbeat(d)
+        if kind == "starter":
+            plan = _read_json(d / "starter-plan.json")
+            if owner_id != reg.get("owner_id") or not plan:
+                return {"available": False}
+            return {"available": True, **plan}
         if kind.startswith("ideas/"):
             student_id = kind.removeprefix("ideas/")
             if inactive(d, student_id):

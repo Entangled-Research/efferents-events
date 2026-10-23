@@ -1,4 +1,4 @@
-"""Browser popper-probe dialogue: sessions, turns, drafts, approval, binding.
+"""Browser model-led hypothesis refinement: sessions, turns, drafts, approval, binding.
 
 State per session lives under ``intake/<owner_id>/<session_id>/``:
 ``session.json`` (state machine + spend), ``transcript.jsonl`` (every turn),
@@ -33,8 +33,8 @@ from efferents.dashboard.control import ControlError
 
 STATES = ("open", "drafted", "unfalsifiable", "approved", "bound", "created", "abandoned")
 OPENING_LINE = (
-    "Describe the claim you want to test, in your own words. I will push back "
-    "until it has a falsifier an experiment could actually trip."
+    "Describe what you want to investigate. I will prepare a bounded test and "
+    "ask only if I need to clarify your objective or instructions."
 )
 
 
@@ -256,7 +256,7 @@ class IntakeStore:
     def run_turn(self, owner: Owner, session_id: str, text: str) -> dict:
         text = (text or "").strip()
         if not text:
-            raise ControlError("Type something for the probe to work with.")
+            raise ControlError("Describe the objective you want to investigate.")
         if len(text) > self.cfg.intake.message_max_chars:
             raise ControlError(
                 f"Messages are at most {self.cfg.intake.message_max_chars} characters."
@@ -267,7 +267,7 @@ class IntakeStore:
             raise ControlError("The event budget is frozen; the dialogue is paused.", status=409)
         lock = self._lock_for(session_id)
         if not lock.acquire(blocking=False):
-            raise ControlError("The probe is still thinking; wait for its reply.", status=409)
+            raise ControlError("The model is still thinking; wait for its reply.", status=409)
         try:
             session = self._load(owner, session_id)
             if session.state in ("approved", "bound", "created", "abandoned"):

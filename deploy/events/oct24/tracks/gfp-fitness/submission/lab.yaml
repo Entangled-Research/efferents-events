@@ -1,0 +1,65 @@
+lab_id: masha-gfp-fitness
+domain: GFP fluorescence prediction
+research_goal: Use measured green fluorescent protein variants to study mutation effects
+  and honest generalization. Two laptop-scale ideas; no wet lab or protein folding
+  model.
+approach: Predicts measured log fluorescence for variants of one GFP protein, not
+  thermodynamic stability or arbitrary proteins. The published paper already studies
+  epistasis; this is a bounded reproduction/method comparison, not a claim of discovering
+  epistasis. Dark variants have an assay floor; no causal or wet-lab conclusions.
+source:
+  dir: ./src/
+  allowed_patterns:
+  - '**/*.py'
+executor:
+  run_command: python3 -m experiment --config {config_path}
+  smoke_command: python3 -m experiment --config {config_path} --smoke
+  config_template: ../configs/default.yaml
+  run_timeout_s: 180
+  smoke_timeout_s: 90
+metrics:
+  headline:
+    column: effect
+    direction: max
+  panels:
+  - column: effect
+    label: "Claim margin (\u22650)"
+  - column: baseline_error
+    label: Baseline Error
+  - column: treatment_error
+    label: Treatment Error
+  - column: coverage
+    label: Coverage
+  constraints:
+  - column: coverage
+    op: '>='
+    value: 1
+budget:
+  daily_cap_usd: 100
+  total_cap_usd: 100
+  sonnet_default: true
+hypothesis_validation: popper
+peer_review:
+  enabled: true
+autonomy:
+  coder_enabled: false
+students:
+- id: prediction
+  handle: Do mutation identities matter more than mutation count?
+  focus: "On a fixed content-selected 6000-variant subset, a ridge model with hashed\
+    \ mutation-identity features reduces held-out fluorescence RMSE by at least 10%\
+    \ relative to a mutation-count mean predictor. Always set config.task=prediction\
+    \ for your experiments. Use 70/30 train/test splits for seeds 0\u20134. Fit feature\
+    \ weights and count-bin means on training labels only; fix ridge=10 before testing.\
+    \ Report errors by mutation count and show a predicted-versus-measured scatter.\
+    \ Hashing collisions are a known model limitation. Do not tune on test labels."
+- id: distance
+  handle: Does a good random-split score survive farther mutations?
+  focus: "At matched train/test sizes, the same additive mutation-feature predictor\
+    \ has at least 10% higher RMSE when trained on variants with \u22642 mutations\
+    \ and tested on \u22653 than under a random split. Always set config.task=distance\
+    \ for your experiments. Run the random and mutational-distance protocols with\
+    \ the same fixed data subset, model, regularization and matched sizes. Seeds 0\u2013\
+    4 resample within each protocol. Report each distance stratum; this tests a distribution\
+    \ shift, not a pure causal effect of distance."
+default_student_id: prediction

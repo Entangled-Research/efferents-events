@@ -1,0 +1,5 @@
+task: few_steps
+seed: 0
+samples: 256
+steps: 8
+reference_steps: 32

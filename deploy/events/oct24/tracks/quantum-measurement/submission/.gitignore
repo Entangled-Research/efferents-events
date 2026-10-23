@@ -1,0 +1,6 @@
+.env
+.event-config.json
+.venv/
+lab/
+artifacts/
+__pycache__/

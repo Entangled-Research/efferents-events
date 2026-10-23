@@ -5,24 +5,14 @@ import shutil
 from pathlib import Path
 from types import SimpleNamespace
 
-import pytest
 
 FIXTURE_TRACK = Path(__file__).parent / "fixtures" / "cluster_track"
 SMOKE_HYP = Path(__file__).resolve().parents[1] / "examples" / "smoke-lab" / "hypothesis.md"
 
 
 def make_popper_repo(monkeypatch, tmp_path: Path) -> Path:
-    repo = tmp_path / "popper-probe"
-    (repo / "skills" / "intake").mkdir(parents=True)
-    (repo / "scripts").mkdir()
-    real_skill = Path.home() / "Documents/popper-probe/skills/intake/SKILL.md"
-    real_validator = Path.home() / "Documents/popper-probe/scripts/validate_hypothesis.py"
-    (repo / "skills/intake/SKILL.md").write_text(
-        real_skill.read_text() if real_skill.exists() else "# Stub SKILL.md\n"
-    )
-    if not real_validator.exists():
-        pytest.skip("Real popper-probe validate_hypothesis.py not available")
-    (repo / "scripts/validate_hypothesis.py").write_text(real_validator.read_text())
+    # Compatibility fixture: the external path must be absent and unused.
+    repo = tmp_path / "no-external-probe"
     monkeypatch.setenv("POPPER_PROBE_REPO", str(repo))
     return repo
 

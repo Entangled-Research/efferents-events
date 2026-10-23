@@ -46,7 +46,7 @@ def test_session_lifecycle_to_drafted(intake):
     assert payload["session"]["first_claim"].startswith("I think a bigger")
     assert payload["session"]["spend_usd"] > 0
     system = clients[-1].calls[0]["system"]
-    assert "INTERACTIVE WEB MODE" in system and "Today: 2026-09-20" in system
+    assert "Do not ask for routine approval" in system and "Today: 2026-09-20" in system
     assert "coefficient-sweep" in system  # track catalogue as orientation
     # Messages start with the user's turn, never the static opening line.
     assert clients[-1].calls[0]["messages"][0]["role"] == "user"
@@ -213,7 +213,7 @@ def test_unknown_session_and_bad_input(intake):
         store.get(ada, "../escape")
     assert exc.value.status == 404
     sid = store.create_session(ada)["session"]["session_id"]
-    with pytest.raises(ControlError, match="Type something"):
+    with pytest.raises(ControlError, match="Describe the objective"):
         store.run_turn(ada, sid, "   ")
 
 
