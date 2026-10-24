@@ -645,7 +645,7 @@ def test_owner_can_edit_starter_plan_without_rewriting_hypothesis(tmp_path, monk
         hub.save_starter_plan(other,'starter',{'text':'Wrong owner','revision':first['revision']})
     with pytest.raises(ControlError):
         hub.save_starter_plan(owner,'starter',{'text':'Lost update','revision':'stale'})
-    updated=hub.save_starter_plan(owner,'starter',{'text':'Revised objective','revision':first['revision']})
-    assert updated['text']=='Revised objective'
+    updated=hub.save_starter_plan(owner,'starter',{'text':'Revised objective' * 4000,'revision':first['revision']})
+    assert updated['text']=='Revised objective' * 4000
     assert (hub.lab_dir('starter')/'hypothesis.md').read_text()==VALID_HYP
     assert len(list((hub.lab_dir('starter')/'starter-plan-history').glob('*.json')))==1

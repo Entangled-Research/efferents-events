@@ -32,8 +32,8 @@ def queue_command(hub, owner, lab_id: str, action: str, payload: dict) -> dict:
         text = (f"Delete idea {payload.get('idea_id')} requested by {owner.name}; evidence retained"
                 if action == "deleteidea" else f"{action} requested by {owner.name}")
     mode = str(payload.get("mode") or "auto")
-    if not text or len(text) > 4000 or "\x00" in text or mode not in STEERING_MODES:
-        raise ControlError("Use a steering message of 1–4,000 characters and a valid mode.")
+    if not text or "\x00" in text or mode not in STEERING_MODES:
+        raise ControlError("Provide a steering message and a valid mode.")
     record = {"id": "cmd_" + secrets.token_hex(12), "action": action, "text": text,
               "mode": mode, "by": f"participant:{owner.name}", "owner_id": owner.owner_id,
               "idea_id": payload.get("idea_id") if action == "deleteidea" else None,
@@ -115,7 +115,7 @@ def apply_commands(submission: Path, lab_root: Path, commands: list[dict]) -> No
                     "metrics": raw["metrics"], "falsifiers": rules,
                     "evidence": {},
                     "graphs": [{"title": idea["title"], "columns": [cfg.metrics.headline.column]}],
-                    "samples": [], "rationale": idea["focus"][:2000],
+                    "samples": [], "rationale": idea["focus"],
                     "submission_id": identifier,
                     "implementation_note": "Human proposal; no inherited observations or scientific verdict. A new campaign must pass the internal hypothesis gate.",
                 })

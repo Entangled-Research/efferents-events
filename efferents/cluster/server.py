@@ -24,7 +24,6 @@ _SESSION_ROUTE = re.compile(r"^/api/intake/sessions/(?P<sid>s_[0-9a-f]{12})(?:/(
 _NET_LAB_ROUTE = re.compile(rf"^/api/network/labs/(?P<lab_id>{LAB_ID_PATTERN})/(?P<verb>[a-z]+)$")
 _NET_TRACK_ROUTE = re.compile(r"^/api/network/tracks/(?P<track_id>[A-Za-z0-9][A-Za-z0-9._-]{0,63})\.tar\.gz$")
 _LAB_VIEW_ROUTE = re.compile(rf"^/api/labs/(?P<lab_id>{LAB_ID_PATTERN})/(?P<kind>control|state|runs|papers|activity|evidence|verdict|starter|ideas/[A-Za-z0-9_-]+)$")
-_NETWORK_BODY = 1024 * 1024
 
 
 class ClusterHandler(DashboardHandler):
@@ -281,7 +280,7 @@ class ClusterHandler(DashboardHandler):
             owner = self._require_joined()
             if not self.cluster.network_limiter.allow(owner.owner_id):
                 raise ControlError("Too many hub requests; slow down.", status=429)
-            self._network_post(owner, path, self._read_json(_NETWORK_BODY))
+            self._network_post(owner, path, self._read_json())
             return True
         if path == "/api/login":
             if not self.cluster.login_limiter.allow(self._client_ip()):

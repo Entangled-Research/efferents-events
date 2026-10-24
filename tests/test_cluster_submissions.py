@@ -168,3 +168,23 @@ def test_slow_submission_does_not_block_other_participants(hub):
         finally:
             release.set()
         assert slow.result()['action']=='create'
+
+
+def test_long_question_preserved_and_broad_fluorescence_routes_to_existing_lab(hub):
+    port, ctx, scripts, *_ = hub
+    joined, _ = _join(port, 'Existing researcher')
+    _request(port, '/api/network/labs', method='POST', headers=_bearer(joined),
+             payload={'lab_id': 'gfp', 'domain': 'GFP fluorescence prediction', 'hypothesis': VALID_HYP})
+    _, auth = _join(port, 'Contributor')
+    original = ('Predict protein fluorescence. ' + 'Preserve these research details. ' * 2000).strip()
+    data = json.loads(decision('append', 'gfp', broad=True, domain='GFP fluorescence prediction'))
+    data['objective'] = original
+    data['ideas'][0]['focus'] = original
+    scripts['replies'].append(json.dumps(data))
+    status, result, _ = submit(port, auth, original)
+    assert status == 200 and result['action'] == 'append', result
+    assert result['lab_id'] == 'gfp' and result['text'] == original
+    assert result['objective'] == original and result['ideas'][0]['focus'] == original
+    assert len(result['ideas']) == 3
+    commands = json.loads((ctx.hub.lab_dir('gfp') / 'commands.json').read_text())
+    assert commands[0]['text'] == original

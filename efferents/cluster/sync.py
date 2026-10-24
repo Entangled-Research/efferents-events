@@ -91,7 +91,7 @@ def publication_body(lab: dict, journal: Path, entry: dict) -> str | None:
             or set(review_scores(entry["body"])) != set(PERSONAS)):
         return None
     paper = journal.parent / f"{campaign}.md"
-    if not paper.is_file() or not paper.resolve().is_relative_to(journal.parent.resolve()) or paper.stat().st_size > 200_000:
+    if not paper.is_file() or not paper.resolve().is_relative_to(journal.parent.resolve()):
         return None
     manuscript = paper.read_text()
     if not manuscript.strip():

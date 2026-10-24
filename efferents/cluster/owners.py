@@ -20,7 +20,6 @@ from pathlib import Path
 from efferents.dashboard.control import ControlError
 
 COOKIE_NAME = "efferents_owner"
-_MAX_NAME = 40
 
 
 @dataclass
@@ -48,8 +47,6 @@ def validate_name(name: str) -> str:
     name = " ".join(str(name or "").split())
     if not name:
         raise ControlError("Pick a name so other labs can see who steers this one.")
-    if len(name) > _MAX_NAME:
-        raise ControlError(f"Names are at most {_MAX_NAME} characters.")
     if not name.isprintable() or any(ch in name for ch in "<>\"'`{}"):
         raise ControlError("Names may only use plain printable characters.")
     return name

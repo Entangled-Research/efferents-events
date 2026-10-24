@@ -189,7 +189,7 @@ def test_azure_openai_proxy_rejects_unpriced_or_unbounded_calls(tmp_path, monkey
     base = {"model": "gpt-5.6-sol", "max_tokens": 100,
             "messages": [{"role": "user", "content": "hello"}]}
     for changed in ({"model": "gpt-4o"}, {"stream": True}, {"n": 2},
-                    {"max_tokens": 32769}, {"temperature": 0.5}):
+                    {"temperature": 0.5}):
         with pytest.raises(ProxyError) as exc:
             px.forward(owner_id="o1", path="/v1/chat/completions",
                        body=json.dumps({**base, **changed}).encode(), headers={},
@@ -277,7 +277,7 @@ def test_anthropic_cannot_bypass_allocation_with_unbounded_or_unpriced_calls(tmp
     cfg = make_cluster(tmp_path, monkeypatch)
     calls = []
     px = ModelProxy(cfg, opener=lambda req, timeout=0: calls.append(req))
-    for max_tokens in (-100, 0, True, "100", 32769):
+    for max_tokens in (-100, 0, True, "100"):
         with pytest.raises(ProxyError) as caught:
             px.forward(owner_id="o1", path="/v1/messages", body=_request(max_tokens=max_tokens),
                        headers={}, api_key="key")
@@ -403,3 +403,21 @@ def test_throttle_retry_keeps_one_hold_and_charges_only_success(tmp_path, monkey
     assert len(holds[0])==1 and holds[0][0]['id']==holds[1][0]['id']
     assert len((cfg.paths.root/'proxy/o1/budget.jsonl').read_text().splitlines())==1
     assert coordinator(cfg).reservations()==[]
+
+
+def test_large_coding_context_and_output_allowance_are_per_request(tmp_path, monkeypatch):
+    cfg = make_cluster(tmp_path, monkeypatch, proxy={'cap_per_owner_usd': 100, 'cap_total_usd': 3000})
+    monkeypatch.setenv('EFFERENTS_AZURE_OPENAI_ENDPOINT', 'https://resource.openai.azure.com/openai/v1')
+    seen = []
+    def opener(request, timeout=0):
+        seen.append(json.loads(request.data))
+        return FakeResponse({'model': 'gpt-6.1-sol', 'usage': {'input_tokens': 100, 'output_tokens': 10}})
+    px = ModelProxy(cfg, opener=opener)
+    body = json.dumps({'model': 'gpt-6.1-sol', 'input': 'x' * 600_000, 'max_output_tokens': 65536}).encode()
+    for owner in ['alice', 'bob', 'alice']:
+        status, _, _ = px.forward(owner_id=owner, path='/v1/responses', body=body,
+                                  headers={}, api_key='test', provider='openai')
+        assert status == 200
+    assert len(seen) == 3 and all(len(item['input']) == 600_000 for item in seen)
+    assert all(item['max_output_tokens'] == 65536 for item in seen)
+    assert px.spend('alice') == pytest.approx(2 * px.spend('bob'))

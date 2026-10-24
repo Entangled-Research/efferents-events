@@ -25,7 +25,7 @@ def test_names_unique_case_insensitive_and_validated(tmp_path):
     with pytest.raises(ControlError) as exc:
         store.join("ada   lovelace")
     assert exc.value.status == 409
-    for bad in ("", "x" * 41, "<script>", "a\x00b"):
+    for bad in ("", "<script>", "a\x00b"):
         with pytest.raises(ControlError):
             store.join(bad)
 

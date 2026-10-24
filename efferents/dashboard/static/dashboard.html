@@ -94,7 +94,7 @@
             <input id="join-code" name="code" type="text" autocomplete="off" required spellcheck="false" aria-describedby="join-code-help">
             <p class="hint" id="join-code-help">Use the code from your organizer.</p>
             <label class="field-label" for="join-name">Your name</label>
-            <input id="join-name" name="name" type="text" maxlength="40" required autocomplete="nickname">
+            <input id="join-name" name="name" type="text" required autocomplete="nickname">
             <button id="join-submit" class="primary-button" type="submit">Join event</button>
           </form>
           <div id="join-message" class="form-message" role="status" aria-live="polite"></div>
@@ -153,7 +153,7 @@
           <p class="hint">Labs are teams of autoresearchers. Submit a broad question to seed several ideas, or contribute a specific idea to a related lab.</p>
           <form id="research-submission-form" class="join-form">
             <label class="field-label" for="research-question">Question or idea</label>
-            <textarea id="research-question" rows="3" maxlength="4000" required placeholder="Develop the best quantum graph neural network"></textarea>
+            <textarea id="research-question" rows="3" required placeholder="Develop the best quantum graph neural network"></textarea>
             <label class="field-label" for="research-destination">Destination</label>
             <select id="research-destination"><option value="">Find a lab or journal automatically</option></select>
             <button class="primary-button" id="research-submit" type="submit">Submit research</button>
@@ -189,10 +189,9 @@
           <div id="intake-sessions" class="intake-sessions"></div>
           <div id="intake-chat" class="intake-chat" aria-live="polite"></div>
           <form id="intake-form" class="intake-form">
-            <textarea id="intake-input" maxlength="4000" rows="3"
+            <textarea id="intake-input" rows="3"
                       placeholder="Describe the claim you want to test…" required></textarea>
             <div class="intake-form-row">
-              <span class="char-count"><span id="intake-count">0</span> / 4000</span>
               <span id="intake-thinking" class="header-meta" hidden>model is thinking…</span>
               <button id="intake-send" class="primary-button" type="submit">Send</button>
             </div>
@@ -268,7 +267,7 @@
                aria-labelledby="intake-tab-idea" data-intake-panel="idea">
             <form id="onboard-form" class="connector-form">
               <label for="onboard-idea">What would you like to explore? <small>Optional</small></label>
-              <textarea id="onboard-idea" rows="3" maxlength="4000" placeholder="Describe the question and measurable outcome you want to test."></textarea>
+              <textarea id="onboard-idea" rows="3" placeholder="Describe the question and measurable outcome you want to test."></textarea>
               <label for="onboard-mode">How should this lab participate?</label>
               <select id="onboard-mode">
                 <option value="independent">Independent lab · occasional cross-domain observations</option>
@@ -276,7 +275,7 @@
               </select>
               <div id="onboard-goal-field" hidden>
                 <label for="onboard-goal">Shared goal</label>
-                <input id="onboard-goal" maxlength="160" placeholder="Reduce congestion" list="known-goals">
+                <input id="onboard-goal" placeholder="Reduce congestion" list="known-goals">
                 <datalist id="known-goals"></datalist>
               </div>
               <details class="onboard-options">
@@ -287,7 +286,7 @@
                   <option value="integration">Numerical integration · analytic ground truth</option>
                 </select>
                 <label for="onboard-approach">Approach <small>Optional</small></label>
-                <input id="onboard-approach" maxlength="160" placeholder="Infer from the starter">
+                <input id="onboard-approach" placeholder="Infer from the starter">
               </details>
               <label class="execution-confirm"><input id="onboard-exchange" type="checkbox" checked>
                 <span>Share experiment claims and bounded findings with labs in this private workspace.</span></label>
@@ -372,7 +371,7 @@
         <header class="panel-header"><h2 id="starter-plan-title">Research plan</h2><span>Owner instructions</span></header>
         <form id="starter-plan-form" class="steer-form">
           <label for="starter-plan-text">Edit the questions and test plans for this starter</label>
-          <textarea id="starter-plan-text" maxlength="24000" rows="16" required></textarea>
+          <textarea id="starter-plan-text" rows="16" required></textarea>
           <p>Save your edits here, then ask your coding agent to apply the saved plan before running. Existing evidence stays in its original form.</p>
           <button class="primary-button" type="submit">Save plan</button>
           <div id="starter-plan-message" class="form-message" role="status"></div>
@@ -386,7 +385,7 @@
           </header>
           <form id="steer-form" class="steer-form">
             <label for="steer-message">Research instruction</label>
-            <textarea id="steer-message" name="message" maxlength="4000" required
+            <textarea id="steer-message" name="message" required
               placeholder="Example: Verify the current best result on a held-out seed before broadening the sweep."></textarea>
             <div class="steer-options">
               <label for="steer-mode">
@@ -399,7 +398,6 @@
                   <option value="escape_to_code">Escape to code</option>
                 </select>
               </label>
-              <span class="char-count"><span id="steer-count">0</span> / 4000</span>
               <button class="primary-button" type="submit">Record direction</button>
             </div>
           </form>

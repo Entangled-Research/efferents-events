@@ -32,7 +32,6 @@ from efferents.dashboard.control import ControlError
 
 _LAB_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 _CAMPAIGN_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
-_MAX_TEXT = 200_000
 _MAX_PUBLISHED_MANUSCRIPT = 100_000
 
 
@@ -179,8 +178,8 @@ class NetworkHub:
             raise ControlError("lab_id must start with a letter or digit and use only "
                                "letters, digits, '.', '_' and '-'.")
         hypothesis = str(payload.get("hypothesis") or "")
-        if not hypothesis.strip() or len(hypothesis) > _MAX_TEXT:
-            raise ControlError("Send the gated hypothesis.md text (non-empty, under 200 kB).")
+        if not hypothesis.strip():
+            raise ControlError("Send the non-empty gated hypothesis.md text.")
         if "falsifiability_gate: passed" not in hypothesis:
             raise ControlError("Only a hypothesis with falsifiability_gate: passed can register.",
                                status=422)
@@ -228,8 +227,8 @@ class NetworkHub:
         """Save owner instructions with conflict detection; never rewrite evidence."""
         self.require_owner(owner, lab_id)
         text = payload.get("text")
-        if not isinstance(text, str) or not 1 <= len(text.strip()) <= 24000 or "\x00" in text:
-            raise ControlError("Use a research plan of 1–24,000 characters.")
+        if not isinstance(text, str) or not text.strip() or "\x00" in text:
+            raise ControlError("Provide a research plan.")
         directory = self.lab_dir(lab_id)
         if inactive(directory):
             raise ControlError("This lab was deleted.", status=410)
@@ -363,8 +362,6 @@ class NetworkHub:
         d = self.lab_dir(lab_id) / "paper"
         d.mkdir(parents=True, exist_ok=True)
         journal_text = str(payload.get("journal") or "")
-        if len(journal_text) > _MAX_TEXT:
-            raise ControlError("Journal too large.", status=413)
         added = 0
         if journal_text.strip():
             entries = federation.parse_journal_entries(journal_text)
@@ -399,7 +396,7 @@ class NetworkHub:
                 if not _CAMPAIGN_RE.match(str(cid)) or not isinstance(text, str):
                     continue
                 target = d / f"{cid}.md"
-                if not target.exists() and len(text) <= _MAX_TEXT:
+                if not target.exists():
                     target.write_text(text)
                     stored += 1
         if added or stored:

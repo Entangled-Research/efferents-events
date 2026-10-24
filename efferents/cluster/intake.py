@@ -257,10 +257,6 @@ class IntakeStore:
         text = (text or "").strip()
         if not text:
             raise ControlError("Describe the objective you want to investigate.")
-        if len(text) > self.cfg.intake.message_max_chars:
-            raise ControlError(
-                f"Messages are at most {self.cfg.intake.message_max_chars} characters."
-            )
         if "\x00" in text:
             raise ControlError("Message contains an invalid null byte.")
         if is_frozen(self.cfg.paths):
@@ -272,11 +268,6 @@ class IntakeStore:
             session = self._load(owner, session_id)
             if session.state in ("approved", "bound", "created", "abandoned"):
                 raise ControlError("This intake is no longer accepting messages.", status=409)
-            if session.user_turns >= self.cfg.intake.max_turns:
-                raise ControlError(
-                    "This intake reached its turn limit; approve the draft or start over.",
-                    status=409,
-                )
             first_claim_was_empty = not session.first_claim
             if first_claim_was_empty:
                 session.first_claim = text

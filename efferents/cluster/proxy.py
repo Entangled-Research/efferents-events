@@ -30,11 +30,10 @@ from efferents.cluster.config import ClusterConfig, control_flag, is_frozen, wri
 UPSTREAM_DEFAULT = "https://api.anthropic.com"
 PROXY_PREFIX = "/proxy/anthropic"
 OPENAI_PROXY_PREFIX = "/proxy/openai"
-MAX_PROXY_BODY = 8 * 1024 * 1024
+MAX_PROXY_BODY = None
 _FORWARD_HEADERS = ("anthropic-version", "anthropic-beta", "content-type", "accept")
 _AZURE_MODELS = frozenset({"gpt-4.1-nano", "gpt-5.6-luna", "gpt-5.6-sol",
                            "gpt-6-luna", "gpt-6.1-sol"})
-_OPENAI_MAX_BODY = 512_000  # bounded input with room for coding context
 _OPENAI_MAX_OUTPUT = 32768
 
 
@@ -160,8 +159,6 @@ class ModelProxy:
                              "invalid_request_error")
         model = str(request.get("model") or "")
         if provider == "openai":
-            if len(body) > _OPENAI_MAX_BODY:
-                raise ProxyError(413, "model request exceeds the event text limit", "invalid_request_error")
             if model not in _AZURE_MODELS:
                 raise ProxyError(400, "model is not an approved event deployment", "invalid_request_error")
             if request.get("n", 1) != 1 or request.get("best_of", 1) != 1:
@@ -191,14 +188,14 @@ class ModelProxy:
                 request["reasoning_effort"] = "none" if request.get("tools") else "high"
             max_tokens = (request.get("max_output_tokens") if responses_api else
                           request.get("max_completion_tokens") or request.get("max_tokens"))
-            if not isinstance(max_tokens, int) or isinstance(max_tokens, bool) or not 1 <= max_tokens <= _OPENAI_MAX_OUTPUT:
-                raise ProxyError(400, "max output tokens must be 1–32768", "invalid_request_error")
+            if not isinstance(max_tokens, int) or isinstance(max_tokens, bool) or max_tokens < 1:
+                raise ProxyError(400, "max output tokens must be a positive integer", "invalid_request_error")
             model = f"openai/{model}"
             body = json.dumps(request).encode("utf-8")
         else:
             max_tokens = request.get("max_tokens")
-            if not isinstance(max_tokens, int) or isinstance(max_tokens, bool) or not 1 <= max_tokens <= _OPENAI_MAX_OUTPUT:
-                raise ProxyError(400, "max output tokens must be 1–32768", "invalid_request_error")
+            if not isinstance(max_tokens, int) or isinstance(max_tokens, bool) or max_tokens < 1:
+                raise ProxyError(400, "max output tokens must be a positive integer", "invalid_request_error")
         est_in = max(1, len(body) // 3) + image_tokens if provider == "openai" else _estimate_input_tokens(request)
         if provider == "openai":
             upstream = os.environ.get("EFFERENTS_AZURE_OPENAI_ENDPOINT", "").rstrip("/")
