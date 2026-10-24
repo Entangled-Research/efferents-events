@@ -136,12 +136,12 @@
         <section class="panel join-panel" id="terminal-panel" aria-labelledby="terminal-title">
           <header class="panel-header"><h2 id="terminal-title">Start your lab</h2></header>
           <div class="join-body">
-            <p class="hint">Paste this command into a terminal in an empty folder.</p>
-            <button id="copy-funded-setup" class="primary-button" type="button">Copy setup command</button>
-            <p class="hint">Requires Python 3 and OpenCode · macOS/Linux.</p>
+            <p class="hint">Paste this instruction into your coding agent’s chat.</p>
+            <button id="copy-funded-setup" class="primary-button" type="button">Copy setup instruction</button>
+            <p class="hint">Use any coding agent with terminal access.</p>
             <div id="setup-message" class="form-message" role="status"></div>
             <details id="funded-setup-details">
-              <summary>View command</summary>
+              <summary>View instruction</summary>
               <code id="funded-setup-command" class="instruction-line"></code>
             </details>
           </div>
@@ -164,7 +164,7 @@
             <button class="compact-button" type="button" data-research-example="Investigate a mathematics question: which bounded graph families admit a provably tighter spectral bound on chromatic number? Use verified proofs or explicit counterexamples.">New field: mathematics</button>
           </div>
           <div id="research-submission-status" class="form-message" role="status" aria-live="polite"></div>
-          <button class="compact-button" id="research-copy-setup" type="button" hidden>Copy setup command</button>
+          <button class="compact-button" id="research-copy-setup" type="button" hidden>Copy setup instruction</button>
         </div>
       </section>
     </section>
@@ -216,9 +216,9 @@
           </section>
           <section class="panel" id="harness-panel" aria-labelledby="harness-title" hidden>
             <header class="panel-header"><h2 id="harness-title">3 · Build on your laptop</h2></header>
-            <p class="hint">Paste this command into a terminal in an empty folder.</p>
-            <button id="copy-harness-instruction" class="primary-button" type="button">Copy setup command</button>
-            <details><summary>View command</summary>
+            <p class="hint">Paste this instruction into your coding agent’s chat.</p>
+            <button id="copy-harness-instruction" class="primary-button" type="button">Copy setup instruction</button>
+            <details><summary>View instruction</summary>
               <code id="harness-instruction" class="instruction-line"></code>
             </details>
           </section>

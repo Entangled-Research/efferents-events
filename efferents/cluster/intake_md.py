@@ -118,7 +118,14 @@ stop and ask the human to use **Copy token** on the event page and provide that
 current network token. Do not ask for the event join code or try to join again.
 Delete any `.event-config.json` produced by a failed request.
 
-If this harness is OpenCode, connect it to the event's Azure model before
+Use the participant's existing coding harness; never require installing or launching
+OpenCode to join this event. Research agents use the supplied proxy credentials
+regardless of the setup harness. Configure the harness itself to use the event
+proxy only if it supports a custom OpenAI-compatible provider; otherwise retain
+its existing sign-in for setup and explain that setup uses that harness account.
+Never put a provider key on the laptop.
+
+If this harness is OpenCode, optionally connect it to the event's Azure model before
 building the evaluator:
 
 ```bash
@@ -402,7 +409,7 @@ def render_intake_md(cfg: ClusterConfig, hub_url: str) -> str:
 
 
 def render_starters_md(cfg, tracks, hub_url):
-    lines = [f"# {cfg.name}: start here", "", "Choose a research objective or submit a specific idea. Broad objectives seed multiple idea tracks; specific ideas stay scoped. Your coding agent handles setup and experiment refinement. Tell it your objective; it asks only when instructions or essential resources are missing.", "", f"1. Open {hub_url}/#join and join the event.", "2. Save your private sign-in key.", "3. Copy “setup command” from the website and paste it into a terminal in an empty folder. Requires Python 3 and OpenCode.", "4. Name a starter below. Its first comparison is already scoped; you can redirect it in ordinary language.", "", "Experiments run on your laptop. Each participant has $100 shared across all labs; the whole event shares $3,000. No separate Popper Probe setup is needed.", ""]
+    lines = [f"# {cfg.name}: start here", "", "Choose a research objective or submit a specific idea. Broad objectives seed multiple idea tracks; specific ideas stay scoped. Your coding agent handles setup and experiment refinement. Tell it your objective; it asks only when instructions or essential resources are missing.", "", f"1. Open {hub_url}/#join and join the event.", "2. Save your private sign-in key.", "3. Copy “setup instruction” from the website and paste it into any coding agent with terminal access. OpenCode is optional.", "4. Name a starter below. Its first comparison is already scoped; you can redirect it in ordinary language.", "", "Experiments run on your laptop. Each participant has $100 shared across all labs; the whole event shares $3,000. No separate Popper Probe setup is needed.", ""]
     for track in tracks.values():
         lines += [f"## {track.title}", "", track.summary, ""]
         for index, idea in enumerate(track.lab_yaml.get("students", []), 1):

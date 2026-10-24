@@ -43,15 +43,15 @@
         journal: target.startsWith("journal:") ? target.slice(8) : null});
       status.textContent = receipt.action === "append"
         ? `Idea queued for ${receipt.lab_id} · ${receipt.journal}. ${receipt.requires_upgrade ? "Its resource custodian must update the existing workspace to receive contributions." : "It will be added at the next heartbeat."} The lab keeps its existing budget and pause state.`
-        : `${receipt.objective} · ${receipt.journal} · ${receipt.ideas.length} proposed idea${receipt.ideas.length === 1 ? "" : "s"}. Copy setup command to build this lab on your computer.`;
+        : `${receipt.objective} · ${receipt.journal} · ${receipt.ideas.length} proposed idea${receipt.ideas.length === 1 ? "" : "s"}. Copy setup instruction to build this lab on your computer.`;
       copy.hidden = receipt.action !== "create";
     } catch (error) { status.textContent = error.message; }
     finally { button.disabled = false; }
   });
   copy.addEventListener("click", async () => {
     try {
-      await navigator.clipboard.writeText(fundedSetupCommand(controlState.session) + ` --submission ${receipt.id}`);
-      status.textContent = "Copied. Paste into your terminal.";
+      await navigator.clipboard.writeText(fundedSetupCommand(controlState.session, null, receipt.id));
+      status.textContent = "Copied. Paste into your coding agent’s chat.";
     } catch (error) { status.textContent = error.message; }
   });
 })();

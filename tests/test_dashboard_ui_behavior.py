@@ -241,7 +241,8 @@ console.log(JSON.stringify({first, approved, visible,
   hidden:document.getElementById('recovery-secret').hidden}));
 """)
     for instruction in (result['first'], result['approved']):
-        assert 'https://event.example/bootstrap-opencode.py' in instruction
+        assert 'https://event.example/intake.md' in instruction
+        assert 'do not require OpenCode or launch another harness' in instruction
         assert 'lab-connection-token' in instruction
         assert 'private-return-key' not in instruction
     assert 'approved-idea' in result['approved']
@@ -249,18 +250,16 @@ console.log(JSON.stringify({first, approved, visible,
     assert result['cleared'] == ''
 
 
-def test_funded_command_bootstraps_in_terminal_before_any_agent_message():
-    import shlex
-    command = run_js("""
+def test_any_agent_handoff_preserves_submission_and_literal_token():
+    instruction = run_js("""
 window.location.origin = 'https://event.test';
-console.log(JSON.stringify(fundedSetupCommand({network_token:"token'with$literal"})));
+console.log(JSON.stringify(fundedSetupCommand({network_token:"token'with$literal"}, null, 'sub_example')));
 """)
-    parts = shlex.split(command)
-    assert parts[0] == "EFFERENTS_EVENT_TOKEN=token'with$literal"
-    assert parts[1:3] == ["python3", "-c"]
-    assert parts[-3:] == ["--hub", "https://event.test", "--launch"]
-    assert "https://event.test/bootstrap-opencode.py" in parts[3]
-    assert "token'with$literal" not in parts[3]
+    assert "token'with$literal" in instruction
+    assert 'https://event.test/intake.md' in instruction
+    assert 'saved research submission sub_example' in instruction
+    assert 'organizer-funded proxy' in instruction
+    assert 'bootstrap-opencode.py' not in instruction
 
 
 @pytest.mark.parametrize("status", ["running", "paused", "stopped"])

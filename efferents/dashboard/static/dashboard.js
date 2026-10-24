@@ -2690,20 +2690,24 @@ function initJoinForm() {
   document.getElementById("copy-funded-setup").addEventListener("click", async () => {
     try {
       await navigator.clipboard.writeText(document.getElementById("funded-setup-command").textContent);
-      showMessage("setup-message", "Copied. Paste into your terminal.", "success");
+      showMessage("setup-message", "Copied. Paste into your coding agent’s chat.", "success");
     } catch {
       document.getElementById("funded-setup-details").open = true;
-      showMessage("setup-message", "Copy the terminal command below manually.", "error");
+      showMessage("setup-message", "Copy the instruction below manually.", "error");
     }
   });
 }
 
-function fundedSetupCommand(session, intakeSessionId = null) {
-  const quote = value => "'" + String(value).replaceAll("'", "'\\''") + "'";
+function fundedSetupCommand(session, intakeSessionId = null, submissionId = null) {
   const origin = window.location.origin;
-  const loader = `import urllib.request; exec(compile(urllib.request.urlopen(${JSON.stringify(origin + "/bootstrap-opencode.py")}, timeout=30).read(), "<event setup>", "exec"))`;
-  const intake = intakeSessionId ? ` --intake ${quote(intakeSessionId)}` : "";
-  return `EFFERENTS_EVENT_TOKEN=${quote(session.network_token)} python3 -c ${quote(loader)} --hub ${quote(origin)} --launch${intake}`;
+  let instruction = `Read ${origin}/intake.md and follow it in this workspace. ` +
+    `My event network token is ${JSON.stringify(session.network_token)}. ` +
+    "Keep this token private and out of Git. Use my existing coding-agent session; do not require OpenCode or launch another harness. " +
+    "Fetch the authenticated event configuration and use its organizer-funded proxy for all research model calls. " +
+    "Keep the shared event and participant budgets. Ask only for my missing research objective or essential resources.";
+  if (intakeSessionId) instruction += ` Reuse my approved browser intake session ${intakeSessionId}; do not repeat intake.`;
+  if (submissionId) instruction += ` Use my saved research submission ${submissionId}; fetch /api/network/submissions/${submissionId} with my token and follow its objective and ideas.`;
+  return instruction;
 }
 
 function renderTerminalPanel(session) {
@@ -2931,7 +2935,7 @@ function initIntakeView() {
   });
   document.getElementById("copy-harness-instruction").addEventListener("click", async () => {
     await navigator.clipboard.writeText(document.getElementById("harness-instruction").textContent);
-    showMessage("intake-create-message", "Copied. Paste into your terminal.", "success");
+    showMessage("intake-create-message", "Copied. Paste into your coding agent’s chat.", "success");
   });
 
 }

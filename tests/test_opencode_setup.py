@@ -66,14 +66,17 @@ def test_bootstrap_configures_both_models_without_model_calls(tmp_path, monkeypa
 
 def test_launch_selects_only_event_provider_before_first_prompt(tmp_path, monkeypatch):
     import os
+    from types import SimpleNamespace
     from efferents.cluster.opencode_setup import launch
     calls = []
     monkeypatch.setenv("EFFERENTS_EVENT_TOKEN", "private-token")
     monkeypatch.setattr("shutil.which", lambda name: "/test/opencode")
+    monkeypatch.setattr("subprocess.run", lambda *a, **kw: SimpleNamespace(stdout="--prompt --agent", stderr=""))
     monkeypatch.setattr(os, "execvpe", lambda executable, args, env: calls.append((executable, args, env)))
     launch("https://event.test", "efferents-event/gpt-6.1-sol", "efferents-event/gpt-6-luna", opencode_dir=tmp_path, intake_session_id="approved-session")
     _, args, env = calls[0]
-    assert args[1:3] == ["--model", "efferents-event/gpt-6.1-sol"]
+    assert "--model" not in args
+    assert args[1:3] == ["--agent", "build"]
     assert "private-token" not in " ".join(args)
     assert "EFFERENTS_EVENT_TOKEN" not in env
     settings = json.loads(env["OPENCODE_CONFIG_CONTENT"])
@@ -81,3 +84,11 @@ def test_launch_selects_only_event_provider_before_first_prompt(tmp_path, monkey
     assert settings["small_model"] == "efferents-event/gpt-6-luna"
     assert str(tmp_path / "efferents-event-token") in args[-1]
     assert "approved browser intake session approved-session" in args[-1]
+
+
+def test_legacy_setup_works_without_opencode(tmp_path, monkeypatch, capsys):
+    from efferents.cluster.opencode_setup import launch
+    monkeypatch.setattr("shutil.which", lambda name: None)
+    launch("https://event.test", "efferents-event/gpt-6.1-sol", "efferents-event/gpt-6-luna", opencode_dir=tmp_path)
+    output = capsys.readouterr().out
+    assert "any coding agent" in output and "https://event.test/intake.md" in output

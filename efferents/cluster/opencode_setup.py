@@ -7,6 +7,7 @@ import json
 import os
 import re
 import shutil
+import subprocess
 import sys
 import tempfile
 import urllib.request
@@ -103,8 +104,6 @@ def bootstrap(hub_url: str, token: str, *, opencode_dir: Path | None = None) -> 
 
 def launch(hub_url: str, model: str, small_model: str, *, opencode_dir: Path | None = None, intake_session_id: str | None = None, submission_id: str | None = None) -> None:
     executable = shutil.which("opencode")
-    if not executable:
-        raise ValueError("OpenCode is not installed. Install it from https://opencode.ai then run this setup again; no model credits have been used.")
     directory = (opencode_dir or Path.home() / ".config" / "opencode").resolve()
     prompt = (f"Read {hub_url.rstrip('/')}/intake.md and follow it. "
               f"My private event network token is in {directory / 'efferents-event-token'}; "
@@ -123,7 +122,25 @@ def launch(hub_url: str, model: str, small_model: str, *, opencode_dir: Path | N
         "model": model, "small_model": small_model,
         "enabled_providers": ["efferents-event"],
     })
-    os.execvpe(executable, [executable, "--model", model, "--agent", "build", "--prompt", prompt], environment)
+    # Model selection lives in configuration, not version-specific CLI flags.
+    # Older launch commands remain usable even without OpenCode installed.
+    if not executable:
+        print("Paste this instruction into any coding agent with terminal access:\n" + prompt)
+        return
+    try:
+        help_result = subprocess.run([executable, "--help"], capture_output=True,
+                                     text=True, timeout=5, check=False)
+        help_text = help_result.stdout + help_result.stderr
+    except (OSError, subprocess.TimeoutExpired):
+        help_text = ""
+    if "--prompt" not in help_text:
+        print("Paste this instruction into your coding agent:\n" + prompt)
+        return
+    arguments = [executable]
+    if "--agent" in help_text:
+        arguments += ["--agent", "build"]
+    arguments += ["--prompt", prompt]
+    os.execvpe(executable, arguments, environment)
 
 
 def main(argv: list[str] | None = None) -> int:
