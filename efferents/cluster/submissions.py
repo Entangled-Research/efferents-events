@@ -54,6 +54,12 @@ class SubmissionStore:
         self.root = context.paths.root / "submissions"
         self.root.mkdir(exist_ok=True)
         self.lock = threading.Lock()
+        self.requests = {}
+
+    def list(self, owner):
+        items = [_read_json(path) for path in self.root.glob("sub_*.json")]
+        return sorted((item for item in items if item.get("submitted_by") in owner.identity_ids),
+                      key=lambda item: item.get("created_at", ""), reverse=True)[:25]
 
     def get(self, owner, identifier):
         if not re.fullmatch(r"sub_[a-f0-9]{24}", identifier):
@@ -72,14 +78,44 @@ class SubmissionStore:
             raise ControlError("A submission request_id is required.")
         identifier = "sub_" + hashlib.sha256(f"{owner.owner_id}:{key}".encode()).hexdigest()[:24]
         with self.lock:
+            request_lock = self.requests.setdefault(identifier, threading.Lock())
+        # One slow provider call must not block every participant's submission.
+        with request_lock:
             previous = _read_json(self.root / f"{identifier}.json")
             if previous:
                 if previous["text"] != text.strip():
                     raise ControlError("Use a new request id for a changed submission.", status=409)
-                if previous["action"] == "append":
+                if previous.get("action") == "append":
                     self.deliver(previous)
-                return previous
-            return self._submit(owner, payload, text.strip(), identifier)
+                if previous.get("action") in {"append", "create"}:
+                    return previous
+            original = {**previous, "id": identifier, "text": text.strip(),
+                        "submitted_by": owner.owner_id, "submitted_name": owner.name,
+                        "created_at": previous.get("created_at") or _now(),
+                        "request_id": key, "preferred_lab": payload.get("lab_id"),
+                        "preferred_journal": payload.get("journal"), "status": "routing",
+                        "action": None}
+            path = self.root / f"{identifier}.json"
+            _write_json(path, original)
+            try:
+                result = self._submit(owner, payload, text.strip(), identifier)
+            except ControlError as exc:
+                if exc.status not in {422, 503}:
+                    saved = _read_json(path)
+                    if not saved.get("action"):
+                        _write_json(path, {**saved, "status": "saved", "error": str(exc)})
+                    raise
+                # An uncertain match never forces an idea into the wrong lab.
+                # Preserve the objective for refinement in the participant's harness.
+                result = {"action": "create", "lab_id": None, "domain": "unspecified",
+                          "journal": "General Research", "objective": text.strip()[:1000],
+                          "ideas": [{"title": "Refine the submitted research objective", "focus": text.strip()}],
+                          "status": "ready_for_setup", "needs_refinement": True,
+                          "reason": "Objective saved. The coding agent will refine the ideas, field and evaluator before starting.",
+                          "requires_upgrade": False}
+            result = {**original, **_read_json(path), **result, "created_at": original["created_at"]}
+            _write_json(path, result)
+            return result
 
     def _submit(self, owner, payload, text, identifier):
         context = self.context
@@ -101,13 +137,19 @@ class SubmissionStore:
         budget = owner_intake_budget(context.cfg, owner.owner_id)
         try:
             client = context.intake._client_factory(budget)
-            reply = client.messages.create(model=context.cfg.model, max_tokens=1800,
-                system=ROUTING_PROMPT, messages=[{"role": "user", "content": json.dumps({
-                    "submission": text, "preferred_lab": payload.get("lab_id"),
-                    "preferred_journal": payload.get("journal"), "labs": catalogue[:100]})}])
-            budget.record(agent="submission_router", model=context.cfg.model,
-                          usage=usage_from_response(reply), notes=identifier)
-            decision = parse_json_loose(_extract_text(reply), must_contain='"action"')
+            path = self.root / f"{identifier}.json"
+            saved = _read_json(path)
+            draft = saved.get("routing_draft")
+            if not draft:
+                reply = client.messages.create(model=context.cfg.model, max_tokens=1800,
+                    system=ROUTING_PROMPT, messages=[{"role": "user", "content": json.dumps({
+                        "submission": text, "preferred_lab": payload.get("lab_id"),
+                        "preferred_journal": payload.get("journal"), "labs": catalogue[:100]})}])
+                budget.record(agent="submission_router", model=context.cfg.model,
+                              usage=usage_from_response(reply), notes=identifier)
+                draft = _extract_text(reply)
+                _write_json(path, {**saved, "routing_draft": draft})
+            decision = parse_json_loose(draft, must_contain='"action"')
         except Exception as exc:
             budget.finish_error(exc)
             raise ControlError("Submission routing failed; retry this submission.", status=503) from exc
@@ -156,7 +198,8 @@ class SubmissionStore:
                   "status": "queued" if append else "ready_for_setup"}
         result["requires_upgrade"] = bool(append and target.get("contributions_version", 0) < 1)
         # Persist first. Repeating POST retries delivery without another model call.
-        _write_json(self.root / f"{identifier}.json", result)
+        path = self.root / f"{identifier}.json"
+        _write_json(path, {**_read_json(path), **result})
         if append:
             self.deliver(result)
         write_event(context.paths, "research_submitted", owner_id=owner.owner_id,

@@ -230,6 +230,8 @@ class ClusterHandler(DashboardHandler):
 
     def _network_get(self, owner: Owner, path: str) -> None:
         hub = self.cluster.hub
+        if path == "/api/network/submissions":
+            return self._send_json(self.cluster.submissions.list(owner))
         if path.startswith("/api/network/submissions/"):
             return self._send_json(self.cluster.submissions.get(owner, path.rsplit("/", 1)[-1]))
         if path == "/api/network/package":

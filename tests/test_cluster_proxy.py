@@ -129,6 +129,7 @@ def test_frozen_streaming_and_bad_paths(proxy):
 
 
 def test_upstream_errors_pass_through_without_charging(tmp_path, monkeypatch):
+    monkeypatch.setattr("efferents.cluster.proxy.time.sleep", lambda seconds: None)
     cfg = make_cluster(tmp_path, monkeypatch)
 
     def opener(req, timeout=0):
@@ -376,7 +377,29 @@ def test_image_count_and_dimensions_are_bounded():
     from efferents.cluster.proxy import image_input_tokens
     with pytest.raises(ProxyError):
         image_input_tokens({'input': [{'type': 'input_image', 'image_url': _inline_image()}]*7})
-    out = io.BytesIO(); Image.new('RGB', (2049, 1)).save(out, format='PNG')
+    out = io.BytesIO()
+    Image.new('RGB', (2049, 1)).save(out, format='PNG')
     with pytest.raises(ProxyError):
         image_input_tokens({'input': [{'type': 'input_image', 'image_url':
             'data:image/png;base64,'+base64.b64encode(out.getvalue()).decode()}]})
+
+
+def test_throttle_retry_keeps_one_hold_and_charges_only_success(tmp_path, monkeypatch):
+    from efferents.cluster.budget import coordinator
+    cfg = make_cluster(tmp_path, monkeypatch)
+    seen, delays, holds = [], [], []
+    monkeypatch.setattr('efferents.cluster.proxy.time.sleep', delays.append)
+    def opener(req, timeout=0):
+        seen.append(req)
+        holds.append(coordinator(cfg).reservations())
+        if len(seen)==1:
+            headers=Message()
+            headers['retry-after-ms']='250'
+            raise urllib.error.HTTPError(req.full_url,429,'throttled',headers,io.BytesIO(b'{}'))
+        return FakeResponse(_ok_response())
+    px=ModelProxy(cfg,upstream='https://upstream.test',opener=opener)
+    status,_,_=px.forward(owner_id='o1',path='/v1/messages',body=_request(),headers={},api_key='k')
+    assert status==200 and delays==[1]
+    assert len(holds[0])==1 and holds[0][0]['id']==holds[1][0]['id']
+    assert len((cfg.paths.root/'proxy/o1/budget.jsonl').read_text().splitlines())==1
+    assert coordinator(cfg).reservations()==[]

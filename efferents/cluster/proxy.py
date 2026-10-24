@@ -17,6 +17,8 @@ import io
 import json
 import os
 import threading
+import time
+import math
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -247,20 +249,39 @@ class ModelProxy:
         req = urllib.request.Request(upstream + upstream_path, data=body, headers=out_headers, method="POST")
         settled = False
         try:
-            try:
-                with self._open(req, timeout=600) as resp:
-                    status = resp.status
-                    payload = resp.read()
-                    resp_headers = {"content-type": resp.headers.get("Content-Type", "application/json")}
-            except urllib.error.HTTPError as e:
-                payload = e.read()
-                status = e.code
-                resp_headers = {"content-type": e.headers.get("Content-Type", "application/json")}
-                retry_after = e.headers.get("retry-after")
-                if retry_after:
-                    resp_headers["retry-after"] = retry_after
-            except (urllib.error.URLError, OSError, TimeoutError) as e:
-                raise ProxyError(502, f"upstream unreachable: {e}", "api_error") from e
+            for attempt in range(3):
+                try:
+                    with self._open(req, timeout=600) as resp:
+                        status = resp.status
+                        payload = resp.read()
+                        resp_headers = {"content-type": resp.headers.get("Content-Type", "application/json")}
+                    break
+                except urllib.error.HTTPError as e:
+                    payload = e.read()
+                    status = e.code
+                    resp_headers = {"content-type": e.headers.get("Content-Type", "application/json")}
+                    retry_after = e.headers.get("retry-after")
+                    if not retry_after and e.headers.get("retry-after-ms"):
+                        try:
+                            retry_after = str(math.ceil(float(e.headers["retry-after-ms"]) / 1000))
+                        except (ValueError, OverflowError):
+                            pass
+                    if retry_after:
+                        resp_headers["retry-after"] = retry_after
+                    try:
+                        delay = float(retry_after) if retry_after else 2 ** attempt
+                    except ValueError:
+                        delay = float("inf")
+                    # Only retry explicit rejected throttles, never uncertain
+                    # transport failures. Keep the SAME budget hold throughout.
+                    if status == 429 and attempt < 2 and 0 <= delay <= 30:
+                        write_event(self.paths, "proxy_backoff", owner_id=owner_id,
+                                    status=429, stage="provider_throttle")
+                        time.sleep(delay)
+                        continue
+                    break
+                except (urllib.error.URLError, OSError, TimeoutError) as e:
+                    raise ProxyError(502, f"upstream unreachable: {e}", "api_error") from e
             if 200 <= status < 300:
                 self._record(owner_id, model, payload, owner_tracker, cluster_tracker,
                              provider=provider, fallback_input=est_in,

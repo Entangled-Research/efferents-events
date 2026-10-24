@@ -2262,6 +2262,9 @@ async function refresh() {
 // Hosted (cluster) mode: identity, nav visibility, owner marks.
 function renderSession(session) {
   controlState.session = session.cluster || null;
+  document.dispatchEvent?.(new CustomEvent("efferents-session", {
+    detail: {ownerId: controlState.session?.owner?.id || null},
+  }));
   const budget = controlState.session?.owner_budget;
   ownerEventBudget = {
     spent: Number(budget?.spent_usd ?? controlState.session?.proxy_spend_usd ?? 0),

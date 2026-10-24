@@ -106,3 +106,65 @@ def test_invalid_submission_is_free_and_authentication_required(hub):
     _, auth = _join(port)
     status, _, _ = submit(port, auth, text='')
     assert status == 400 and not scripts['replies']
+
+
+def test_inconclusive_routing_saves_original_and_hands_off_without_repeat_charge(hub):
+    port,ctx,scripts,*_=hub
+    _,auth=_join(port)
+    scripts['replies'].append('{"action":"create","broad":true,"ideas":[]}')
+    original='Research the best graph neural network without dropping my objective.'
+    status,result,_=submit(port,auth,text=original)
+    assert status==200 and result['needs_refinement'] and result['text']==original
+    assert result['request_id']=='request-123' and result['status']=='ready_for_setup'
+    first=(ctx.cfg.paths.intake/'budget.jsonl').read_text()
+    assert submit(port,auth,text=original)[1]==result
+    assert (ctx.cfg.paths.intake/'budget.jsonl').read_text()==first
+    status,items,_=_request(port,'/api/network/submissions',headers=auth)
+    assert status==200 and items[0]['id']==result['id']
+    _,other=_join(port,'Bob')
+    assert _request(port,'/api/network/submissions',headers=other)[1]==[]
+
+
+def test_timeout_keeps_input_and_uncertain_hold(hub):
+    from efferents.cluster.budget import coordinator
+    port,ctx,*_=hub
+    _,auth=_join(port)
+    class BrokenClient:
+        def __init__(self,budget):
+            self.budget=budget
+            self.messages=self
+        def create(self,**kwargs):
+            self.budget.reserve(kwargs['model'],kwargs['max_tokens'],100)
+            raise TimeoutError('unknown provider result')
+    ctx.intake._client_factory=BrokenClient
+    status,result,_=submit(port,auth,text='Keep this question through a provider timeout.')
+    assert status==200 and result['needs_refinement']
+    assert result['text']=='Keep this question through a provider timeout.'
+    assert len(coordinator(ctx.cfg).reservations())==1
+
+
+def test_slow_submission_does_not_block_other_participants(hub):
+    from concurrent.futures import ThreadPoolExecutor
+    import threading
+    from tests.cluster_helpers import ScriptedClient
+    _,ctx,*_=hub
+    alice,bob=ctx.owners.join('Slow'),ctx.owners.join('Fast')
+    entered,release=threading.Event(),threading.Event()
+    class Client(ScriptedClient):
+        def create(self,**kwargs):
+            if self.budget.owner_id==alice.owner_id:
+                entered.set()
+                release.wait(3)
+            return super().create(**kwargs)
+    ctx.intake._client_factory=lambda budget:Client([decision()],budget=budget)
+    payload={'text':'A research objective','request_id':'parallel-request'}
+    with ThreadPoolExecutor(2) as pool:
+        slow=pool.submit(ctx.submissions.submit,alice,payload)
+        try:
+            assert entered.wait(1)
+            fast=pool.submit(ctx.submissions.submit,bob,payload)
+            assert fast.result(timeout=1)['action']=='create'
+            assert not slow.done()
+        finally:
+            release.set()
+        assert slow.result()['action']=='create'

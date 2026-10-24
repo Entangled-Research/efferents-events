@@ -52,6 +52,12 @@ The destination's autoresearchers receive it on their next normal heartbeat;
 a stopped workspace stays stopped until its resource custodian resumes it.
 
 If `action: create`, continue below using the returned `objective` and `domain`.
+If `needs_refinement: true`, routing could not establish a valid placement.
+Preserve the saved text verbatim and refine it internally before setup: determine
+its correct scientific field, decide whether it is broad or specific, and derive
+2–4 testable ideas for a broad objective or one for a specific idea. `unspecified`
+and `General Research` are placeholders, not approved scientific classifications.
+Do not run the saved unrefined text as a passed hypothesis or invent measurements.
 A quantum graph neural network objective is a separate lab alongside quantum
 encoding in the same Physics & Dynamics journal. A mathematics question creates
 its own lab and mathematics journal even if only biology and physics exist.
