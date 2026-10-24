@@ -440,3 +440,40 @@ def test_provider_minute_cooldown_is_retried_without_new_budget_hold(tmp_path, m
     assert delays == [60, 60, 60] and len(set(holds)) == 1
     assert coordinator(cfg).reservations() == []
     assert len((cfg.paths.root / 'proxy/o1/budget.jsonl').read_text().splitlines()) == 1
+
+
+@pytest.mark.parametrize('terminal', ['response.completed', 'response.incomplete', 'response.failed'])
+def test_streamed_terminal_usage_is_actual_including_incomplete(tmp_path, monkeypatch, terminal):
+    cfg = make_cluster(tmp_path, monkeypatch)
+    monkeypatch.setenv('EFFERENTS_AZURE_OPENAI_ENDPOINT', 'https://resource.openai.azure.com/openai/v1')
+    def opener(req, timeout=0):
+        result = FakeResponse({})
+        result.seek(0)
+        result.truncate()
+        result.write(b'data:' + json.dumps({'type': terminal, 'response': {'usage': {'input_tokens': 100, 'output_tokens': 10}}}).encode() + b'\n\n')
+        result.seek(0)
+        return result
+    px = ModelProxy(cfg, opener=opener)
+    body = json.dumps({'model': 'gpt-6.1-sol', 'input': 'hello', 'stream': True, 'max_output_tokens': 32000}).encode()
+    assert px.forward(owner_id='o1', path='/v1/responses', body=body, headers={}, api_key='k', provider='openai')[0] == 200
+    record = json.loads((cfg.paths.root / 'proxy/o1/budget.jsonl').read_text())
+    assert record['output_tokens'] == 10 and record['input_tokens'] == 100
+
+
+@pytest.mark.parametrize('code,released', [('context_length_exceeded', True), ('server_error', False), (None, False)])
+def test_stream_without_usage_is_not_falsely_recorded_as_spend(tmp_path, monkeypatch, code, released):
+    from efferents.cluster.budget import coordinator
+    cfg = make_cluster(tmp_path, monkeypatch)
+    monkeypatch.setenv('EFFERENTS_AZURE_OPENAI_ENDPOINT', 'https://resource.openai.azure.com/openai/v1')
+    def opener(req, timeout=0):
+        result = FakeResponse({})
+        result.seek(0)
+        result.truncate()
+        result.write(b'data: ' + json.dumps({'type': 'response.failed', 'response': {'status': 'failed', 'error': {'code': code}}}).encode() + b'\n\n')
+        result.seek(0)
+        return result
+    px = ModelProxy(cfg, opener=opener)
+    body = json.dumps({'model': 'gpt-6.1-sol', 'input': 'hello', 'stream': True, 'max_output_tokens': 32000}).encode()
+    assert px.forward(owner_id='o1', path='/v1/responses', body=body, headers={}, api_key='k', provider='openai')[0] == 200
+    assert px.spend('o1') == 0
+    assert bool(coordinator(cfg).reservations()) is not released

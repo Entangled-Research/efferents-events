@@ -282,11 +282,12 @@ class ModelProxy:
                 except (urllib.error.URLError, OSError, TimeoutError) as e:
                     raise ProxyError(502, f"upstream unreachable: {e}", "api_error") from e
             if 200 <= status < 300:
-                self._record(owner_id, model, payload, owner_tracker, cluster_tracker,
+                settled = self._record(owner_id, model, payload, owner_tracker, cluster_tracker,
                              provider=provider, fallback_input=est_in,
                              fallback_output=max_tokens, responses_api=responses_api,
                              streaming=bool(request.get("stream")), reservation_id=reservation)
-            settled = True
+            else:
+                settled = True
             return status, payload, resp_headers
         finally:
             # A transport failure can happen after the provider accepted a paid
@@ -301,25 +302,22 @@ class ModelProxy:
                 cluster_tracker: BudgetTracker, *, provider: str = "anthropic",
                 fallback_input: int = 0, fallback_output: int = 0,
                 responses_api: bool = False, streaming: bool = False,
-                reservation_id: str | None = None) -> None:
-        if responses_api and streaming:
-            completed = None
-            for line in payload.splitlines():
-                if not line.startswith(b"data: "):
-                    continue
-                try:
-                    event = json.loads(line[6:])
-                except ValueError:
-                    continue
-                if event.get("type") == "response.completed":
-                    completed = event.get("response")
-            payload = json.dumps(completed or {}).encode()
-        try:
-            data = json.loads(payload.decode("utf-8"))
-        except ValueError:
-            data = {}
-        if not isinstance(data, dict):
-            data = {}
+                reservation_id: str | None = None) -> bool:
+        data = _response_data(payload, responses_api and streaming)
+        if responses_api and streaming and not data.get("usage"):
+            error = data.get("error") or {}
+            code = error.get("code") if isinstance(error, dict) else None
+            rejected = data.get("status") == "failed" and code in {
+                "context_length_exceeded", "invalid_request_error", "rate_limit_exceeded",
+                "invalid_prompt", "invalid_value", "token_limit_exceeded",
+            }
+            write_event(self.paths, "proxy_usage_unavailable", owner_id=owner_id,
+                        response_status=data.get("status"), error_code=code,
+                        response_id=data.get("id"), reservation_id=reservation_id,
+                        rejected=rejected)
+            # A rejected request is not a completed maximum-token generation.
+            # An interrupted or ambiguous stream keeps its original billing hold.
+            return rejected
         usage_raw = data.get("usage") or {}
         if not isinstance(usage_raw, dict):
             usage_raw = {}
@@ -345,6 +343,36 @@ class ModelProxy:
         with self._lock(owner_id):
             owner_tracker.record(agent="proxy", model=served, usage=usage, notes=f"owner={owner_id} reservation={reservation_id or 'none'}")
             cluster_tracker.record(agent="proxy", model=served, usage=usage, notes=f"owner={owner_id} reservation={reservation_id or 'none'}")
+
+        return True
+
+
+def _response_data(payload: bytes, streaming: bool) -> dict:
+    """Read terminal Responses usage, including incomplete/failed SSE responses."""
+    try:
+        value = json.loads(payload)
+        if isinstance(value, dict):
+            return value
+    except (ValueError, UnicodeDecodeError):
+        pass
+    result = {}
+    if streaming:
+        for line in payload.splitlines():
+            if not line.startswith(b"data:"):
+                continue
+            try:
+                event = json.loads(line[5:].strip())
+            except (ValueError, UnicodeDecodeError):
+                continue
+            if not isinstance(event, dict):
+                continue
+            if event.get("type") in {"response.completed", "response.incomplete", "response.failed"}:
+                response = event.get("response")
+                if isinstance(response, dict):
+                    result = response
+            elif event.get("type") == "error":
+                result = {"status": "failed", "error": event.get("error") or event}
+    return result
 
 
 def proxy_spend_total(paths) -> float:
