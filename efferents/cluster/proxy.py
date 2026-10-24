@@ -246,7 +246,8 @@ class ModelProxy:
         req = urllib.request.Request(upstream + upstream_path, data=body, headers=out_headers, method="POST")
         settled = False
         try:
-            for attempt in range(3):
+            waited = 0.0
+            for attempt in range(7):
                 try:
                     with self._open(req, timeout=600) as resp:
                         status = resp.status
@@ -271,10 +272,11 @@ class ModelProxy:
                         delay = float("inf")
                     # Only retry explicit rejected throttles, never uncertain
                     # transport failures. Keep the SAME budget hold throughout.
-                    if status == 429 and attempt < 2 and 0 <= delay <= 30:
+                    if status == 429 and attempt < 6 and 0 <= delay <= 120 and waited + delay <= 300:
                         write_event(self.paths, "proxy_backoff", owner_id=owner_id,
                                     status=429, stage="provider_throttle")
                         time.sleep(delay)
+                        waited += delay
                         continue
                     break
                 except (urllib.error.URLError, OSError, TimeoutError) as e:

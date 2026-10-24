@@ -204,7 +204,7 @@ class NetworkHub:
                 "owner_id": owner.owner_id,
                 "original_owner_id": existing.get("original_owner_id") or existing.get("owner_id") or owner.owner_id,
                 "owner_name": owner.name,
-                "research_objective": str(payload.get("research_objective") or existing.get("research_objective") or "")[:1000],
+                "research_objective": str(payload.get("research_objective") or existing.get("research_objective") or ""),
                 "contributions_version": 1 if payload.get("contributions_version") == 1 else 0,
                 "domain": str(payload.get("domain") or "unspecified")[:120],
                 "track": (str(payload.get("track"))[:64] if payload.get("track") else None),

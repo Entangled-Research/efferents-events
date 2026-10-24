@@ -421,3 +421,22 @@ def test_large_coding_context_and_output_allowance_are_per_request(tmp_path, mon
     assert len(seen) == 3 and all(len(item['input']) == 600_000 for item in seen)
     assert all(item['max_output_tokens'] == 65536 for item in seen)
     assert px.spend('alice') == pytest.approx(2 * px.spend('bob'))
+
+
+def test_provider_minute_cooldown_is_retried_without_new_budget_hold(tmp_path, monkeypatch):
+    from efferents.cluster.budget import coordinator
+    cfg = make_cluster(tmp_path, monkeypatch)
+    delays, holds = [], []
+    monkeypatch.setattr('efferents.cluster.proxy.time.sleep', delays.append)
+    def opener(req, timeout=0):
+        holds.append(coordinator(cfg).reservations()[0]['id'])
+        if len(holds) <= 3:
+            headers = Message()
+            headers['retry-after'] = '60'
+            raise urllib.error.HTTPError(req.full_url, 429, 'provider throttle', headers, io.BytesIO(b'{}'))
+        return FakeResponse(_ok_response())
+    px = ModelProxy(cfg, opener=opener)
+    assert px.forward(owner_id='o1', path='/v1/messages', body=_request(), headers={}, api_key='k')[0] == 200
+    assert delays == [60, 60, 60] and len(set(holds)) == 1
+    assert coordinator(cfg).reservations() == []
+    assert len((cfg.paths.root / 'proxy/o1/budget.jsonl').read_text().splitlines()) == 1

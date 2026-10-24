@@ -188,3 +188,10 @@ def test_long_question_preserved_and_broad_fluorescence_routes_to_existing_lab(h
     assert len(result['ideas']) == 3
     commands = json.loads((ctx.hub.lab_dir('gfp') / 'commands.json').read_text())
     assert commands[0]['text'] == original
+
+
+def test_participants_have_no_application_request_rate_caps(hub):
+    _, ctx, *_ = hub
+    for name in ('join_limiter', 'login_limiter', 'network_limiter', 'message_limiter', 'mutation_limiter'):
+        limiter = getattr(ctx, name)
+        assert all(limiter.allow('shared-event-wifi') for _ in range(1000))
