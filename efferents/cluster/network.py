@@ -647,14 +647,19 @@ class NetworkHub:
                     "focus": idea.get("focus", ""), "suite": plan, "detail_unavailable": True}
         if kind == "control":
             from efferents.cluster.remote_control import command_history
+            history = command_history(self, lab_id)
+            pending = [item for item in history
+                       if item["action"] in {"pause", "resume"} and not item.get("ack")]
+            owner_paused = (pending[-1]["action"] == "pause" if pending
+                            else beat.get("status") == "paused")
             return {
                 "connected": True, "lab_id": lab_id, "domain": reg.get("domain"),
                 "submission_dir": None, "lab_root": None, "source": reg.get("host") or "remote lab",
                 "repository": None, "readme_path": None, "status": self._status(beat),
-                "owner_paused": (beat.get("status") == "paused"), "owner_id": reg.get("owner_id"),
+                "owner_paused": owner_paused, "owner_id": reg.get("owner_id"),
                 "owner_name": "Autoresearchers", "resource_custodian": reg.get("owner_name"), "track": reg.get("track"), "remote": True,
                 "has_api_key": True, "paused_demo": False, "modes": [],
-                "steering": command_history(self, lab_id) if owner_id == reg.get("owner_id") else [],
+                "steering": history if owner_id == reg.get("owner_id") else [],
                 "contract": {"readme": False, "lab_yaml": True, "hypothesis": True},
             }
         if kind == "state":

@@ -199,3 +199,20 @@ def test_organizer_pause_also_blocks_browser_intake_without_a_hold(tmp_path, mon
         budget.reserve("openai/gpt-5.6-luna", 200, 100)
     assert caught.value.status == 409 and "progress is saved" in str(caught.value)
     assert coordinator(cfg).reservations() == []
+
+
+def test_pause_toggle_reflects_pending_request_before_heartbeat(tmp_path, monkeypatch):
+    from efferents.cluster.remote_control import queue_command
+    cfg = make_cluster(tmp_path, monkeypatch)
+    ctx = ClusterContext(cfg, tracks={})
+    owner = ctx.owners.join('Ada')
+    directory = ctx.hub.lab_dir('toggle')
+    directory.mkdir()
+    (directory/'registration.json').write_text(json.dumps({'lab_id':'toggle','owner_id':owner.owner_id}))
+    (directory/'heartbeat.json').write_text(json.dumps({'status':'stopped'}))
+    assert ctx.hub.lab_view('toggle','control',owner_id=owner.owner_id)['owner_paused'] is False
+    queue_command(ctx.hub,owner,'toggle','pause',{})
+    assert ctx.hub.lab_view('toggle','control',owner_id=owner.owner_id)['owner_paused'] is True
+    queue_command(ctx.hub,owner,'toggle','resume',{})
+    assert ctx.hub.lab_view('toggle','control',owner_id=owner.owner_id)['owner_paused'] is False
+    assert json.loads((directory/'heartbeat.json').read_text())['status']=='stopped'
