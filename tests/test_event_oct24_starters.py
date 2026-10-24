@@ -19,10 +19,10 @@ def module_for(track):
     return module
 
 
-def test_catalogue_contains_three_labs_and_seven_scoped_ideas():
+def test_catalogue_contains_four_labs_and_ten_scoped_ideas():
     tracks=load_tracks(ROOT)
-    assert set(tracks)=={'quantum-measurement','gfp-fitness','vision-sampling'}
-    assert sum(len(t.lab_yaml['students']) for t in tracks.values())==7
+    assert set(tracks)=={'quantum-measurement','quantum-gnn','gfp-fitness','vision-sampling'}
+    assert sum(len(t.lab_yaml['students']) for t in tracks.values())==10
     for track in tracks.values():
         for idea in track.lab_yaml['students']:
             assert (track.submission/'ideas'/idea['id']/'hypothesis.md').is_file()

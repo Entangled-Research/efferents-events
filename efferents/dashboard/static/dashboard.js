@@ -60,11 +60,6 @@ function renderBudget() {
     ? `your total spend · $${budget.spent.toFixed(2)} / $${budget.cap.toFixed(2)}`
     : `${isNetwork ? "all labs" : "this lab"} · $${budget.spent.toFixed(2)} / $${budget.cap.toFixed(2)} daily`);
   meta.title = cluster ? "Your allocated event budget across all your labs and intake" : "Daily model budget";
-  const reserved = document.getElementById("budget-reserved");
-  reserved.hidden = !cluster || !(budget.reserved > 0);
-  reserved.textContent = reserved.hidden ? ""
-    : `$${budget.reserved.toFixed(2)} reserved · $${budget.remaining.toFixed(2)} available`;
-  reserved.title = "Reserved for model requests pending billing confirmation; separate from recorded spend";
   const selected = selectedPortfolioLab();
   text("selected-lab-spend", cluster && route === "observe" && selected
     ? `this lab · $${Number(selected.budget?.spent || 0).toFixed(2)}` : "");
@@ -382,6 +377,12 @@ function renderSteering(records) {
   }).join("");
 }
 
+function renderPlaybackControls(info, canControl) {
+  const unavailable = Boolean(info.paused_demo) || !canControl;
+  document.getElementById("pause-lab").hidden = unavailable || Boolean(info.owner_paused);
+  document.getElementById("resume-lab").hidden = unavailable || !info.owner_paused;
+}
+
 function renderControl(info) {
   if (info.csrf_token) csrfToken = info.csrf_token;
   controlState = { ...controlState, ...info };
@@ -423,14 +424,12 @@ function renderControl(info) {
     ? '<span aria-hidden="true"></span> history'
     : '<span aria-hidden="true"></span> live';
   const live = info.status === "running" || info.status === "paused";
-  const ownerPaused = Boolean(info.owner_paused);
   const mine = controlState.mode !== "cluster" ? !info.remote : Boolean(info.mine);
   document.getElementById("start-lab").hidden = pausedDemo || live || !mine || info.remote;
   document.getElementById("stop-lab").hidden = pausedDemo || !live || !mine || info.remote;
   document.getElementById("delete-lab").hidden = pausedDemo || !mine;
   document.getElementById("delete-idea").hidden = pausedDemo || !mine || !routeIdeaId();
-  document.getElementById("pause-lab").hidden = pausedDemo || !live || ownerPaused || !mine;
-  document.getElementById("resume-lab").hidden = pausedDemo || !ownerPaused || !mine;
+  renderPlaybackControls(info, mine);
   document.getElementById("connect-submit").disabled = pausedDemo;
   const owner = document.getElementById("connection-owner");
   owner.hidden = !info.owner_name;
@@ -1219,7 +1218,7 @@ function renderNetwork() {
     const headline = lab.headline || {}, board = boardFor(lab);
     card.innerHTML = `<header class="efferent-lab-head"><span class="lab-nucleus" aria-hidden="true">ℯ</span>` +
       `<div><a class="lab-identity" href="${esc(labHref(lab.lab_id))}"><strong>${esc(labDisplayName(lab.lab_id))}</strong></a>` +
-      `<small>${esc(lab.owner_name || "")}${lab.mine ? " · yours" : ""} · ${esc(lab.status || "stopped")}</small></div>` +
+      `<small>${esc(lab.owner_name || "")}${lab.mine ? (isCluster() ? " · your compute" : " · yours") : ""} · ${esc(lab.status || "stopped")}</small></div>` +
       `<button class="lab-inspect" type="button" aria-label="Inspect ${esc(labDisplayName(lab.lab_id))}">↗</button></header>` +
       `<div class="lab-readout"><span>${Number(headline.observations) || 0} runs</span>` +
       `<span>${headline.best == null ? "No eligible result" : `${esc(headline.column || "metric")} <strong>${esc(formatMetric(headline.best))}</strong>`}</span></div>` +

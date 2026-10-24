@@ -50,6 +50,8 @@ class ClusterContext:
         self.network_limiter = RateLimiter(120, 60.0)
         factory = client_factory or (lambda budget: make_client(budget=budget))
         self.intake = IntakeStore(cfg, self.tracks, client_factory=factory)
+        from efferents.cluster.submissions import SubmissionStore
+        self.submissions = SubmissionStore(self)
         self.join_limiter = RateLimiter(5, 60.0)
         self.login_limiter = RateLimiter(10, 60.0)
         self.message_limiter = RateLimiter(12, 60.0)

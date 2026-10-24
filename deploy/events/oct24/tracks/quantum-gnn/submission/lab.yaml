@@ -1,0 +1,73 @@
+lab_id: quantum-gnn
+domain: quantum graph learning
+research_goal: Develop a bounded quantum graph classifier through multiple automatically
+  tested ideas.
+approach: Six-qubit statevector graph circuits with validation-only random-search
+  training. Synthetic topology expressivity experiment, no quantum advantage claim.
+source:
+  dir: ./src/
+  allowed_patterns:
+  - '**/*.py'
+executor:
+  run_command: python3 -m experiment --config {config_path}
+  smoke_command: python3 -m experiment --config {config_path} --smoke
+  config_template: ../configs/default.yaml
+  run_timeout_s: 180
+  smoke_timeout_s: 90
+  isolated_parallel_safe: true
+metrics:
+  headline:
+    column: effect
+    direction: max
+  panels:
+  - column: effect
+    label: "Claim margin (\u22650)"
+  - column: baseline_error
+    label: Baseline Error
+  - column: treatment_error
+    label: Treatment Error
+  - column: coverage
+    label: Coverage
+  constraints:
+  - column: coverage
+    op: '>='
+    value: 1
+  - column: evaluation_valid
+    op: '>='
+    value: 1
+budget:
+  daily_cap_usd: 100
+  total_cap_usd: 100
+  sonnet_default: true
+hypothesis_validation: popper
+peer_review:
+  enabled: true
+autonomy:
+  coder_enabled: false
+students:
+- id: entanglement
+  handle: Do graph entanglers help?
+  focus: "Compare graph-edge RZZ messages with no entanglers at depth 2. Both arms\
+    \ use the same number of validation-selected random parameter candidates. Set\
+    \ task=entanglement. Use seeds 0\u20134; five percentage points is the provisional\
+    \ positive-effect threshold. Use the triangle-count classical baseline. These\
+    \ two degree-matched graph families test expressivity only: permutations are not\
+    \ independent scientific samples or unseen topologies. Never claim general quantum\
+    \ superiority."
+- id: encoding
+  handle: Does node-degree encoding help?
+  focus: "Compare degree encoding with constant node encoding, with graph-edge messages\
+    \ in both arms. Set task=encoding. Use seeds 0\u20134; five percentage points\
+    \ is the provisional positive-effect threshold. Use the triangle-count classical\
+    \ baseline. These two degree-matched graph families test expressivity only: permutations\
+    \ are not independent scientific samples or unseen topologies. Never claim general\
+    \ quantum superiority."
+- id: depth
+  handle: Does a deeper circuit help?
+  focus: "Compare depth 2 or 3 with depth 1, retaining the same validation search\
+    \ budget and explicitly reporting parameter counts. Set task=depth. Use seeds\
+    \ 0\u20134; five percentage points is the provisional positive-effect threshold.\
+    \ Use the triangle-count classical baseline. These two degree-matched graph families\
+    \ test expressivity only: permutations are not independent scientific samples\
+    \ or unseen topologies. Never claim general quantum superiority."
+default_student_id: entanglement

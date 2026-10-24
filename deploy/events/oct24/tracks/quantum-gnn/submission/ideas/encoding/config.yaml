@@ -1,0 +1,4 @@
+task: encoding
+seed: 0
+layers: 2
+candidates: 8

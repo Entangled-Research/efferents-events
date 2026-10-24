@@ -208,7 +208,8 @@ def test_register_heartbeat_push_pull_and_portfolio(hub):
     # Everyone joined sees the remote lab in the portfolio and its views.
     status, portfolio, _ = _request(port, "/api/labs", headers=bob_hdrs)
     rows = {r["lab_id"]: r for r in portfolio["labs"]}
-    assert rows["ada-lab"]["remote"] is True and rows["ada-lab"]["owner_name"] == "Ada"
+    assert rows["ada-lab"]["remote"] is True and rows["ada-lab"]["owner_name"] == "Autoresearchers"
+    assert rows["ada-lab"]["resource_custodian"] == "Ada"
     assert rows["ada-lab"]["ideas"] == beat["ideas"]
     assert rows["ada-lab"]["review_board"] == beat["review_board"]
     assert rows["ada-lab"]["status"] == "running" and rows["ada-lab"]["headline"]["best"] == 0.09
@@ -224,7 +225,8 @@ def test_register_heartbeat_push_pull_and_portfolio(hub):
     status, evidence, _ = _request(port, "/api/labs/ada-lab/evidence", headers=bob_hdrs)
     assert status == 200 and evidence["remote_detail_unavailable"] is True
     status, control, _ = _request(port, "/api/labs/ada-lab/control", headers=ada_hdrs)
-    assert control["remote"] is True and control["owner_name"] == "Ada"
+    assert control["remote"] is True and control["owner_name"] == "Autoresearchers"
+    assert control["resource_custodian"] == "Ada"
     status, body, _ = _request(port, "/api/labs/ada-lab/steer", method="POST",
                                payload={"message": "x"}, headers=ada_hdrs)
     assert status == 200 and body["queued"] == "steer"

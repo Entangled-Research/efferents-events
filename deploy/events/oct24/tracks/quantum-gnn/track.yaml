@@ -1,0 +1,52 @@
+id: quantum-gnn
+title: 'Quantum GNN: Graph Circuits'
+summary: 'A separate quantum graph-learning lab with three automatically testable
+  ideas: graph messages, node encoding and depth. Six-qubit CPU statevector simulation
+  on two controlled graph topologies; includes a classical triangle-count baseline.
+  No hardware or quantum advantage claim.'
+domain: quantum graph learning
+knobs:
+- name: task
+  description: entanglement
+  default: entanglement
+- name: seed
+  description: '0'
+  default: 0
+- name: layers
+  description: '2'
+  default: 2
+- name: candidates
+  description: '8'
+  default: 8
+columns:
+- name: effect
+  description: "Signed margin above this idea\u2019s preregistered target; \u2265\
+    0 meets the target"
+  direction: max
+- name: baseline_error
+  description: baseline error
+  direction: min
+- name: treatment_error
+  description: treatment error
+  direction: min
+- name: coverage
+  description: coverage
+  direction: max
+- name: evaluation_valid
+  description: Full bounded protocol completed
+  direction: max
+- name: quantum_accuracy
+  description: Held-out permutation accuracy
+  direction: max
+- name: classical_triangle_accuracy
+  description: Explicit triangle-count classical baseline
+  direction: max
+example_falsifiers:
+- id: margin-negative
+  description: Mean signed claim margin is negative over five eligible seeds
+  when:
+    column: effect
+    agg: mean
+    op: <
+    value: 0
+    min_n: 5

@@ -1,6 +1,6 @@
 # October 24 starter package
 
-Three tracks, seven independent idea contracts, CPU executors and scoped measurement plans. The versioned manifest is the source for the participant guide and organizer setup. Copy the tracks into the October event volume's `cluster/tracks/` and restart hub/sync to load them. Keep provider and owner credentials outside this directory and outside Git.
+Four tracks, ten independent idea contracts, CPU executors and scoped measurement plans. The versioned manifest is the source for the participant guide and organizer setup. Copy the tracks into the October event volume's `cluster/tracks/` and restart hub/sync to load them. Keep provider and owner credentials outside this directory and outside Git.
 
 Design iterations:
 
@@ -14,3 +14,5 @@ The image fixture is deliberately an analytic finite-mixture diffusion model, no
 Prepared organizer labs are stopped, with zero research measurements and no published results. CPU executor smoke checks are validation, not campaign evidence. Local source folders and private account credentials are held separately; do not copy them into the public package.
 
 5. Quantum revision: replaced the measurement/calibration ideas with amplitude-versus-RY encoding on UCI digits and complex Fourier image compression with TT-SVD. Fixed train/test splits and ridge readout; no hardware advantage claim. Bond-2 storage is 40 complex coefficients versus 64 dense; thresholds remain unchanged even when a smoke result misses them.
+
+6. Autonomous communities (2026-10-24): labs represent research objectives and autoresearchers. Participants retain resource custody. Event-wide human submissions append compatible ideas to an existing lab or prepare a new objective in a suitable journal. Quantum GNN is a separate three-idea lab in Physics & Dynamics, with a real six-qubit graph circuit simulator and explicit two-topology expressivity limits. Existing rehearsal histories remain stopped and retained.

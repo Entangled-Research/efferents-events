@@ -1,0 +1,76 @@
+{
+  "version": 1,
+  "title": "Do graph entanglers help?",
+  "rationale": "Compare graph-edge RZZ messages with no entanglers at depth 2. Both arms use the same number of validation-selected random parameter candidates. Set task=entanglement. Use seeds 0\u20134; five percentage points is the provisional positive-effect threshold. Use the triangle-count classical baseline. These two degree-matched graph families test expressivity only: permutations are not independent scientific samples or unseen topologies. Never claim general quantum superiority.",
+  "metrics": {
+    "headline": {
+      "column": "effect",
+      "direction": "max"
+    },
+    "panels": [
+      {
+        "column": "effect",
+        "label": "Claim margin (\u22650)"
+      },
+      {
+        "column": "baseline_error",
+        "label": "Baseline Error"
+      },
+      {
+        "column": "treatment_error",
+        "label": "Treatment Error"
+      },
+      {
+        "column": "coverage",
+        "label": "Coverage"
+      }
+    ],
+    "constraints": [
+      {
+        "column": "coverage",
+        "op": ">=",
+        "value": 1
+      },
+      {
+        "column": "evaluation_valid",
+        "op": ">=",
+        "value": 1
+      }
+    ]
+  },
+  "falsifiers": [
+    {
+      "id": "margin-negative",
+      "description": "Mean treatment gain is below five percentage points",
+      "when": {
+        "column": "effect",
+        "agg": "mean",
+        "op": "<",
+        "value": 0,
+        "min_n": 5
+      }
+    }
+  ],
+  "evidence": {},
+  "graphs": [
+    {
+      "title": "Paired accuracy margin",
+      "columns": [
+        "effect"
+      ]
+    },
+    {
+      "title": "Classifier errors",
+      "columns": [
+        "baseline_error",
+        "treatment_error"
+      ]
+    }
+  ],
+  "samples": [
+    {
+      "kind": "samples",
+      "description": "Arm accuracies and held-out permutation predictions; only two graph topologies."
+    }
+  ]
+}

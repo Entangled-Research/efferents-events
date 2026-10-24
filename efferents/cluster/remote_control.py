@@ -79,21 +79,58 @@ def apply_commands(submission: Path, lab_root: Path, commands: list[dict]) -> No
     """Queue each command once in the existing auditable local steering ledger."""
     from efferents import steer
     seen = set(command_acks(lab_root))
-    for item in commands:
+    # Resource controls must still apply if a contribution needs evaluator repair.
+    for item in sorted(commands, key=lambda command: command.get("action") == "contribute"):
         identifier = item.get("id")
         action = item.get("action")
-        if not identifier or identifier in seen or action not in {"steer", "pause", "resume", "deleteidea"}:
+        if not identifier or identifier in seen or action not in {"steer", "pause", "resume", "deleteidea", "contribute"}:
             continue
         mode = item.get("mode", "auto")
         if mode not in STEERING_MODES:
             continue
+        if action == "contribute":
+            import yaml
+            from efferents.eval_suite import install_idea_suite
+            from efferents.lab import LabConfig
+            from efferents.lab import _parse_falsifiers
+            from efferents.lifecycle import inactive
+            from efferents.placement import hire
+            if inactive(lab_root):
+                continue
+            for index, idea in enumerate(item.get("ideas") or []):
+                sid = "contribution-" + identifier.removeprefix("sub_") + f"-{index}"
+                if inactive(lab_root, sid):
+                    continue
+                cfg = LabConfig.from_submission(submission)
+                raw = yaml.safe_load((submission / "lab.yaml").read_text())
+                rules = idea.get("falsifiers") or []
+                parsed = _parse_falsifiers(rules, cfg.metrics.bucket_axes)
+                known = {cfg.metrics.headline.column, *(p.column for p in cfg.metrics.panels)}
+                if any((rule.column or rule.metric) not in known for rule in parsed):
+                    raise ValueError("Contribution falsifier references an unsupported metric")
+                # Share the compatible measurement schema, never another idea's
+                # claim, verdict, observations, or falsifier. Each idea starts empty.
+                install_idea_suite(submission, sid, {
+                    "version": 1, "title": idea["title"],
+                    "metrics": raw["metrics"], "falsifiers": rules,
+                    "evidence": {},
+                    "graphs": [{"title": idea["title"], "columns": [cfg.metrics.headline.column]}],
+                    "samples": [], "rationale": idea["focus"][:2000],
+                    "submission_id": identifier,
+                    "implementation_note": "Human proposal; no inherited observations or scientific verdict. A new campaign must pass the internal hypothesis gate.",
+                })
+                roster = cfg.students
+                if not any(s["id"] == sid for s in roster):
+                    hire(submission, student_id=sid, handle=idea["title"],
+                         focus=idea["focus"] + "\nOriginal human submission:\n" + item["text"],
+                         direction=item["text"], prompted_by=item["by"])
         if action == "deleteidea":
             from efferents.lifecycle import remove
             if not isinstance(item.get("idea_id"), str) or not item["idea_id"]:
                 continue
             remove(lab_root, by=item["by"], student_id=item["idea_id"])
         steer.steer(submission, lab_root=lab_root, text=item["text"], by=item["by"],
-                    action=None if action in {"steer", "deleteidea"} else action,
+                    action=None if action in {"steer", "deleteidea", "contribute"} else action,
                     extra={"remote_command_id": identifier, "mode": mode})
         if mode != "auto":
             path = submission / "context" / "research_log.md"

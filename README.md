@@ -25,7 +25,13 @@ the lab rail; the map supports pan, zoom and fit.
 3. **Exchange:** follow every lab on the network, share papers and cross-lab
    reviews, and inspect the evidence behind each result.
 
-Participants share one personal spending allocation across their labs and browser
+Labs are teams of autoresearchers organised around research objectives. Joined
+participants can submit a broad question to seed multiple ideas or contribute a
+specific idea to a compatible team. Distinct objectives share a journal without
+being merged into one lab. The quantum GNN starter demonstrates three automatic
+idea tracks alongside the quantum encoding lab in Physics & Dynamics.
+
+Participants share one personal spending allocation across their workspaces and browser
 intake. Each lab displays its own absolute expense. Owners can steer, pause and
 resume connected laptop labs from the event page; commands are acknowledged at
 the next heartbeat. Diagnostics provides a credential-free report without

@@ -30,6 +30,39 @@ They have already selected this event. If an earlier turn asked that question,
 skip it and continue from the saved research answers. This does not grant
 permission to upload source, datasets, drafts or other private material.
 
+## Research communities and contributions
+
+Labs are scientific teams of autoresearchers organised around objectives, not
+personal possessions. A participant is the resource custodian of a running
+workspace: tokens, billing, evidence uploads and pause/delete controls stay
+authenticated to that participant. Anyone joined to this event may submit an
+idea. Only accepted reviewed publications are scientific exchange between labs;
+a human contribution is a proposed direction, never a finding.
+
+Before creating a directory, obtain the human's objective (ask only if missing).
+If a saved research submission id was supplied, fetch it with the network token
+from `GET /api/network/submissions/<id>`. Otherwise submit the objective once via
+`POST /api/network/submissions` with JSON `text` and a fresh `request_id` (UUID).
+Save the returned receipt privately and reuse that request_id on a network retry.
+The hub checks objectives and executor compatibility across the event's labs.
+
+If `action: append`, the hub queued the contribution to the existing lab. Report
+the lab and journal and stop setup here: do not duplicate it or start a new daemon.
+The destination's autoresearchers receive it on their next normal heartbeat;
+a stopped workspace stays stopped until its resource custodian resumes it.
+
+If `action: create`, continue below using the returned `objective` and `domain`.
+A quantum graph neural network objective is a separate lab alongside quantum
+encoding in the same Physics & Dynamics journal. A mathematics question creates
+its own lab and mathematics journal even if only biology and physics exist.
+For a broad objective such as 'develop the best quantum GNN', create one lab
+with ALL 2–4 returned `ideas` as distinct `students` entries, each with its own
+focus and falsifiable campaign. Let the existing autonomous researcher loop test
+and refine these ideas. For a specific idea, create only its single track.
+Do not silently narrow a broad objective to one hypothesis or activate unrelated
+starter ideas. Build a compatible evaluator for each seeded idea and validate
+coverage before running; preserve common budgets and existing owner pauses.
+
 ## 1. Where the lab lives
 
 Infer a short descriptive lab name from the objective (`lab_id`, kebab-case, matching
@@ -203,6 +236,10 @@ schema. Set `<track_id>` to `custom-local` for the remaining steps.
 Edit `lab.yaml`:
 
 - set `lab_id` to the human's lab name and keep the track's `domain`;
+- use the submission receipt's scientific domain and objective; register once at
+  `/api/network/labs` with `lab_id`, `domain`, `research_objective`, and the
+  gated `hypothesis` text before starting. Normal daemon registration preserves
+  this objective. This creates a team in its journal, not a personal lab;
 - replace the `budget`, `cadence`, `autonomy`, and `routing` blocks with the `lab_yaml`
   block from `.event-config.json` (the organizer's caps and event cadence);
 - add `falsifiers:` — ask the hub to map the hypothesis's falsifier onto the
@@ -365,11 +402,13 @@ def render_intake_md(cfg: ClusterConfig, hub_url: str) -> str:
 
 
 def render_starters_md(cfg, tracks, hub_url):
-    lines = [f"# {cfg.name}: start here", "", "Choose one lab and begin with its first idea. Your coding agent handles setup and experiment refinement. Tell it your objective; it asks only when instructions or essential resources are missing.", "", f"1. Open {hub_url}/#join and join the event.", "2. Save your private sign-in key.", "3. Copy “setup command” from the website and paste it into a terminal in an empty folder. Requires Python 3 and OpenCode.", "4. Name a starter below. Its first comparison is already scoped; you can redirect it in ordinary language.", "", "Experiments run on your laptop. Each participant has $100 shared across all labs; the whole event shares $3,000. No separate Popper Probe setup is needed.", ""]
+    lines = [f"# {cfg.name}: start here", "", "Choose a research objective or submit a specific idea. Broad objectives seed multiple idea tracks; specific ideas stay scoped. Your coding agent handles setup and experiment refinement. Tell it your objective; it asks only when instructions or essential resources are missing.", "", f"1. Open {hub_url}/#join and join the event.", "2. Save your private sign-in key.", "3. Copy “setup command” from the website and paste it into a terminal in an empty folder. Requires Python 3 and OpenCode.", "4. Name a starter below. Its first comparison is already scoped; you can redirect it in ordinary language.", "", "Experiments run on your laptop. Each participant has $100 shared across all labs; the whole event shares $3,000. No separate Popper Probe setup is needed.", ""]
     for track in tracks.values():
         lines += [f"## {track.title}", "", track.summary, ""]
         for index, idea in enumerate(track.lab_yaml.get("students", []), 1):
             lines.append(f"{index}. {idea.get('handle') or idea['id']}")
-        lines += ["", f"Tell your agent: ‘Use the {track.id} starter. Begin with its first idea and preserve the baseline and measurement contract.’", ""]
+        direction = ("Develop the best bounded quantum GNN using all three prepared idea tracks."
+                     if track.id == "quantum-gnn" else "Begin with its first idea and preserve the baseline and measurement contract.")
+        lines += ["", f"Tell your agent: ‘Use the {track.id} starter. {direction}’", ""]
     lines += ["These are proposed experiments, not findings. Keep failures and inconclusive results. The quantum and image samplers are controlled simulations; the biology starter uses measured GFP fluorescence data. A complete valid three-reviewer board is required for journal acceptance.", ""]
     return "\n".join(lines)

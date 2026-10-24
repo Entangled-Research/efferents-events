@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shutil
 import sys
 import tempfile
@@ -100,7 +101,7 @@ def bootstrap(hub_url: str, token: str, *, opencode_dir: Path | None = None) -> 
     return model, small_model
 
 
-def launch(hub_url: str, model: str, small_model: str, *, opencode_dir: Path | None = None, intake_session_id: str | None = None) -> None:
+def launch(hub_url: str, model: str, small_model: str, *, opencode_dir: Path | None = None, intake_session_id: str | None = None, submission_id: str | None = None) -> None:
     executable = shutil.which("opencode")
     if not executable:
         raise ValueError("OpenCode is not installed. Install it from https://opencode.ai then run this setup again; no model credits have been used.")
@@ -111,6 +112,10 @@ def launch(hub_url: str, model: str, small_model: str, *, opencode_dir: Path | N
               "Use the event's prepared starters and ask which scientific objective I want if needed.")
     if intake_session_id:
         prompt += f" Use my approved browser intake session {intake_session_id}."
+    if submission_id:
+        if not re.fullmatch(r"sub_[a-f0-9]{24}", submission_id):
+            raise ValueError("Invalid research submission id")
+        prompt += f" Use my saved research submission {submission_id}; fetch /api/network/submissions/{submission_id} with my token. Follow its objective, domain and ideas without asking me to repeat them."
     environment = dict(os.environ)
     environment.pop("EFFERENTS_EVENT_TOKEN", None)
     # Override project defaults for this new session; do not expose personal providers.
@@ -128,6 +133,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--hub")
     parser.add_argument("--launch", action="store_true")
     parser.add_argument("--intake")
+    parser.add_argument("--submission")
     options = parser.parse_args(args)
     try:
         if options.hub:
@@ -139,7 +145,7 @@ def main(argv: list[str] | None = None) -> int:
             parser.error("provide a config file or --hub URL")
         print("Setup ready.", flush=True)
         if options.launch:
-            launch(options.hub, model, small_model, intake_session_id=options.intake)
+            launch(options.hub, model, small_model, intake_session_id=options.intake, submission_id=options.submission)
     except (OSError, ValueError, KeyError, TypeError) as exc:
         print(f"OpenCode setup failed: {exc}", file=sys.stderr)
         return 1

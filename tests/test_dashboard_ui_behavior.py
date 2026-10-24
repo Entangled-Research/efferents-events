@@ -166,24 +166,27 @@ console.log(JSON.stringify({overlap,cols:layout.cols,rows:new Set(layout.placeme
     assert result["rows"] > 3
 
 
-def test_budget_holds_are_separate_from_spend_and_clear_on_account_change():
+def test_budget_shows_spend_and_bar_without_reservation_details():
     result = run_js("""
 controlState.mode = 'cluster';
 renderSession({cluster:{joined:true,owner:{name:'Ada'},
  owner_budget:{spent_usd:7.25,cap_usd:50,reserved_usd:2,remaining_usd:40.75}}});
 renderBudget();
 const held = {spend:document.getElementById('budget').textContent,
- text:document.getElementById('budget-reserved').textContent,
- hidden:document.getElementById('budget-reserved').hidden};
+ fill:document.getElementById('budget-fill').style.width};
 renderSession({cluster:{joined:true,owner:{name:'Grace'},
  owner_budget:{spent_usd:1,cap_usd:50,reserved_usd:0,remaining_usd:49}}});
 renderBudget();
-console.log(JSON.stringify({held,cleared:document.getElementById('budget-reserved').hidden,
- text:document.getElementById('budget-reserved').textContent}));
+console.log(JSON.stringify({held,current:{spend:document.getElementById('budget').textContent,
+ fill:document.getElementById('budget-fill').style.width},
+ reservationElementUsed:elements.has('budget-reserved')}));
 """)
-    assert result["held"] == {"spend": "your total spend · $7.25 / $50.00",
-                              "text": "$2.00 reserved · $40.75 available", "hidden": False}
-    assert result["cleared"] and result["text"] == ""
+    assert result["held"]["spend"] == "your total spend · $7.25 / $50.00"
+    assert float(result["held"]["fill"].removesuffix("%")) == pytest.approx(14.5)
+    assert result["current"] == {"spend": "your total spend · $1.00 / $50.00", "fill": "2%"}
+    assert not result["reservationElementUsed"]
+    html = (Path(__file__).resolve().parents[1] / "efferents/dashboard/static/dashboard.html").read_text()
+    assert 'id="budget-reserved"' not in html
 
 
 def test_receipt_alone_never_claims_experimental_use():
@@ -258,3 +261,20 @@ console.log(JSON.stringify(fundedSetupCommand({network_token:"token'with$literal
     assert parts[-3:] == ["--hub", "https://event.test", "--launch"]
     assert "https://event.test/bootstrap-opencode.py" in parts[3]
     assert "token'with$literal" not in parts[3]
+
+
+@pytest.mark.parametrize("status", ["running", "paused", "stopped"])
+@pytest.mark.parametrize("owner_paused", [False, True])
+@pytest.mark.parametrize("can_control,paused_demo", [(True, False), (False, False), (True, True)])
+def test_playback_controls_remain_accessible_beside_delete_for_authorized_labs(
+    status, owner_paused, can_control, paused_demo,
+):
+    result = run_js(f"""
+renderPlaybackControls({json.dumps({'status': status, 'owner_paused': owner_paused, 'paused_demo': paused_demo})}, {json.dumps(can_control)});
+console.log(JSON.stringify({{
+  pause: !document.getElementById('pause-lab').hidden,
+  resume: !document.getElementById('resume-lab').hidden,
+}}));
+""")
+    allowed = can_control and not paused_demo
+    assert result == {"pause": allowed and not owner_paused, "resume": allowed and owner_paused}

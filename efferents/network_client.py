@@ -80,6 +80,7 @@ class NetworkClient:
         result = self._request("POST", "/api/network/labs", {
             "lab_id": lab_id, "domain": domain, "hypothesis": hypothesis, "track": track,
             "host": socket.gethostname()[:120],
+            "contributions_version": 1,
         })
         self.heartbeat_s = float(result.get("heartbeat_s", self.heartbeat_s))
         self.pull_s = float(result.get("pull_s", self.pull_s))

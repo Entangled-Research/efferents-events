@@ -33,7 +33,6 @@
       </span>
       <div class="budget-meta" id="budget-meta">
         <span id="budget">—</span>
-        <span id="budget-reserved" hidden></span>
         <span id="selected-lab-spend"></span>
         <span class="budget-track" aria-hidden="true"><span id="budget-fill"></span></span>
       </div>
@@ -52,9 +51,11 @@
       <span id="api-key-state" class="key-state">API key unknown</span>
       <button id="start-lab" class="compact-button" type="button">Start lab</button>
       <button id="trial-lab" class="compact-button" type="button">Run 3 experiments · no model</button>
-      <button id="delete-lab" class="compact-button" type="button" hidden>Delete lab</button>
-      <button id="pause-lab" class="compact-button" type="button" hidden>Pause</button>
-      <button id="resume-lab" class="compact-button" type="button" hidden>Resume</button>
+      <div class="lab-runtime-actions" role="group" aria-label="Lab controls">
+        <button id="pause-lab" class="compact-button" type="button" hidden><span aria-hidden="true">⏸</span> Pause</button>
+        <button id="resume-lab" class="compact-button" type="button" hidden><span aria-hidden="true">▶</span> Resume</button>
+        <button id="delete-lab" class="compact-button danger" type="button" hidden>Delete lab</button>
+      </div>
       <button id="stop-lab" class="compact-button danger" type="button" hidden>Stop lab</button>
     </div>
   </div>
@@ -146,6 +147,26 @@
           </div>
         </section>
       </div>
+      <section class="panel join-panel" id="research-submission-panel" data-cluster-only hidden>
+        <header class="panel-header"><h2>Submit research</h2></header>
+        <div class="join-body">
+          <p class="hint">Labs are teams of autoresearchers. Submit a broad question to seed several ideas, or contribute a specific idea to a related lab.</p>
+          <form id="research-submission-form" class="join-form">
+            <label class="field-label" for="research-question">Question or idea</label>
+            <textarea id="research-question" rows="3" maxlength="4000" required placeholder="Develop the best quantum graph neural network"></textarea>
+            <label class="field-label" for="research-destination">Destination</label>
+            <select id="research-destination"><option value="">Find a lab or journal automatically</option></select>
+            <button class="primary-button" id="research-submit" type="submit">Submit research</button>
+          </form>
+          <div class="connection-actions">
+            <button class="compact-button" type="button" data-research-example="Develop the best quantum graph neural network. Compare graph-aware entanglement, node encodings and parameter-matched classical baselines under a bounded CPU simulation budget.">Quantum GNN objective</button>
+            <button class="compact-button" type="button" data-research-example="For the quantum GNN lab, test whether graph-edge entanglers improve held-out graph classification over a parameter-matched circuit without entangling gates, using the same data splits and seeds.">Specific QGNN idea</button>
+            <button class="compact-button" type="button" data-research-example="Investigate a mathematics question: which bounded graph families admit a provably tighter spectral bound on chromatic number? Use verified proofs or explicit counterexamples.">New field: mathematics</button>
+          </div>
+          <div id="research-submission-status" class="form-message" role="status" aria-live="polite"></div>
+          <button class="compact-button" id="research-copy-setup" type="button" hidden>Copy setup command</button>
+        </div>
+      </section>
     </section>
 
     <section id="intake-view" class="app-view" data-route-view="intake" hidden>
@@ -682,5 +703,6 @@
   <link rel="stylesheet" href="/static/vendor/katex/katex.min.css">
   <script src="/static/vendor/katex/katex.min.js"></script>
   <script src="/static/dashboard.js"></script>
+  <script src="/static/event-submissions.js"></script>
 </body>
 </html>

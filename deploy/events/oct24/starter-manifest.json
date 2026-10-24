@@ -22,7 +22,7 @@
         "title": "Does amplitude or rotation encoding preserve digit similarity better?",
         "question": "If the same image becomes amplitudes or rotation angles, which representation keeps useful similarities for recognizing digits?",
         "claim": "On 200 training and 100 held-out digit images, a squared-fidelity kernel from amplitude encoding improves classification accuracy by at least five percentage points over a product RY-rotation kernel at angle_scale=0.25, using the same ridge classifier.",
-        "test": "Use 20 train and 10 test examples per class, seeds 0–4, fixed ridge=0.1. Both see all 64 pixels scaled by the known sensor range 16. Amplitudes are L2-normalized; RY angles are pi*0.25*pixel. Report both accuracies, off-diagonal kernel means, 6 versus 64 qubits, and wall time. Follow up with angle scales 0.5/1.0 as separate campaigns; do not tune on test labels. Exact fidelities, no finite-shot noise or state-preparation circuit accounting.",
+        "test": "Use 20 train and 10 test examples per class, seeds 0\u20134, fixed ridge=0.1. Both see all 64 pixels scaled by the known sensor range 16. Amplitudes are L2-normalized; RY angles are pi*0.25*pixel. Report both accuracies, off-diagonal kernel means, 6 versus 64 qubits, and wall time. Follow up with angle scales 0.5/1.0 as separate campaigns; do not tune on test labels. Exact fidelities, no finite-shot noise or state-preparation circuit accounting.",
         "task": "encoding"
       },
       {
@@ -30,7 +30,7 @@
         "title": "How much complex image data can a small tensor network keep?",
         "question": "Can a short chain of small tensors retain Fourier phase, image structure and digit recognition while using fewer stored coefficients?",
         "claim": "A bond-2 matrix product state of normalized complex Fourier digit amplitudes retains mean held-out squared fidelity at least 0.90 and classification accuracy within five percentage points of dense amplitudes, while using at most 75% as many complex coefficients.",
-        "test": "Use the same fixed stratified 200/100 split per seed 0–4. Orthogonal 2D FFT, reshape 64 coefficients into six binary tensor indices, TT-SVD truncate to bond 2; reconstruct and normalize before the same ridge classifier. Compress training and test images independently without labels. Report test fidelity, dense/compressed accuracy, inverse-FFT gallery and actual stored core coefficients /64. Compare bonds 1,2,4,8 and row-major versus interleaved row/column bit ordering as separate campaigns. High bonds may use more storage than dense data. Fidelity and storage alone do not establish classification preservation.",
+        "test": "Use the same fixed stratified 200/100 split per seed 0\u20134. Orthogonal 2D FFT, reshape 64 coefficients into six binary tensor indices, TT-SVD truncate to bond 2; reconstruct and normalize before the same ridge classifier. Compress training and test images independently without labels. Report test fidelity, dense/compressed accuracy, inverse-FFT gallery and actual stored core coefficients /64. Compare bonds 1,2,4,8 and row-major versus interleaved row/column bit ordering as separate campaigns. High bonds may use more storage than dense data. Fidelity and storage alone do not establish classification preservation.",
         "task": "tensor_network"
       }
     ]
@@ -54,15 +54,15 @@
         "title": "Do mutation identities matter more than mutation count?",
         "question": "How much do mutation identities add beyond the number of changes to the protein?",
         "claim": "On a fixed content-selected 6000-variant subset, a ridge model with hashed mutation-identity features reduces held-out fluorescence RMSE by at least 10% relative to a mutation-count mean predictor.",
-        "test": "Use 70/30 train/test splits for seeds 0–4. Fit feature weights and count-bin means on training labels only; fix ridge=10 before testing. Report errors by mutation count and show a predicted-versus-measured scatter. Hashing collisions are a known model limitation. Do not tune on test labels.",
+        "test": "Use 70/30 train/test splits for seeds 0\u20134. Fit feature weights and count-bin means on training labels only; fix ridge=10 before testing. Report errors by mutation count and show a predicted-versus-measured scatter. Hashing collisions are a known model limitation. Do not tune on test labels.",
         "task": "prediction"
       },
       {
         "id": "distance",
         "title": "Does a good random-split score survive farther mutations?",
         "question": "Can a predictor trained close to the original protein handle variants with more mutations?",
-        "claim": "At matched train/test sizes, the same additive mutation-feature predictor has at least 10% higher RMSE when trained on variants with ≤2 mutations and tested on ≥3 than under a random split.",
-        "test": "Run the random and mutational-distance protocols with the same fixed data subset, model, regularization and matched sizes. Seeds 0–4 resample within each protocol. Report each distance stratum; this tests a distribution shift, not a pure causal effect of distance.",
+        "claim": "At matched train/test sizes, the same additive mutation-feature predictor has at least 10% higher RMSE when trained on variants with \u22642 mutations and tested on \u22653 than under a random split.",
+        "test": "Run the random and mutational-distance protocols with the same fixed data subset, model, regularization and matched sizes. Seeds 0\u20134 resample within each protocol. Report each distance stratum; this tests a distribution shift, not a pure causal effect of distance.",
         "task": "distance"
       }
     ]
@@ -71,7 +71,7 @@
     "id": "vision-sampling",
     "title": "Vision: Sample Faster, Reason Spatially",
     "domain": "synthetic image diffusion and spatial reasoning",
-    "summary": "Compare diffusion step budgets and schedules, then test whether an explicit scene graph helps spatial answers. Tiny 16×16 images, CPU only.",
+    "summary": "Compare diffusion step budgets and schedules, then test whether an explicit scene graph helps spatial answers. Tiny 16\u00d716 images, CPU only.",
     "config": {
       "task": "few_steps",
       "seed": 0,
@@ -87,7 +87,7 @@
         "title": "Can we cut sampling to eight steps without breaking shapes?",
         "question": "Where is the quality-versus-compute tradeoff for diffusion sampling?",
         "claim": "Eight DDIM-style denoiser evaluations retain shape validity within five percentage points AND mode total-variation error within 0.05 of a 32-evaluation reference, using the same denoiser and initial noise.",
-        "test": "Fix 256 samples and paired initial noises per seed. Validity is nearest-template pixel MSE <0.05. Test seeds 0–4. Report validity, nearest-template error, mode total-variation and measured time; a quality pass alone does not establish diversity. Steps must remain exactly 8 versus 32 for this claim.",
+        "test": "Fix 256 samples and paired initial noises per seed. Validity is nearest-template pixel MSE <0.05. Test seeds 0\u20134. Report validity, nearest-template error, mode total-variation and measured time; a quality pass alone does not establish diversity. Steps must remain exactly 8 versus 32 for this claim.",
         "task": "few_steps"
       },
       {
@@ -95,7 +95,7 @@
         "title": "Where should a small sampler spend its steps?",
         "question": "At the same eight evaluations, does concentrating steps near the clean image preserve more modes?",
         "claim": "A quadratic late-focused eight-evaluation schedule reduces total-variation distance of the generated mode distribution from uniform by at least 0.02 versus an eight-evaluation uniform schedule.",
-        "test": "Hold the clean-image bank, denoiser, initial noise, sample count and evaluation budget fixed. Compare schedules over seeds 0–4; report validity alongside diversity. A late-focused schedule might fail or help fidelity while hurting diversity.",
+        "test": "Hold the clean-image bank, denoiser, initial noise, sample count and evaluation budget fixed. Compare schedules over seeds 0\u20134; report validity alongside diversity. A late-focused schedule might fail or help fidelity while hurting diversity.",
         "task": "schedule"
       },
       {
@@ -103,8 +103,48 @@
         "title": "Do intermediate scene graphs help with left and right?",
         "question": "Is it better to extract objects and their positions before answering a spatial question?",
         "claim": "An intermediate color-mask centroid scene graph improves left/right accuracy by at least five percentage points over a ridge predictor on downsampled pixels when test scenes use a wider translation range.",
-        "test": "Both methods receive only rendered RGB pixels. Train the pixel predictor on 600 labeled scenes; evaluate both on the same 256 shifted scenes for seeds 0–4. Generator coordinates define labels but must never be passed to the predictor. Report accuracy and failure galleries. The graph encodes the relation explicitly, so this is a pipeline comparison, not a matched-capacity reasoning claim.",
+        "test": "Both methods receive only rendered RGB pixels. Train the pixel predictor on 600 labeled scenes; evaluate both on the same 256 shifted scenes for seeds 0\u20134. Generator coordinates define labels but must never be passed to the predictor. Report accuracy and failure galleries. The graph encodes the relation explicitly, so this is a pipeline comparison, not a matched-capacity reasoning claim.",
         "task": "reasoning"
+      }
+    ]
+  },
+  {
+    "id": "quantum-gnn",
+    "title": "Quantum GNN: Graph Circuits",
+    "domain": "quantum graph learning",
+    "summary": "A separate quantum graph-learning lab with three automatically testable ideas: graph messages, node encoding and depth. Six-qubit CPU statevector simulation on two controlled graph topologies; includes a classical triangle-count baseline. No hardware or quantum advantage claim.",
+    "config": {
+      "task": "entanglement",
+      "seed": 0,
+      "layers": 2,
+      "candidates": 8
+    },
+    "source": "Original synthetic topology fixture in this repository",
+    "boundary": "Six-qubit exact statevector graph circuits. Two topologies shared across permutation splits; expressivity only. No unseen-topology generalisation, hardware or quantum advantage. Triangle-count classical baseline reported.",
+    "ideas": [
+      {
+        "id": "entanglement",
+        "title": "Do graph entanglers help?",
+        "question": "Do graph entanglers help?",
+        "claim": "Treatment accuracy exceeds its matched ablation by at least five percentage points.",
+        "test": "Compare graph-edge RZZ messages with no entanglers at depth 2. Both arms use the same number of validation-selected random parameter candidates. Set task=entanglement. Use seeds 0\u20134; five percentage points is the provisional positive-effect threshold. Use the triangle-count classical baseline. These two degree-matched graph families test expressivity only: permutations are not independent scientific samples or unseen topologies. Never claim general quantum superiority.",
+        "task": "entanglement"
+      },
+      {
+        "id": "encoding",
+        "title": "Does node-degree encoding help?",
+        "question": "Does node-degree encoding help?",
+        "claim": "Treatment accuracy exceeds its matched ablation by at least five percentage points.",
+        "test": "Compare degree encoding with constant node encoding, with graph-edge messages in both arms. Set task=encoding. Use seeds 0\u20134; five percentage points is the provisional positive-effect threshold. Use the triangle-count classical baseline. These two degree-matched graph families test expressivity only: permutations are not independent scientific samples or unseen topologies. Never claim general quantum superiority.",
+        "task": "encoding"
+      },
+      {
+        "id": "depth",
+        "title": "Does a deeper circuit help?",
+        "question": "Does a deeper circuit help?",
+        "claim": "Treatment accuracy exceeds its matched ablation by at least five percentage points.",
+        "test": "Compare depth 2 or 3 with depth 1, retaining the same validation search budget and explicitly reporting parameter counts. Set task=depth. Use seeds 0\u20134; five percentage points is the provisional positive-effect threshold. Use the triangle-count classical baseline. These two degree-matched graph families test expressivity only: permutations are not independent scientific samples or unseen topologies. Never claim general quantum superiority.",
+        "task": "depth"
       }
     ]
   }

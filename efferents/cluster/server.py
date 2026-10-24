@@ -230,6 +230,8 @@ class ClusterHandler(DashboardHandler):
 
     def _network_get(self, owner: Owner, path: str) -> None:
         hub = self.cluster.hub
+        if path.startswith("/api/network/submissions/"):
+            return self._send_json(self.cluster.submissions.get(owner, path.rsplit("/", 1)[-1]))
         if path == "/api/network/package":
             from efferents.cluster.network import participant_wheel
             wheel = participant_wheel()
@@ -314,6 +316,8 @@ class ClusterHandler(DashboardHandler):
 
     def _network_post(self, owner: Owner, path: str, payload: dict) -> None:
         hub = self.cluster.hub
+        if path == "/api/network/submissions":
+            return self._send_json(self.cluster.submissions.submit(owner, payload))
         if path == "/api/network/labs":
             result = hub.register(owner, payload)
             self.cluster.owners.add_lab(owner.owner_id, result["lab_id"])
@@ -374,6 +378,12 @@ class ClusterHandler(DashboardHandler):
                          status=status, extra_headers=extra)
 
     def _extra_post(self, path: str, payload: dict) -> bool:
+        if path == "/api/network/submissions":
+            owner = self._require_joined()
+            if not self.cluster.message_limiter.allow(owner.owner_id):
+                raise ControlError("Too many submissions; slow down.", status=429)
+            self._send_json(self.cluster.submissions.submit(owner, payload))
+            return True
         starter = _NET_LAB_ROUTE.match(path)
         if starter and starter.group("verb") == "starter":
             owner = self._require_joined()

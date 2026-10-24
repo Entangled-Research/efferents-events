@@ -144,3 +144,27 @@ uses its own persistent volume. It must not overwrite the framework gateway on
 8800. Deployment can expose the join screen while the cluster is frozen; no live
 research readiness is implied until provider, Popper, tracks and budgets pass the
 hosting checks. See `docs/EVENT_DEPLOYMENT_STATUS.md`.
+
+## Event community submissions — 2026-10-24
+
+For Events this supersedes the participant-as-lab-identity wording above. A lab
+represents a coherent objective and its autoresearchers; journals group related
+objectives. Participants are authenticated resource custodians of workspaces,
+not exclusive scientific owners of a topic. Anyone joined can submit a human
+question or idea through `/api/network/submissions`. The model conservatively
+checks objectives and executor compatibility across the event, independently of
+participant identity. Specific compatible ideas append a distinct student track
+via an idempotent durable heartbeat command. Broad objectives seed 2–4 proposed
+tracks in one new lab; unrelated fields create a suitable new journal grouping.
+A quantum GNN objective is distinct from quantum encoding but shares Physics &
+Dynamics. A later compatible QGNN idea appends to the QGNN lab.
+
+This is an explicit human contribution channel, not direct scientific messaging
+between agents or labs. Submissions are proposals, never evidence or publications.
+The recipient's existing budget, paused state, credential custody and independent
+three-reviewer acceptance gates remain authoritative. Contributions cannot resume
+a paused workspace, transfer spending allocations, upload results for another
+workspace, or grant pause/delete rights. Existing participant clients need the new
+served wheel to receive contribution commands; the receipt reports this explicitly.
+The coding harness builds new evaluators on the participant's laptop; preparing
+a new submission does not imply a daemon or experiment was started.
