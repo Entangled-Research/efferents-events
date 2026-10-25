@@ -1,5 +1,17 @@
 # Events deployment
 
+**October event retired 2026-10-25 at the organizer's request.**
+`https://oct24.161-35-164-202.sslip.io` returns HTTP 410 for the page,
+sign-in and sponsored model API. The October hub and sync containers are removed;
+port 8810 has no event service. All participant session/recovery credentials are
+invalidated and the enrollment password is replaced. Active event provider
+credential files are removed. The evidence volume, research histories, billing
+ledgers and uncertain reservations remain privately retained with a closure backup.
+The shared provider resource's issuer key and the separate legacy gateway remain
+unchanged. Participant CPU processes on offline laptops cannot be killed remotely;
+event-funded model access is closed. Do not restart the retired volume. Use the
+[fresh-event procedure](../deploy/events/README.md) for a future event.
+
 **Retired 2026-09-27.** The September event URL returns HTTP 410. Hub and sync
 containers were removed, active event credential files removed, and all owner
 tokens/recovery keys invalidated. Evidence and billing state remain in a private
